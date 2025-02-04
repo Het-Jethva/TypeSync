@@ -53,7 +53,6 @@ const Dashboard: React.FC = () => {
     if (currentUser?.email) {
       await documentService.addUser(newDocId, currentUser.email)
     }
-    setDocuments((prev) => [...prev, { id: newDocId, name: newDocName.trim() }])
     setSelectedDocId(newDocId)
     setNewDocName("")
     setShowNewDocForm(false)
