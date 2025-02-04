@@ -2,8 +2,7 @@ import React, { useState, useEffect, FormEvent } from "react"
 import { documentService } from "../services/documentService"
 import RTE from "./RTE"
 import { v4 as uuidv4 } from "uuid"
-import { auth } from "../firebase" // NEW import
-// NEW imports for real‑time updates
+import { auth } from "../firebase"
 import { ref, onValue } from "firebase/database"
 import { database } from "../firebase"
 
@@ -102,7 +101,7 @@ const Dashboard: React.FC = () => {
                 key={doc.id}
                 className={`p-2 cursor-pointer rounded transition-colors duration-200 ${
                   selectedDocId === doc.id
-                    ? "bg-blue-300 text-black" // changed color for selected doc
+                    ? "bg-blue-300 text-black"
                     : "hover:bg-gray-200"
                 }`}
                 onClick={() => setSelectedDocId(doc.id)}
@@ -143,9 +142,12 @@ const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
   const [feedback, setFeedback] = useState("")
 
   useEffect(() => {
-    const unsubscribe = documentService.subscribeToDocument(documentId, (data) => {
-      setDocData(data)
-    })
+    const unsubscribe = documentService.subscribeToDocument(
+      documentId,
+      (data) => {
+        setDocData(data)
+      }
+    )
     return () => unsubscribe()
   }, [documentId])
 
@@ -181,7 +183,9 @@ const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
               Add User
             </button>
           </div>
-          {feedback && <div className="text-green-600 text-sm mb-4">{feedback}</div>}
+          {feedback && (
+            <div className="text-green-600 text-sm mb-4">{feedback}</div>
+          )}
           {/* Active Users List */}
           <div className="mb-4">
             <h3 className="text-lg font-semibold mb-2">Shared with:</h3>
@@ -198,7 +202,9 @@ const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
           </div>
           <p>
             <strong>Last Modified:</strong>{" "}
-            {docData.lastModified ? new Date(docData.lastModified).toLocaleString() : ""}
+            {docData.lastModified
+              ? new Date(docData.lastModified).toLocaleString()
+              : ""}
           </p>
         </>
       ) : (
