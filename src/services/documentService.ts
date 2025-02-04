@@ -141,8 +141,8 @@ class DocumentService {
       const currentData = snapshot.val() as DocumentData
 
       if (currentData && currentData.users) {
-        const { [sanitizedEmail]: removedUser, ...remainingUsers } =
-          currentData.users
+        const remainingUsers = { ...currentData.users }
+        delete remainingUsers[sanitizedEmail]
         await update(this.documentRef(documentId), {
           users: remainingUsers,
         })

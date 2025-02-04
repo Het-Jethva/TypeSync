@@ -11,6 +11,8 @@ interface DocumentListItem {
   name: string
 }
 
+import { DocumentData } from "../services/documentService"
+
 const Dashboard: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentListItem[]>([])
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
@@ -25,7 +27,7 @@ const Dashboard: React.FC = () => {
     const documentsRef = ref(database, "documents")
     const unsubscribe = onValue(documentsRef, (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.val()
+        const data = snapshot.val() as Record<string, DocumentData>
         const docList = Object.keys(data)
           .filter((key) => data[key].users && data[key].users[sanitizedEmail])
           .map((key) => ({
@@ -137,14 +139,14 @@ const Dashboard: React.FC = () => {
 
 // Document Details Component
 const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
-  const [docData, setDocData] = useState<any>(null)
+  const [docData, setDocData] = useState<DocumentData | null>(null)
   const [newUserEmail, setNewUserEmail] = useState("")
   const [feedback, setFeedback] = useState("")
 
   useEffect(() => {
     const unsubscribe = documentService.subscribeToDocument(
       documentId,
-      (data) => {
+      (data: DocumentData) => {
         setDocData(data)
       }
     )
@@ -157,7 +159,7 @@ const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
       setFeedback(`User ${newUserEmail} added successfully!`)
       setNewUserEmail("")
       setTimeout(() => setFeedback(""), 3000)
-    } catch (error) {
+    } catch {
       setFeedback("Failed to add user. Please try again.")
       setTimeout(() => setFeedback(""), 3000)
     }
@@ -190,7 +192,7 @@ const DocumentDetails: React.FC<{ documentId: string }> = ({ documentId }) => {
           <div className="mb-4">
             <h3 className="text-lg font-semibold mb-2">Shared with:</h3>
             <div className="flex flex-wrap gap-2">
-              {Object.values(docData.users || {}).map((user: any) => (
+              {Object.values(docData.users || {}).map((user) => (
                 <div
                   key={user.email}
                   className="px-3 py-1 bg-gray-100 rounded-full text-sm"
