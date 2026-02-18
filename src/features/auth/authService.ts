@@ -1,4 +1,4 @@
-import { auth } from "../firebase"
+import { auth } from "../../lib/firebase"
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -6,10 +6,7 @@ import {
   UserCredential,
   User,
 } from "firebase/auth"
-
-interface AuthError extends Error {
-  message: string
-}
+import type { AuthError } from "./types"
 
 const validateCredentials = (email: string, password: string): void => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

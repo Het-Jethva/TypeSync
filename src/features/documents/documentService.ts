@@ -8,22 +8,10 @@ import {
   DatabaseReference,
   Unsubscribe,
 } from "firebase/database"
-import { database } from "../firebase"
-
-export interface User {
-  email: string
-  accessTime: string
-}
-
-export interface DocumentData {
-  title: string
-  content: string
-  users: Record<string, User>
-  lastModified: string
-}
+import { database } from "../../lib/firebase"
+import type { DocumentData, User } from "./types"
 
 class DocumentService {
-  private dbRef = ref(database, "documents")
   private documentRef: (documentId: string) => DatabaseReference
 
   constructor() {
@@ -50,10 +38,6 @@ class DocumentService {
     }
   }
 
-  async getAllDocuments() {
-    return await get(this.dbRef)
-  }
-
   async initializeDocument(
     documentId: string,
     title: string,
@@ -77,34 +61,22 @@ class DocumentService {
   ): Unsubscribe {
     return onValue(this.documentRef(documentId), (snapshot) => {
       const data = snapshot.val() as DocumentData
-      if (data) {
-        callback(data)
-      }
+      if (data) callback(data)
     })
   }
 
   async updateTitle(documentId: string, newTitle: string): Promise<void> {
-    try {
-      await update(this.documentRef(documentId), {
-        title: newTitle,
-        lastModified: new Date().toISOString(),
-      })
-    } catch (error) {
-      console.error("Error updating title:", error)
-      throw error
-    }
+    await update(this.documentRef(documentId), {
+      title: newTitle,
+      lastModified: new Date().toISOString(),
+    })
   }
 
   async updateContent(documentId: string, newContent: string): Promise<void> {
-    try {
-      await update(this.documentRef(documentId), {
-        content: newContent,
-        lastModified: new Date().toISOString(),
-      })
-    } catch (error) {
-      console.error("Error updating content:", error)
-      throw error
-    }
+    await update(this.documentRef(documentId), {
+      content: newContent,
+      lastModified: new Date().toISOString(),
+    })
   }
 
   async addUser(documentId: string, email: string): Promise<void> {
@@ -117,49 +89,48 @@ class DocumentService {
       accessTime: new Date().toISOString(),
     }
 
-    try {
-      const snapshot = await get(this.documentRef(documentId))
-      const currentData = (snapshot.val() as DocumentData) || { users: {} }
+    const documentRef = this.documentRef(documentId)
+    const snapshot = await get(documentRef)
 
-      await update(this.documentRef(documentId), {
+    if (!snapshot.exists()) {
+      const initialData: DocumentData = {
+        title: "Untitled Document",
+        content: "Welcome to TypeSync!",
         users: {
-          ...currentData.users,
           [sanitizedEmail]: userData,
         },
-      })
-    } catch (error) {
-      console.error("Error adding user:", error)
-      throw error
+        lastModified: new Date().toISOString(),
+      }
+      await set(documentRef, initialData)
+      return
     }
+
+    const currentData = snapshot.val() as DocumentData
+
+    await update(documentRef, {
+      users: {
+        ...(currentData.users || {}),
+        [sanitizedEmail]: userData,
+      },
+    })
   }
 
   async removeUser(documentId: string, email: string): Promise<void> {
     const sanitizedEmail = this.sanitizeEmail(email)
+    const snapshot = await get(this.documentRef(documentId))
+    const currentData = snapshot.val() as DocumentData
 
-    try {
-      const snapshot = await get(this.documentRef(documentId))
-      const currentData = snapshot.val() as DocumentData
-
-      if (currentData && currentData.users) {
-        const remainingUsers = { ...currentData.users }
-        delete remainingUsers[sanitizedEmail]
-        await update(this.documentRef(documentId), {
-          users: remainingUsers,
-        })
-      }
-    } catch (error) {
-      console.error("Error removing user:", error)
-      throw error
+    if (currentData && currentData.users) {
+      const remainingUsers = { ...currentData.users }
+      delete remainingUsers[sanitizedEmail]
+      await update(this.documentRef(documentId), {
+        users: remainingUsers,
+      })
     }
   }
 
   async deleteDocument(documentId: string): Promise<void> {
-    try {
-      await remove(this.documentRef(documentId))
-    } catch (error) {
-      console.error("Error deleting document:", error)
-      throw error
-    }
+    await remove(this.documentRef(documentId))
   }
 }
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from "react"
-import { signUp, signIn } from "../services/authService"
+import { signUp, signIn } from "./authService"
 import { useNavigate } from "react-router-dom"
 
-export const AuthForm: React.FC = () => {
+const AuthForm: React.FC = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState<string>("")
   const [password, setPassword] = useState<string>("")
@@ -10,7 +10,6 @@ export const AuthForm: React.FC = () => {
   const [error, setError] = useState<string>("")
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
-  // Clear error when switching modes
   useEffect(() => {
     setError("")
   }, [isSignIn])
@@ -40,7 +39,6 @@ export const AuthForm: React.FC = () => {
       } else {
         await signUp(email, password)
       }
-      // Redirect to dashboard after successful login/signup
       navigate("/dashboard")
     } catch (err: unknown) {
       setError(
@@ -69,15 +67,21 @@ export const AuthForm: React.FC = () => {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md bg-white p-8 rounded-md shadow-md">
-        <h1 className="text-2xl font-semibold text-center mb-6">
-          {isSignIn ? "Sign In" : "Sign Up"}
-        </h1>
+    <div className="min-h-screen flex items-center justify-center px-4 py-12">
+      <section className="panel w-full max-w-md p-6 lg:p-8">
+        <div>
+          <p className="section-title">TypeSync</p>
+          <h1 className="text-2xl mt-2">
+            {isSignIn ? "Sign in" : "Create your account"}
+          </h1>
+          <p className="text-muted text-sm mt-2">
+            Use your email to access your documents.
+          </p>
+        </div>
 
         {error && (
           <div
-            className="mb-4 text-sm text-red-500"
+            className="mt-4 text-sm text-red-600"
             role="alert"
             aria-live="assertive"
           >
@@ -85,15 +89,9 @@ export const AuthForm: React.FC = () => {
           </div>
         )}
 
-        <form
-          onSubmit={handleSubmit}
-          noValidate
-        >
-          <div className="mb-4">
-            <label
-              htmlFor="email"
-              className="block text-gray-700 font-medium mb-2"
-            >
+        <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
+          <div>
+            <label htmlFor="email" className="section-title">
               Email
             </label>
             <input
@@ -101,18 +99,15 @@ export const AuthForm: React.FC = () => {
               id="email"
               value={email}
               onChange={handleEmailChange}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
+              className="input mt-2"
               required
               aria-label="Email address"
               disabled={isLoading}
             />
           </div>
 
-          <div className="mb-4">
-            <label
-              htmlFor="password"
-              className="block text-gray-700 font-medium mb-2"
-            >
+          <div>
+            <label htmlFor="password" className="section-title">
               Password
             </label>
             <input
@@ -120,7 +115,7 @@ export const AuthForm: React.FC = () => {
               id="password"
               value={password}
               onChange={handlePasswordChange}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
+              className="input mt-2"
               required
               aria-label="Password"
               disabled={isLoading}
@@ -130,29 +125,30 @@ export const AuthForm: React.FC = () => {
 
           <button
             type="submit"
-            className={`w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring focus:ring-blue-200 ${
-              isLoading ? "opacity-50 cursor-not-allowed" : ""
+            className={`btn btn-primary w-full ${
+              isLoading ? "opacity-60 cursor-not-allowed" : ""
             }`}
             disabled={isLoading}
           >
-            {isLoading ? "Processing..." : isSignIn ? "Sign In" : "Sign Up"}
+            {isLoading ? "Processing..." : isSignIn ? "Sign in" : "Sign up"}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600">
-            {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
-            <button
-              onClick={toggleMode}
-              className="text-blue-500 hover:underline focus:outline-none"
-              disabled={isLoading}
-              type="button"
-            >
-              {isSignIn ? "Sign Up" : "Sign In"}
-            </button>
-          </p>
+        <div className="mt-6 text-sm text-muted">
+          {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
+          <button
+            onClick={toggleMode}
+            className="btn btn-ghost btn-small"
+            disabled={isLoading}
+            type="button"
+          >
+            {isSignIn ? "Sign up" : "Sign in"}
+          </button>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
+
+export { AuthForm }
+export default AuthForm
