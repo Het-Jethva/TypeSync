@@ -2,6 +2,7 @@ import React, { Suspense } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { ProtectedRoute } from "./components"
 
+const LandingPage = React.lazy(() => import("./features/landing/LandingPage"))
 const DashboardPage = React.lazy(
   () => import("./features/documents/pages/DashboardPage")
 )
@@ -12,6 +13,7 @@ const App: React.FC = () => {
     <BrowserRouter>
       <Suspense fallback={<p>Loading...</p>}>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route
             path="/dashboard"
             element={
@@ -24,15 +26,7 @@ const App: React.FC = () => {
             path="/auth"
             element={<AuthForm />}
           />
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to="/dashboard"
-                replace
-              />
-            }
-          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
