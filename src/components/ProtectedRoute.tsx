@@ -10,7 +10,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuthState()
 
   if (loading) return <p>Loading...</p>
-  return user ? children : <Navigate to="/auth" replace />
+  return user ? children : <Navigate to="/auth/signin" replace />
 }
 
 export default ProtectedRoute

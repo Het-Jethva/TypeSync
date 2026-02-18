@@ -24,8 +24,9 @@ const App: React.FC = () => {
           />
           <Route
             path="/auth"
-            element={<AuthForm />}
+            element={<Navigate to="/auth/signin" replace />}
           />
+          <Route path="/auth/:mode" element={<AuthForm />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

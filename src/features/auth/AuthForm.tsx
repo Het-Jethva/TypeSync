@@ -1,14 +1,26 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from "react"
 import { signUp, signIn } from "./authService"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 
 const AuthForm: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { mode } = useParams()
   const [email, setEmail] = useState<string>("")
   const [password, setPassword] = useState<string>("")
   const [isSignIn, setIsSignIn] = useState<boolean>(true)
   const [error, setError] = useState<string>("")
   const [isLoading, setIsLoading] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (mode === "signup") {
+      setIsSignIn(false)
+    } else if (mode === "signin") {
+      setIsSignIn(true)
+    } else if (mode) {
+      navigate("/auth/signin", { replace: true })
+    }
+  }, [mode, navigate])
 
   useEffect(() => {
     setError("")
@@ -52,10 +64,17 @@ const AuthForm: React.FC = () => {
   }
 
   const toggleMode = (): void => {
-    setIsSignIn(!isSignIn)
+    const nextIsSignIn = !isSignIn
+    setIsSignIn(nextIsSignIn)
     setEmail("")
     setPassword("")
     setError("")
+    navigate(
+      nextIsSignIn ? "/auth/signin" : "/auth/signup",
+      {
+        replace: true,
+      }
+    )
   }
 
   const handleEmailChange = (e: ChangeEvent<HTMLInputElement>): void => {

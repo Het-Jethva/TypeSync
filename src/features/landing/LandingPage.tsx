@@ -4,9 +4,13 @@ import { useAuthState } from "../auth/hooks"
 
 const LandingPage: React.FC = () => {
   const { user } = useAuthState()
+  const authLinks = {
+    signIn: "/auth/signin",
+    signUp: "/auth/signup",
+  }
   const primaryCta = user
     ? { label: "Go to dashboard", to: "/dashboard" }
-    : { label: "Start writing", to: "/auth" }
+    : { label: "Start writing", to: authLinks.signUp }
 
   return (
     <div className="landing-page">
@@ -29,7 +33,7 @@ const LandingPage: React.FC = () => {
           </nav>
           <div className="landing-actions">
             {!user && (
-              <Link to="/auth" className="btn btn-ghost">
+              <Link to={authLinks.signIn} className="btn btn-ghost">
                 Sign in
               </Link>
             )}
@@ -55,9 +59,9 @@ const LandingPage: React.FC = () => {
                   {primaryCta.label}
                 </Link>
                 {!user && (
-                  <Link to="/auth" className="btn btn-outline">
-                    Invite your team
-                  </Link>
+                  <a href="#workflow" className="btn btn-outline">
+                    See collaboration flow
+                  </a>
                 )}
               </div>
               <div className="landing-stats">
@@ -355,7 +359,7 @@ const LandingPage: React.FC = () => {
                 {primaryCta.label}
               </Link>
               {!user && (
-                <Link to="/auth" className="btn btn-outline">
+                <Link to={authLinks.signIn} className="btn btn-outline">
                   Sign in
                 </Link>
               )}
