@@ -1,10 +1,9 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from "react"
 import { signUp, signIn } from "./authService"
-import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 
 const AuthForm: React.FC = () => {
   const navigate = useNavigate()
-  const location = useLocation()
   const { mode } = useParams()
   const [email, setEmail] = useState<string>("")
   const [password, setPassword] = useState<string>("")
