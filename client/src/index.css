@@ -2,61 +2,63 @@
 
 /* ─── Design Tokens (Default: Light Mode) ────────────────── */
 @theme {
-  --color-bg-primary: #fafafa;
-  --color-bg-secondary: #f4f4f5;
-  --color-bg-tertiary: #e4e4e7;
+  --color-bg-primary: #faf8f5;
+  --color-bg-secondary: #f3f0ea;
+  --color-bg-tertiary: #e6e1d6;
   --color-bg-elevated: #ffffff;
-  --color-bg-hover: #ececee;
+  --color-bg-hover: #ebe6db;
 
-  --color-border: rgba(9, 9, 11, 0.06);
-  --color-border-strong: rgba(9, 9, 11, 0.12);
-  --color-border-accent: rgba(79, 70, 229, 0.25);
+  --color-border: rgba(46, 42, 37, 0.06);
+  --color-border-strong: rgba(46, 42, 37, 0.12);
+  --color-border-accent: rgba(194, 89, 63, 0.25);
 
-  --color-text-primary: #09090b;
-  --color-text-secondary: #52525b;
-  --color-text-muted: #71717a;
+  --color-text-primary: #1e1c19;
+  --color-text-secondary: #666055;
+  --color-text-muted: #948e82;
 
-  --color-accent: #4f46e5;
-  --color-accent-hover: #4338ca;
-  --color-accent-light: rgba(79, 70, 229, 0.08);
-  --color-accent-glow: rgba(79, 70, 229, 0.15);
+  --color-accent: #c2593f;
+  --color-accent-hover: #a3442d;
+  --color-accent-light: rgba(194, 89, 63, 0.08);
+  --color-accent-glow: rgba(194, 89, 63, 0.15);
 
-  --color-success: #16a34a;
-  --color-error: #dc2626;
-  --color-warning: #d97706;
+  --color-success: #2e624a;
+  --color-error: #a83a32;
+  --color-warning: #c68a3c;
 
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
 }
 
 /* ─── Dark Mode Overrides (Linear Charcoal Style) ────────── */
 .dark {
-  --color-bg-primary: #121214;
-  --color-bg-secondary: #18181b;
-  --color-bg-tertiary: #202024;
-  --color-bg-elevated: #18181b;
-  --color-bg-hover: #232327;
+  --color-bg-primary: #121110;
+  --color-bg-secondary: #1a1917;
+  --color-bg-tertiary: #262421;
+  --color-bg-elevated: #1a1917;
+  --color-bg-hover: #2b2825;
 
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-border-accent: rgba(99, 102, 241, 0.35);
+  --color-border: rgba(240, 235, 225, 0.08);
+  --color-border-strong: rgba(240, 235, 225, 0.15);
+  --color-border-accent: rgba(219, 114, 88, 0.35);
 
-  --color-text-primary: #f4f4f5;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #52525b;
+  --color-text-primary: #f2ede4;
+  --color-text-secondary: #aba395;
+  --color-text-muted: #787164;
 
-  --color-accent: #6366f1;
-  --color-accent-hover: #4f46e5;
-  --color-accent-light: rgba(99, 102, 241, 0.12);
-  --color-accent-glow: rgba(99, 102, 241, 0.25);
+  --color-accent: #db7258;
+  --color-accent-hover: #c45b41;
+  --color-accent-light: rgba(219, 114, 88, 0.12);
+  --color-accent-glow: rgba(219, 114, 88, 0.25);
 
-  --color-success: #22c55e;
-  --color-error: #ef4444;
-  --color-warning: #f59e0b;
+  --color-success: #5c8b74;
+  --color-error: #c85a53;
+  --color-warning: #d99a4c;
 }
 
 /* ─── Tactile Button Utilities (Linear Aesthetic) ────────── */
@@ -72,7 +74,7 @@
   border: 1px solid var(--color-border-strong);
   background-color: var(--color-bg-elevated);
   color: var(--color-text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
@@ -97,10 +99,14 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-accent);
   background-color: var(--color-accent);
-  color: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  color: #faf8f5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
+}
+
+.dark .btn-linear-primary {
+  color: #121110;
 }
 
 .btn-linear-primary:hover {
@@ -131,12 +137,30 @@ body {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   line-height: 1.6;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+/* Smooth transition elements for dark mode */
+.h-screen,
+.bg-bg-primary,
+.bg-bg-secondary,
+.bg-bg-elevated,
+.border,
+.border-b,
+.border-r,
+.text-text-primary,
+.text-text-secondary,
+.text-text-muted,
+.btn-linear,
+.btn-linear-primary,
+.tiptap {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease, transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -144,83 +168,96 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-bg-tertiary);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-text-muted);
 }
 
 /* ─── Tiptap Editor Styles ──────────────────────────────── */
 .tiptap {
   outline: none;
   min-height: 400px;
-  padding: 1.5rem;
-  font-size: 1rem;
-  line-height: 1.75;
+  padding: 1.5rem 1rem;
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.8;
   color: var(--color-text-primary);
 }
 
+@media (min-width: 640px) {
+  .tiptap {
+    padding: 2.5rem 2rem;
+  }
+}
+
 .tiptap p {
-  margin: 0.75em 0;
+  margin: 1.25em 0;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
 }
 
 .tiptap h1 {
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  margin: 1.5em 0 0.5em;
-  line-height: 1.2;
+  font-size: 2.125rem;
+  font-weight: 700;
+  margin: 1.8em 0 0.6em;
 }
 
 .tiptap h2 {
   font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 1.25em 0 0.5em;
-  line-height: 1.3;
+  margin: 1.5em 0 0.5em;
 }
 
 .tiptap h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 1em 0 0.5em;
-  line-height: 1.4;
+  font-size: 1.2rem;
+  margin: 1.2em 0 0.5em;
 }
 
 .tiptap h4,
 .tiptap h5,
 .tiptap h6 {
-  font-weight: 600;
-  margin: 1em 0 0.5em;
+  font-size: 1rem;
+  margin: 1.2em 0 0.5em;
 }
 
 .tiptap blockquote {
-  border-left: 3px solid var(--color-accent);
-  padding-left: 1rem;
-  margin: 1em 0;
+  border-left: 2px solid var(--color-accent);
+  padding-left: 1.25rem;
+  margin: 1.5em 0;
   color: var(--color-text-secondary);
   font-style: italic;
 }
 
 .tiptap ul,
 .tiptap ol {
-  padding-left: 1.5rem;
-  margin: 0.75em 0;
+  padding-left: 1.75rem;
+  margin: 1.25em 0;
 }
 
 .tiptap li {
-  margin: 0.25em 0;
+  margin: 0.4em 0;
 }
 
 .tiptap code {
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
-  padding: 0.15em 0.4em;
-  font-size: 0.9em;
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  padding: 0.15em 0.35em;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
 }
 
 .tiptap pre {

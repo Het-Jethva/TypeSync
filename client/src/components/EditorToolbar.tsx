@@ -19,10 +19,10 @@ function ToolbarButton({
     <button
       onClick={onClick}
       title={title}
-      className={`w-7 h-7 rounded-md flex items-center justify-center transition-all border text-xs cursor-pointer ${
+      className={`w-6.5 h-6.5 rounded flex items-center justify-center transition-all border text-xs cursor-pointer ${
         isActive
-          ? "bg-bg-tertiary border-border-strong text-text-primary font-semibold shadow-[0_1px_1px_rgba(0,0,0,0.03)]"
-          : "border-transparent text-text-muted hover:bg-bg-hover hover:text-text-primary"
+          ? "bg-accent-light border-border-accent text-accent font-semibold shadow-[0_1px_2px_rgba(194,89,63,0.02)]"
+          : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
       }`}
     >
       {children}

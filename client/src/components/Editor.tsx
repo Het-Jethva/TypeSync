@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import * as awarenessProtocol from "y-protocols/awareness";
@@ -19,13 +19,20 @@ import { common, createLowlight } from "lowlight";
 import { getSocket } from "../lib/socket";
 import { useSession } from "../lib/auth-client";
 import { EditorToolbar } from "./EditorToolbar";
+import { EditorSlashMenu } from "./EditorSlashMenu";
 
 const lowlight = createLowlight(common);
 
-// Assign random color to each user session
+// Assign random color to each user session (warm, cohesive editorial palette)
 const CURSOR_COLORS = [
-  "#8b5cf6", "#06b6d4", "#f59e0b", "#ef4444", "#22c55e",
-  "#ec4899", "#3b82f6", "#f97316", "#14b8a6", "#a855f7",
+  "#c2593f", // Terracotta
+  "#4e655d", // Sage
+  "#d99a4c", // Warm Gold
+  "#a3523f", // Rust
+  "#5a6b7c", // Slate
+  "#8c6f5e", // Bronze
+  "#9c5a6c", // Dusty Rose
+  "#6b5c7b", // Muted Violet
 ];
 
 function getRandomColor(): string {
@@ -34,16 +41,29 @@ function getRandomColor(): string {
 
 interface EditorProps {
   documentId: string;
+  onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
 }
 
-export function Editor({ documentId }: EditorProps) {
+export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
   const { data: session } = useSession();
   const [isConnected, setIsConnected] = useState(false);
   const cursorColor = useMemo(() => getRandomColor(), []);
+  const [slashMenu, setSlashMenu] = useState<{
+    isOpen: boolean;
+    position: { top: number; left: number };
+  }>({
+    isOpen: false,
+    position: { top: 0, left: 0 },
+  });
 
   // Create a Yjs document per documentId
   const ydoc = useMemo(() => new Y.Doc(), [documentId]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
+
+  const onCollaboratorsChangeRef = useRef(onCollaboratorsChange);
+  useEffect(() => {
+    onCollaboratorsChangeRef.current = onCollaboratorsChange;
+  }, [onCollaboratorsChange]);
 
   // Set up socket sync
   useEffect(() => {
@@ -94,12 +114,22 @@ export function Editor({ documentId }: EditorProps) {
     };
     awareness.on("update", awarenessUpdateHandler);
 
+    const handleAwarenessChange = () => {
+      const states = awareness.getStates();
+      const activeUsers = Array.from(states.values())
+        .map((state: any) => state.user)
+        .filter(Boolean);
+      onCollaboratorsChangeRef.current?.(activeUsers);
+    };
+    awareness.on("change", handleAwarenessChange);
+
     return () => {
       socket.off("doc:sync", handleSync);
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
       ydoc.off("update", updateHandler);
       awareness.off("update", awarenessUpdateHandler);
+      awareness.off("change", handleAwarenessChange);
       socket.emit("doc:leave", documentId);
       ydoc.destroy();
       awareness.destroy();
@@ -152,6 +182,30 @@ export function Editor({ documentId }: EditorProps) {
         attributes: {
           class: "tiptap",
         },
+        handleKeyDown(view, event) {
+          if (event.key === "/") {
+            const { selection } = view.state;
+            const textBefore = selection.$from.parent.textBetween(0, selection.$from.parentOffset);
+            if (textBefore.trim() === "") {
+              const coords = view.coordsAtPos(selection.from);
+              setSlashMenu({
+                isOpen: true,
+                position: {
+                  top: coords.bottom + 6,
+                  left: coords.left,
+                },
+              });
+            }
+          }
+          return false;
+        },
+      },
+      onSelectionUpdate({ editor }) {
+        const { selection } = editor.state;
+        const charBefore = editor.state.doc.textBetween(Math.max(0, selection.from - 1), selection.from);
+        if (charBefore !== "/") {
+          setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+        }
       },
     },
     [documentId, ydoc, awareness]
@@ -176,11 +230,19 @@ export function Editor({ documentId }: EditorProps) {
     >
       <EditorToolbar editor={editor} />
 
-      <div className="flex-1 overflow-auto bg-bg-primary">
-        <div className="max-w-3xl mx-auto py-6 px-4">
+      <div className="flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
+        <div className="w-full max-w-2xl bg-bg-elevated sm:border sm:border-border-strong sm:rounded-md sm:shadow-[0_2px_12px_rgba(0,0,0,0.01)] border-none rounded-none shadow-none sm:min-h-[700px] min-h-[calc(100vh-10rem)] h-fit">
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {slashMenu.isOpen && editor && (
+        <EditorSlashMenu
+          editor={editor}
+          position={slashMenu.position}
+          onClose={() => setSlashMenu((prev) => ({ ...prev, isOpen: false }))}
+        />
+      )}
 
       {/* Connection status bar */}
       <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-between">

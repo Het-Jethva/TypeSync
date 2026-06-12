@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, useSession } from "../lib/auth-client";
+import { Logo } from "../components/Logo";
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -80,13 +81,11 @@ export default function AuthPage() {
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-sm"
       >
-        <div className="rounded-xl border border-border-strong bg-bg-secondary p-8 shadow-sm">
+        <div className="rounded border border-border-strong bg-bg-elevated p-8 shadow-md">
           {/* Header */}
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2 mb-6">
-              <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-white text-xs font-bold shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                T
-              </span>
+              <Logo className="w-7 h-7 shadow-[0_1px_2px_rgba(0,0,0,0.08)]" />
               <span className="text-sm font-semibold tracking-tight text-text-primary">TypeSync</span>
             </Link>
 
@@ -117,7 +116,7 @@ export default function AuthPage() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-4 px-3 py-2 rounded-md bg-error/10 border border-error/20 text-error text-xs"
+                className="mb-4 px-3 py-2 rounded bg-error/5 border border-error/20 text-error text-xs"
                 role="alert"
               >
                 {error}
@@ -143,7 +142,7 @@ export default function AuthPage() {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
+                    className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                     placeholder="Your name"
                     disabled={isLoading}
                   />
@@ -160,7 +159,7 @@ export default function AuthPage() {
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
+                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                 placeholder="you@example.com"
                 required
                 disabled={isLoading}
@@ -176,7 +175,7 @@ export default function AuthPage() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
+                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                 placeholder="••••••••"
                 required
                 disabled={isLoading}
@@ -187,11 +186,11 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2"
+              className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2 text-xs"
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                   <span>Processing...</span>
                 </span>
               ) : isSignIn ? (

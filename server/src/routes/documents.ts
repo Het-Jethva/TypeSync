@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { document, documentCollaborator, user } from "../db/schema.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
@@ -318,7 +318,12 @@ router.delete("/:id/collaborators/:userId", async (req: AuthenticatedRequest, re
 
     await db
       .delete(documentCollaborator)
-      .where(eq(documentCollaborator.documentId, docId));
+      .where(
+        and(
+          eq(documentCollaborator.documentId, docId),
+          eq(documentCollaborator.userId, targetUserId)
+        )
+      );
 
     res.json({ success: true });
   } catch (error) {

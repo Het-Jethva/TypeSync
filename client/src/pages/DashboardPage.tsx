@@ -12,8 +12,28 @@ export default function DashboardPage() {
   const { id: documentId } = useParams();
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<(Document & { role: string })[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile((prev) => {
+        if (prev !== mobile) {
+          setSidebarOpen(!mobile);
+        }
+        return mobile;
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    setActiveCollaborators([]);
+  }, [documentId]);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -83,15 +103,39 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex bg-bg-primary overflow-hidden">
+      {/* Sidebar Backdrop Overlay for Mobile */}
+      <AnimatePresence>
+        {isMobile && sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-black/30 backdrop-blur-xs z-30"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 35 }}
-            className="h-full overflow-hidden shrink-0 border-r border-border"
+            {...(isMobile
+              ? {
+                  initial: { x: "-100%" },
+                  animate: { x: 0 },
+                  exit: { x: "-100%" },
+                  transition: { type: "tween", ease: "easeOut", duration: 0.22 },
+                  className: "fixed top-0 left-0 bottom-0 h-full overflow-hidden z-40 shadow-xl border-r border-border bg-bg-secondary",
+                }
+              : {
+                  initial: { width: 0, opacity: 0 },
+                  animate: { width: 280, opacity: 1 },
+                  exit: { width: 0, opacity: 0 },
+                  transition: { type: "tween", ease: "easeInOut", duration: 0.22 },
+                  className: "h-full overflow-hidden shrink-0 border-r border-border",
+                })}
           >
             <Sidebar
               documents={documents}
@@ -99,7 +143,14 @@ export default function DashboardPage() {
               isLoading={isLoading}
               onCreateDocument={handleCreateDocument}
               onDeleteDocument={handleDeleteDocument}
-              onSelectDocument={(id) => navigate(`/document/${id}`)}
+              onSelectDocument={(id) => {
+                navigate(`/document/${id}`);
+                if (isMobile) {
+                  setSidebarOpen(false);
+                }
+              }}
+              onClose={() => setSidebarOpen(false)}
+              showCloseButton={isMobile}
             />
           </motion.div>
         )}
@@ -126,6 +177,7 @@ export default function DashboardPage() {
               document={currentDoc}
               onRename={(title) => handleRenameDocument(currentDoc.id, title)}
               onDocumentUpdate={fetchDocuments}
+              activeCollaborators={activeCollaborators}
             />
           )}
         </div>
@@ -133,30 +185,31 @@ export default function DashboardPage() {
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
           {documentId ? (
-            <Editor documentId={documentId} />
+            <Editor
+              documentId={documentId}
+              onCollaboratorsChange={setActiveCollaborators}
+            />
           ) : (
-            <div className="h-full flex items-center justify-center">
+            <div className="h-full flex items-center justify-center bg-bg-secondary/20">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-center"
+                className="text-center max-w-sm px-6"
               >
-                <div className="w-16 h-16 rounded-2xl bg-bg-tertiary border border-border flex items-center justify-center mx-auto mb-4">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-7 h-7 text-text-muted">
-                    <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M14 6v6h6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <div className="w-12 h-12 rounded bg-bg-secondary border border-border-strong flex items-center justify-center mx-auto mb-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-5 h-5 text-text-muted">
+                    <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14 6v6h6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-text-primary mb-1">No document selected</h3>
-                <p className="text-sm text-text-muted mb-4">Select a document from the sidebar or create a new one</p>
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">No document active</h3>
+                <p className="text-xs text-text-secondary mb-5 leading-relaxed">Select a manuscript from your library or initialize a new draft to begin writing.</p>
+                <button
                   onClick={handleCreateDocument}
-                  className="text-sm font-medium bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition-colors"
+                  className="btn-linear-primary text-xs px-4 py-2"
                 >
-                  New document
-                </motion.button>
+                  Create document
+                </button>
               </motion.div>
             </div>
           )}

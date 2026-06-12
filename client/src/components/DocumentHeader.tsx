@@ -9,9 +9,15 @@ interface DocumentHeaderProps {
   document: Document & { role: string };
   onRename: (title: string) => void;
   onDocumentUpdate: () => void;
+  activeCollaborators: { name: string; color: string }[];
 }
 
-export function DocumentHeader({ document, onRename, onDocumentUpdate }: DocumentHeaderProps) {
+export function DocumentHeader({
+  document,
+  onRename,
+  onDocumentUpdate,
+  activeCollaborators,
+}: DocumentHeaderProps) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(document.title);
@@ -54,12 +60,12 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[200px] transition-all"
+            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-all"
           />
         ) : (
           <button
             onClick={() => canEdit && setIsEditing(true)}
-            className="text-xs font-semibold text-text-primary truncate hover:text-accent transition-colors px-1"
+            className="text-xs font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 max-w-[100px] sm:max-w-[300px]"
             title={canEdit ? "Click to rename" : document.title}
           >
             {document.title}
@@ -73,7 +79,7 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="text-[10px] text-text-muted shrink-0"
+            className="text-[10px] text-text-muted shrink-0 hidden xs:inline-block"
           >
             {saveStatus === "saving" ? "Saving..." : ""}
           </motion.span>
@@ -81,18 +87,19 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
       </div>
 
       {/* Right section */}
-      <div className="flex items-center gap-3 shrink-0">
-        <CollaboratorPresence />
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <CollaboratorPresence collaborators={activeCollaborators} />
 
         {document.role === "owner" && (
           <button
             onClick={() => setShareOpen(true)}
-            className="btn-linear flex items-center gap-1.5 px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary transition-all"
+            className="btn-linear flex items-center gap-1.5 px-2 py-1 sm:px-2.5 text-xs text-text-secondary hover:text-text-primary transition-all"
+            title="Share document"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">
               <path d="M4 12v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M16 6l-4-4-4 4M12 2v13" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span>Share</span>
+            <span className="hidden sm:inline">Share</span>
           </button>
         )}
       </div>
