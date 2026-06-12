@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
 import type { Document } from "@typesync/shared";
+import { toggleThemeWithTransition } from "../lib/theme";
 
 interface SidebarProps {
   documents: (Document & { role: string })[];
@@ -51,21 +52,13 @@ export function Sidebar({
   const [search, setSearch] = useState("");
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
-  const [theme, setTheme] = useState(() => {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
   });
   const [sortBy, setSortBy] = useState<"updated" | "alphabetical" | "created">("updated");
 
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    if (nextTheme === "dark") {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
+  const toggleTheme = (e: React.MouseEvent<HTMLButtonElement>) => {
+    toggleThemeWithTransition(theme, setTheme, e);
   };
 
   const sortedAndFiltered = documents

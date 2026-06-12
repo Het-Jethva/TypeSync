@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import { toggleThemeWithTransition } from "../lib/theme";
 
 // ─── Interactive Editor Sandbox ──────────────────────────
 function InteractiveSandbox() {
@@ -225,20 +226,12 @@ export default function LandingPage() {
   const { data: session } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [theme, setTheme] = useState(() => {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
   });
 
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    if (nextTheme === "dark") {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
+  const toggleTheme = (e: React.MouseEvent<HTMLButtonElement>) => {
+    toggleThemeWithTransition(theme, setTheme, e);
   };
 
   const primaryCta = session
