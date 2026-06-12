@@ -171,30 +171,30 @@ export function Editor({ documentId }: EditorProps) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.2 }}
       className="h-full flex flex-col"
     >
       <EditorToolbar editor={editor} />
 
       <div className="flex-1 overflow-auto bg-bg-primary">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-3xl mx-auto py-6 px-4">
           <EditorContent editor={editor} />
         </div>
       </div>
 
       {/* Connection status bar */}
-      <div className="shrink-0 px-4 py-1.5 border-t border-border bg-bg-secondary/50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
               isConnected ? "bg-success" : "bg-warning animate-pulse"
             }`}
           />
-          <span className="text-[11px] text-text-muted">
-            {isConnected ? "Connected" : "Connecting..."}
+          <span className="text-[10px] text-text-muted font-medium">
+            {isConnected ? "Connected" : "Connecting"}
           </span>
         </div>
-        <span className="text-[11px] text-text-muted">
+        <span className="text-[10px] text-text-muted font-medium">
           {editor?.storage.characterCount?.characters?.() ?? 0} characters
         </span>
       </div>

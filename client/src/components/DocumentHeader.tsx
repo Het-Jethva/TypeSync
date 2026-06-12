@@ -54,12 +54,12 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="bg-transparent text-sm font-semibold text-text-primary outline-none border-b border-accent px-0 py-0.5 min-w-0 flex-1"
+            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[200px] transition-all"
           />
         ) : (
           <button
             onClick={() => canEdit && setIsEditing(true)}
-            className="text-sm font-semibold text-text-primary truncate hover:text-accent transition-colors"
+            className="text-xs font-semibold text-text-primary truncate hover:text-accent transition-colors px-1"
             title={canEdit ? "Click to rename" : document.title}
           >
             {document.title}
@@ -73,7 +73,7 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="text-xs text-text-muted shrink-0"
+            className="text-[10px] text-text-muted shrink-0"
           >
             {saveStatus === "saving" ? "Saving..." : ""}
           </motion.span>
@@ -81,21 +81,19 @@ export function DocumentHeader({ document, onRename, onDocumentUpdate }: Documen
       </div>
 
       {/* Right section */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-3 shrink-0">
         <CollaboratorPresence />
 
         {document.role === "owner" && (
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <button
             onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+            className="btn-linear flex items-center gap-1.5 px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary transition-all"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">
               <path d="M4 12v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M16 6l-4-4-4 4M12 2v13" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            Share
-          </motion.button>
+            <span>Share</span>
+          </button>
         )}
       </div>
 

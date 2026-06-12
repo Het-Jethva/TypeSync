@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 
 interface EditorToolbarProps {
@@ -17,31 +16,29 @@ function ToolbarButton({
   children: React.ReactNode;
 }) {
   return (
-    <motion.button
-      whileHover={{ scale: 1.08 }}
-      whileTap={{ scale: 0.92 }}
+    <button
       onClick={onClick}
       title={title}
-      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+      className={`w-7 h-7 rounded-md flex items-center justify-center transition-all border text-xs cursor-pointer ${
         isActive
-          ? "bg-accent/15 text-accent"
-          : "text-text-muted hover:bg-bg-hover hover:text-text-primary"
+          ? "bg-bg-tertiary border-border-strong text-text-primary font-semibold shadow-[0_1px_1px_rgba(0,0,0,0.03)]"
+          : "border-transparent text-text-muted hover:bg-bg-hover hover:text-text-primary"
       }`}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }
 
 function Divider() {
-  return <div className="w-px h-5 bg-border mx-1" />;
+  return <div className="w-px h-4 bg-border mx-1" />;
 }
 
 export function EditorToolbar({ editor }: EditorToolbarProps) {
   if (!editor) return null;
 
   return (
-    <div className="flex items-center gap-0.5 px-4 py-2 border-b border-border bg-bg-secondary/50 flex-wrap">
+    <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40 flex-wrap">
       {/* Text style */}
       <ToolbarButton
         isActive={editor.isActive("bold")}

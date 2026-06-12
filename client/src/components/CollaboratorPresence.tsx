@@ -11,7 +11,7 @@ export function CollaboratorPresence() {
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0, opacity: 0 }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          className="w-6 h-6 rounded-full bg-accent/20 border-2 border-bg-primary text-accent flex items-center justify-center text-[10px] font-bold"
+          className="w-6 h-6 rounded-full bg-bg-tertiary border border-border-strong text-text-primary flex items-center justify-center text-[9px] font-semibold"
           title="You"
         >
           Y

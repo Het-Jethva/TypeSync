@@ -74,37 +74,34 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4 py-12">
-      {/* Background glow */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-accent/6 rounded-full blur-[120px] pointer-events-none" />
-
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-md"
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="relative w-full max-w-sm"
       >
-        <div className="rounded-2xl border border-border bg-bg-secondary p-8">
+        <div className="rounded-xl border border-border-strong bg-bg-secondary p-8 shadow-sm">
           {/* Header */}
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2 mb-6">
-              <span className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white text-sm font-bold">
+              <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-white text-xs font-bold shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
                 T
               </span>
-              <span className="text-lg font-bold text-text-primary">TypeSync</span>
+              <span className="text-sm font-semibold tracking-tight text-text-primary">TypeSync</span>
             </Link>
 
             <AnimatePresence mode="wait">
               <motion.div
                 key={isSignIn ? "signin" : "signup"}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.25 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
               >
-                <h1 className="text-2xl font-bold text-text-primary">
+                <h1 className="text-lg font-bold text-text-primary tracking-tight">
                   {isSignIn ? "Welcome back" : "Create your account"}
                 </h1>
-                <p className="text-sm text-text-secondary mt-2">
+                <p className="text-xs text-text-muted mt-1.5">
                   {isSignIn
                     ? "Sign in to access your documents"
                     : "Get started with TypeSync for free"}
@@ -120,7 +117,7 @@ export default function AuthPage() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-4 px-4 py-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm"
+                className="mb-4 px-3 py-2 rounded-md bg-error/10 border border-error/20 text-error text-xs"
                 role="alert"
               >
                 {error}
@@ -136,9 +133,9 @@ export default function AuthPage() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ duration: 0.15 }}
                 >
-                  <label htmlFor="name" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+                  <label htmlFor="name" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                     Name
                   </label>
                   <input
@@ -146,7 +143,7 @@ export default function AuthPage() {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-bg-tertiary border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors"
+                    className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                     placeholder="Your name"
                     disabled={isLoading}
                   />
@@ -155,7 +152,7 @@ export default function AuthPage() {
             </AnimatePresence>
 
             <div>
-              <label htmlFor="email" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              <label htmlFor="email" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Email
               </label>
               <input
@@ -163,7 +160,7 @@ export default function AuthPage() {
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-bg-tertiary border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors"
+                className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                 placeholder="you@example.com"
                 required
                 disabled={isLoading}
@@ -171,7 +168,7 @@ export default function AuthPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-medium text-text-secondary uppercase tracking-wider mb-1.5">
+              <label htmlFor="password" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <input
@@ -179,7 +176,7 @@ export default function AuthPage() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-bg-tertiary border border-border rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors"
+                className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
                 placeholder="••••••••"
                 required
                 disabled={isLoading}
@@ -187,31 +184,30 @@ export default function AuthPage() {
               />
             </div>
 
-            <motion.button
+            <button
               type="submit"
               disabled={isLoading}
-              whileTap={{ scale: 0.97 }}
-              className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm mt-2"
+              className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Processing...
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Processing...</span>
                 </span>
               ) : isSignIn ? (
                 "Sign in"
               ) : (
                 "Create account"
               )}
-            </motion.button>
+            </button>
           </form>
 
           {/* Toggle */}
-          <div className="mt-6 text-center text-sm text-text-muted">
+          <div className="mt-6 text-center text-xs text-text-muted">
             {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
             <Link
               to={isSignIn ? "/auth/signup" : "/auth/signin"}
-              className="text-accent hover:text-accent-hover font-medium transition-colors"
+              className="text-accent hover:text-accent-hover font-semibold transition-colors"
             >
               {isSignIn ? "Sign up" : "Sign in"}
             </Link>
