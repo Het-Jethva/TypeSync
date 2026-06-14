@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 // ─── Roles ───────────────────────────────────────────────
 export const ROLES = {
   OWNER: "owner",
@@ -63,18 +65,21 @@ export interface ServerToClientEvents {
 }
 
 // ─── API Types ───────────────────────────────────────────
-export interface CreateDocumentRequest {
-  title: string;
-}
+export const CreateDocumentSchema = z.object({
+  title: z.string().min(1, "Title is required").max(100).optional().default("Untitled"),
+});
+export type CreateDocumentRequest = z.infer<typeof CreateDocumentSchema>;
 
-export interface UpdateDocumentRequest {
-  title?: string;
-}
+export const UpdateDocumentSchema = z.object({
+  title: z.string().min(1, "Title is required").max(100).optional(),
+});
+export type UpdateDocumentRequest = z.infer<typeof UpdateDocumentSchema>;
 
-export interface AddCollaboratorRequest {
-  email: string;
-  role: "editor" | "viewer";
-}
+export const AddCollaboratorSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(["editor", "viewer"]),
+});
+export type AddCollaboratorRequest = z.infer<typeof AddCollaboratorSchema>;
 
 export interface ApiResponse<T = unknown> {
   success: boolean;

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import * as awarenessProtocol from "y-protocols/awareness";
+import Underline from "@tiptap/extension-underline";
+import CharacterCount from "@tiptap/extension-character-count";
+
 import Image from "@tiptap/extension-image";
 import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
@@ -13,14 +15,12 @@ import Placeholder from "@tiptap/extension-placeholder";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
-import * as Y from "yjs";
 import { motion } from "motion/react";
 import { common, createLowlight } from "lowlight";
-import { getSocket } from "../lib/socket";
+import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
 import { useSession } from "../lib/auth-client";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
-
 const lowlight = createLowlight(common);
 
 // Assign random color to each user session (warm, cohesive editorial palette)
@@ -46,7 +46,6 @@ interface EditorProps {
 
 export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
   const { data: session } = useSession();
-  const [isConnected, setIsConnected] = useState(false);
   const cursorColor = useMemo(() => getRandomColor(), []);
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
@@ -55,86 +54,7 @@ export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
     isOpen: false,
     position: { top: 0, left: 0 },
   });
-
-  // Create a Yjs document per documentId
-  const ydoc = useMemo(() => new Y.Doc(), [documentId]);
-  const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
-
-  const onCollaboratorsChangeRef = useRef(onCollaboratorsChange);
-  useEffect(() => {
-    onCollaboratorsChangeRef.current = onCollaboratorsChange;
-  }, [onCollaboratorsChange]);
-
-  // Set up socket sync
-  useEffect(() => {
-    const socket = getSocket();
-
-    const handleSync = (state: Uint8Array) => {
-      Y.applyUpdate(ydoc, new Uint8Array(state));
-      setIsConnected(true);
-    };
-
-    const handleUpdate = (update: Uint8Array) => {
-      Y.applyUpdate(ydoc, new Uint8Array(update));
-    };
-
-    const handleAwarenessUpdate = (update: Uint8Array) => {
-      awarenessProtocol.applyAwarenessUpdate(
-        awareness,
-        new Uint8Array(update),
-        "remote"
-      );
-    };
-
-    socket.on("doc:sync", handleSync);
-    socket.on("doc:update", handleUpdate);
-    socket.on("awareness:update", handleAwarenessUpdate);
-
-    // Join the document room
-    socket.emit("doc:join", documentId);
-
-    // Listen for local changes and broadcast
-    const updateHandler = (update: Uint8Array, origin: any) => {
-      if (origin !== "remote") {
-        socket.emit("doc:update", documentId, update);
-      }
-    };
-    ydoc.on("update", updateHandler);
-
-    // Listen for local awareness changes and broadcast
-    const awarenessUpdateHandler = ({ added, updated, removed }: any, origin: any) => {
-      if (origin !== "remote") {
-        const changedClients = added.concat(updated).concat(removed);
-        const update = awarenessProtocol.encodeAwarenessUpdate(
-          awareness,
-          changedClients
-        );
-        socket.emit("awareness:update", documentId, update);
-      }
-    };
-    awareness.on("update", awarenessUpdateHandler);
-
-    const handleAwarenessChange = () => {
-      const states = awareness.getStates();
-      const activeUsers = Array.from(states.values())
-        .map((state: any) => state.user)
-        .filter(Boolean);
-      onCollaboratorsChangeRef.current?.(activeUsers);
-    };
-    awareness.on("change", handleAwarenessChange);
-
-    return () => {
-      socket.off("doc:sync", handleSync);
-      socket.off("doc:update", handleUpdate);
-      socket.off("awareness:update", handleAwarenessUpdate);
-      ydoc.off("update", updateHandler);
-      awareness.off("update", awarenessUpdateHandler);
-      awareness.off("change", handleAwarenessChange);
-      socket.emit("doc:leave", documentId);
-      ydoc.destroy();
-      awareness.destroy();
-    };
-  }, [documentId, ydoc, awareness]);
+  const { ydoc, awareness, isConnected } = useCollaborativeDocument(documentId, onCollaboratorsChange);
 
   const editor = useEditor(
     {
@@ -147,6 +67,8 @@ export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
             autolink: true,
           },
         }),
+        Underline,
+        CharacterCount,
         Image.configure({
           inline: false,
           allowBase64: true,

@@ -1,21 +1,34 @@
-import { Server as SocketIOServer, Socket } from "socket.io";
+import { Server as SocketIOServer } from "socket.io";
 import { Server as HttpServer } from "http";
 import * as Y from "yjs";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { document, documentCollaborator } from "../db/schema.js";
+import { document } from "../db/schema.js";
+import { DocumentService } from "../services/document.service.js";
 import { auth } from "../lib/auth.js";
-import { fromNodeHeaders } from "better-auth/node";
+import { config } from "../config.js";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@typesync/shared";
 
-// In-memory Yjs document store
+// Types
+interface SocketData {
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
+// State maps
 const docs = new Map<string, Y.Doc>();
 const saveTimers = new Map<string, NodeJS.Timeout>();
+const loadedDocs = new Set<string>();
+const loadingDocs = new Map<string, Promise<void>>();
+const socketRoles = new Map<string, Map<string, string>>();
 
-const SAVE_INTERVAL = 5000; // 5 seconds
+const SAVE_INTERVAL = 5000;
+
+// ─── Helper functions ────────────────────────────────────
 
 function getOrCreateDoc(docId: string): Y.Doc {
   let doc = docs.get(docId);
@@ -68,43 +81,88 @@ function scheduleSave(docId: string, ydoc: Y.Doc): void {
   saveTimers.set(docId, timer);
 }
 
-async function checkDocAccess(
-  userId: string,
-  docId: string
-): Promise<{ hasAccess: boolean; role: string }> {
-  try {
-    const [doc] = await db
-      .select({ ownerId: document.ownerId })
-      .from(document)
-      .where(eq(document.id, docId));
+async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
+  // Already loaded from DB
+  if (loadedDocs.has(docId)) return;
 
-    if (!doc) return { hasAccess: false, role: "" };
-    if (doc.ownerId === userId) return { hasAccess: true, role: "owner" };
-
-    const collabs = await db
-      .select({ userId: documentCollaborator.userId, role: documentCollaborator.role })
-      .from(documentCollaborator)
-      .where(eq(documentCollaborator.documentId, docId));
-
-    const collab = collabs.find((c) => c.userId === userId);
-    if (collab) return { hasAccess: true, role: collab.role };
-
-    return { hasAccess: false, role: "" };
-  } catch {
-    return { hasAccess: false, role: "" };
+  // Another client is already loading this doc — wait for it
+  const existingLoad = loadingDocs.get(docId);
+  if (existingLoad) {
+    await existingLoad;
+    return;
   }
+
+  // First load: create a promise, store it, then load
+  const loadPromise = loadDocFromDB(docId, ydoc).then(() => {
+    loadedDocs.add(docId);
+    loadingDocs.delete(docId);
+  });
+  loadingDocs.set(docId, loadPromise);
+  await loadPromise;
 }
 
-export function setupSocket(httpServer: HttpServer): SocketIOServer {
-  const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(
-    httpServer,
-    {
-      cors: {
-        origin: process.env.VITE_CLIENT_URL || "http://localhost:5173",
-        credentials: true,
-      },
+async function evictIfEmpty(
+  io: SocketIOServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>,
+  documentId: string
+): Promise<void> {
+  const roomName = `doc:${documentId}`;
+  const roomSize = io.sockets.adapter.rooms.get(roomName)?.size ?? 0;
+
+  if (roomSize > 0) return;
+
+  const ydoc = docs.get(documentId);
+  if (!ydoc) return;
+
+  // Clear any pending save timer
+  const timer = saveTimers.get(documentId);
+  if (timer) {
+    clearTimeout(timer);
+    saveTimers.delete(documentId);
+  }
+
+  // Persist before evicting
+  await saveDocToDB(documentId, ydoc);
+
+  ydoc.destroy();
+  docs.delete(documentId);
+  loadedDocs.delete(documentId);
+
+  console.log(`Evicted idle document ${documentId} from memory`);
+}
+
+// ─── Flush & Cleanup (BUG-05) ───────────────────────────
+
+export async function flushAndCleanup(): Promise<void> {
+  const promises: Promise<void>[] = [];
+
+  for (const [docId, ydoc] of docs) {
+    // Cancel pending debounced saves — we'll save immediately
+    const timer = saveTimers.get(docId);
+    if (timer) {
+      clearTimeout(timer);
+      saveTimers.delete(docId);
     }
-  );
+    promises.push(saveDocToDB(docId, ydoc));
+  }
+
+  await Promise.all(promises);
+  console.log(`Flushed ${promises.length} documents to DB`);
+}
+
+// ─── Socket Setup ────────────────────────────────────────
+
+export function setupSocket(httpServer: HttpServer): SocketIOServer {
+  const io = new SocketIOServer<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    Record<string, never>,
+    SocketData
+  >(httpServer, {
+    cors: {
+      origin: config.clientUrl,
+      credentials: true,
+    },
+  });
 
   // Auth middleware
   io.use(async (socket, next) => {
@@ -121,9 +179,9 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
         return next(new Error("Unauthorized"));
       }
 
-      (socket as any).userId = session.user.id;
-      (socket as any).userName = session.user.name;
-      (socket as any).userEmail = session.user.email;
+      socket.data.userId = session.user.id;
+      socket.data.userName = session.user.name;
+      socket.data.userEmail = session.user.email;
       next();
     } catch {
       next(new Error("Authentication failed"));
@@ -131,14 +189,20 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
   });
 
   io.on("connection", (socket) => {
-    const userId = (socket as any).userId as string;
-    const userName = (socket as any).userName as string;
-    const userEmail = (socket as any).userEmail as string;
+    const userId = socket.data.userId!;
+    const userName = socket.data.userName!;
+    const userEmail = socket.data.userEmail!;
+
+    // Initialize per-socket role map
+    socketRoles.set(socket.id, new Map());
 
     console.log(`User connected: ${userEmail} (${userId})`);
 
     socket.on("doc:join", async (documentId: string) => {
-      const { hasAccess, role } = await checkDocAccess(userId, documentId);
+      const { hasAccess, role } = await DocumentService.getDocumentAccess(
+        documentId,
+        userId
+      );
       if (!hasAccess) {
         socket.emit("doc:error", "Access denied");
         return;
@@ -147,13 +211,12 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
       const roomName = `doc:${documentId}`;
       socket.join(roomName);
 
+      // Store the role for this socket + document
+      socketRoles.get(socket.id)!.set(documentId, role);
+
       // Load or create Yjs doc
       const ydoc = getOrCreateDoc(documentId);
-
-      // If new doc (not loaded yet), load from DB
-      if (Y.encodeStateAsUpdate(ydoc).length <= 2) {
-        await loadDocFromDB(documentId, ydoc);
-      }
+      await ensureDocLoaded(documentId, ydoc);
 
       // Send current state to the joining client
       const state = Y.encodeStateAsUpdate(ydoc);
@@ -162,16 +225,36 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
       console.log(`${userEmail} joined document ${documentId} as ${role}`);
     });
 
-    socket.on("doc:leave", (documentId: string) => {
+    socket.on("doc:leave", async (documentId: string) => {
       const roomName = `doc:${documentId}`;
       socket.leave(roomName);
+
+      // Remove role entry for this doc
+      socketRoles.get(socket.id)?.delete(documentId);
+
       console.log(`${userEmail} left document ${documentId}`);
+
+      // Evict from memory if room is now empty
+      await evictIfEmpty(io, documentId);
     });
 
     socket.on("doc:update", (documentId: string, update: Uint8Array) => {
       const roomName = `doc:${documentId}`;
-      const ydoc = docs.get(documentId);
 
+      // SEC-01: Must be in the room
+      if (!socket.rooms.has(roomName)) {
+        socket.emit("doc:error", "Not joined to this document");
+        return;
+      }
+
+      // SEC-02: Viewers cannot push updates
+      const role = socketRoles.get(socket.id)?.get(documentId);
+      if (role === "viewer") {
+        socket.emit("doc:error", "Viewers cannot edit this document");
+        return;
+      }
+
+      const ydoc = docs.get(documentId);
       if (ydoc) {
         Y.applyUpdate(ydoc, new Uint8Array(update));
         scheduleSave(documentId, ydoc);
@@ -183,11 +266,27 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
 
     socket.on("awareness:update", (documentId: string, update: Uint8Array) => {
       const roomName = `doc:${documentId}`;
+
+      // Must be in the room
+      if (!socket.rooms.has(roomName)) {
+        return;
+      }
+
       socket.to(roomName).emit("awareness:update", update);
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       console.log(`User disconnected: ${userEmail}`);
+
+      // Collect doc IDs this socket was tracking, then clean up
+      const roles = socketRoles.get(socket.id);
+      const docIds = roles ? [...roles.keys()] : [];
+      socketRoles.delete(socket.id);
+
+      // Evict any now-empty docs
+      for (const docId of docIds) {
+        await evictIfEmpty(io, docId);
+      }
     });
   });
 

@@ -6,6 +6,8 @@ import {
   uuid,
   pgEnum,
   customType,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ─── Custom type for binary data ─────────────────────────
@@ -81,7 +83,9 @@ export const document = pgTable("document", {
   yDocState: bytea("y_doc_state"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => ([
+  index("document_owner_id_idx").on(table.ownerId),
+]));
 
 export const documentCollaborator = pgTable("document_collaborator", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -93,4 +97,8 @@ export const documentCollaborator = pgTable("document_collaborator", {
     .references(() => user.id, { onDelete: "cascade" }),
   role: collaboratorRoleEnum("role").notNull().default("editor"),
   invitedAt: timestamp("invited_at").notNull().defaultNow(),
-});
+}, (table) => ([
+  index("doc_collab_document_id_idx").on(table.documentId),
+  index("doc_collab_user_id_idx").on(table.userId),
+  uniqueIndex("doc_collab_document_user_idx").on(table.documentId, table.userId),
+]));

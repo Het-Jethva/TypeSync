@@ -4,5 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "main": "./types.ts",
-  "types": "./types.ts"
+  "types": "./types.ts",
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
 }

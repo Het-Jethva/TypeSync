@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { ShareModal } from "./ShareModal";
@@ -23,6 +23,10 @@ export function DocumentHeader({
   const [title, setTitle] = useState(document.title);
   const [shareOpen, setShareOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+
+  useEffect(() => {
+    setTitle(document.title);
+  }, [document.id, document.title]);
 
   const handleBlur = () => {
     setIsEditing(false);
