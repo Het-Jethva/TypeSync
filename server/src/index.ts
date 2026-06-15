@@ -45,14 +45,38 @@ httpServer.listen(config.port, () => {
 // ─── Graceful shutdown ───────────────────────────────────
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
-  await flushAndCleanup();
-  httpServer.close();
-  process.exit(0);
+  try {
+    const { failed } = await flushAndCleanup();
+    httpServer.close();
+    if (failed.length > 0) {
+      console.error(`Graceful shutdown: failed to save ${failed.length} document(s).`);
+      process.exit(1);
+    } else {
+      console.log('Graceful shutdown completed successfully.');
+      process.exit(0);
+    }
+  } catch (error) {
+    console.error('Fatal error during graceful shutdown:', error);
+    httpServer.close();
+    process.exit(1);
+  }
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
-  await flushAndCleanup();
-  httpServer.close();
-  process.exit(0);
+  try {
+    const { failed } = await flushAndCleanup();
+    httpServer.close();
+    if (failed.length > 0) {
+      console.error(`Graceful shutdown: failed to save ${failed.length} document(s).`);
+      process.exit(1);
+    } else {
+      console.log('Graceful shutdown completed successfully.');
+      process.exit(0);
+    }
+  } catch (error) {
+    console.error('Fatal error during graceful shutdown:', error);
+    httpServer.close();
+    process.exit(1);
+  }
 });

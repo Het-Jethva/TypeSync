@@ -164,22 +164,45 @@ async function evictIfEmpty(
 
 // ─── Flush & Cleanup (BUG-05) ───────────────────────────
 
-export async function flushAndCleanup(): Promise<void> {
-  const promises: Promise<void>[] = [];
+export async function flushAndCleanup(): Promise<{ succeeded: string[]; failed: string[] }> {
+  const docEntries = Array.from(docs.entries());
+  const succeeded: string[] = [];
+  const failed: string[] = [];
 
-  for (const [docId, ydoc] of docs) {
-    // Cancel pending debounced saves — we'll save immediately
+  if (docEntries.length === 0) {
+    return { succeeded, failed };
+  }
+
+  // Cancel pending debounced saves — we'll save immediately
+  for (const [docId] of docEntries) {
     const timer = saveTimers.get(docId);
     if (timer) {
       clearTimeout(timer);
       saveTimers.delete(docId);
     }
-    promises.push(saveDocToDB(docId, ydoc));
   }
 
-  await Promise.all(promises);
-  console.log(`Flushed ${promises.length} documents to DB`);
+  const results = await Promise.allSettled(
+    docEntries.map(async ([docId, ydoc]) => {
+      await saveDocToDB(docId, ydoc);
+      return docId;
+    })
+  );
+
+  results.forEach((result, index) => {
+    const docId = docEntries[index][0];
+    if (result.status === "fulfilled") {
+      succeeded.push(docId);
+    } else {
+      failed.push(docId);
+      console.error(`Failed to save document ${docId} during flushAndCleanup:`, result.reason);
+    }
+  });
+
+  console.log(`Flushed ${succeeded.length} documents successfully, ${failed.length} failed to save.`);
+  return { succeeded, failed };
 }
+
 
 export function notifyPermissionChange(
   io: TypeSyncSocketServer,
