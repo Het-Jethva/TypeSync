@@ -83,12 +83,22 @@ export default function DashboardPage() {
       fetchDocuments();
     };
 
+    const handleTitleUpdated = (payload: { documentId: string; title: string; updatedAt: string }) => {
+      setDocuments((current) =>
+        current.map((doc) =>
+          doc.id === payload.documentId ? { ...doc, title: payload.title, updatedAt: payload.updatedAt } : doc
+        )
+      );
+    };
+
     socket.on("doc:permission-updated", handlePermissionUpdated);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
+    socket.on("doc:title-updated", handleTitleUpdated);
 
     return () => {
       socket.off("doc:permission-updated", handlePermissionUpdated);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
+      socket.off("doc:title-updated", handleTitleUpdated);
     };
   }, [documentId, fetchDocuments, navigate]);
 

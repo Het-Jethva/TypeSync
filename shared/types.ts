@@ -63,6 +63,7 @@ export interface ServerToClientEvents {
   "awareness:update": (update: Uint8Array) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
   "doc:permission-revoked": (payload: { documentId: string }) => void;
+  "doc:title-updated": (payload: { documentId: string; title: string; updatedAt: string }) => void;
   "doc:error": (message: string) => void;
 }
 

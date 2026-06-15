@@ -64,6 +64,11 @@ router.patch(
     const { title } = UpdateDocumentSchema.parse(req.body);
     if (title !== undefined) {
       const updated = await DocumentService.updateDocumentTitle(docId, title, req.user!.id);
+      io.to(`doc:${docId}`).emit("doc:title-updated", {
+        documentId: docId,
+        title: updated.title,
+        updatedAt: updated.updatedAt.toISOString(),
+      });
       res.json({ success: true, data: updated });
     } else {
       res.json({ success: true });
