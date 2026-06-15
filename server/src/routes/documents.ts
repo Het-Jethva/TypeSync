@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DocumentService } from "../services/document.service.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/error.js";
-import { notifyPermissionChange, type TypeSyncSocketServer } from "../socket/index.js";
+import { notifyPermissionChange, handleDocumentDeleted, type TypeSyncSocketServer } from "../socket/index.js";
 import {
   CreateDocumentSchema,
   UpdateDocumentSchema,
@@ -77,6 +77,7 @@ router.delete(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const docId = uuidParam(req.params.id);
     await DocumentService.deleteDocument(docId, req.user!.id);
+    handleDocumentDeleted(io, docId);
     res.json({ success: true });
   })
 );

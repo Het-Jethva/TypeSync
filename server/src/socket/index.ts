@@ -205,6 +205,46 @@ export function notifyPermissionChange(
   }
 }
 
+export function handleDocumentDeleted(
+  io: TypeSyncSocketServer,
+  documentId: string
+): void {
+  const roomName = `doc:${documentId}`;
+
+  // Notify all active sockets in room doc:${documentId}, remove them from room, and clear socketRoles
+  const roomSockets = io.sockets.adapter.rooms.get(roomName);
+  if (roomSockets) {
+    const socketIds = Array.from(roomSockets);
+    for (const socketId of socketIds) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socketRoles.get(socketId)?.delete(documentId);
+        socket.emit("doc:permission-revoked", { documentId });
+        socket.leave(roomName);
+      }
+    }
+  }
+
+  // Clear any pending save timer
+  const timer = saveTimers.get(documentId);
+  if (timer) {
+    clearTimeout(timer);
+    saveTimers.delete(documentId);
+  }
+
+  // Evict/destroy the in-memory Y.Doc state immediately
+  const ydoc = docs.get(documentId);
+  if (ydoc) {
+    ydoc.destroy();
+    docs.delete(documentId);
+  }
+  loadedDocs.delete(documentId);
+  loadingDocs.delete(documentId);
+
+  console.log(`Document ${documentId} deleted: sockets evicted and Y.Doc destroyed`);
+}
+
+
 // ─── Socket Setup ────────────────────────────────────────
 
 export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
