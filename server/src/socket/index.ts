@@ -375,10 +375,10 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
-      // SEC-02: Viewers cannot push updates
+      // SEC-02: Only explicit "owner" and "editor" roles may apply/broadcast document updates
       const role = socketRoles.get(socket.id)?.get(documentId);
-      if (role === "viewer") {
-        socket.emit("doc:error", "Viewers cannot edit this document");
+      if (role !== "owner" && role !== "editor") {
+        socket.emit("doc:error", "Unauthorized to edit this document");
         return;
       }
 
