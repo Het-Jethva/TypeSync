@@ -57,14 +57,26 @@ export function useCollaborativeDocument(
       }
     };
 
+    const handleConnect = () => {
+      socket.emit("doc:join", documentId);
+    };
+
+    const handleDisconnect = () => {
+      setIsConnected(false);
+    };
+
     socket.on("doc:sync", handleSync);
     socket.on("doc:update", handleUpdate);
     socket.on("awareness:update", handleAwarenessUpdate);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
     socket.on("doc:error", handleDocError);
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
 
-    // Join the document room
-    socket.emit("doc:join", documentId);
+    // Join the document room if socket is already connected
+    if (socket.connected) {
+      handleConnect();
+    }
 
     // Listen for local changes and broadcast
     const updateHandler = (update: Uint8Array, origin: any) => {
@@ -102,10 +114,14 @@ export function useCollaborativeDocument(
       socket.off("awareness:update", handleAwarenessUpdate);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
       socket.off("doc:error", handleDocError);
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
       ydoc.off("update", updateHandler);
       awareness.off("update", awarenessUpdateHandler);
       awareness.off("change", handleAwarenessChange);
-      socket.emit("doc:leave", documentId);
+      if (socket.connected) {
+        socket.emit("doc:leave", documentId);
+      }
       ydoc.destroy();
       awareness.destroy();
     };
