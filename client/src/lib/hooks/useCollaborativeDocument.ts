@@ -26,12 +26,12 @@ export function useCollaborativeDocument(
     const socket = getSocket();
 
     const handleSync = (state: Uint8Array) => {
-      Y.applyUpdate(ydoc, new Uint8Array(state));
+      Y.applyUpdate(ydoc, new Uint8Array(state), "remote");
       setIsConnected(true);
     };
 
     const handleUpdate = (update: Uint8Array) => {
-      Y.applyUpdate(ydoc, new Uint8Array(update));
+      Y.applyUpdate(ydoc, new Uint8Array(update), "remote");
     };
 
     const handleAwarenessUpdate = (update: Uint8Array) => {
