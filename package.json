@@ -21,6 +21,12 @@
     "concurrently": "^10.0.3"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "drizzle-kit": {
+      "esbuild": "^0.28.1"
+    },
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.28.1"
+    }
   }
 }
