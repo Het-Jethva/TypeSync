@@ -38,6 +38,16 @@ const SAVE_INTERVAL = 5000;
 const SAVE_RETRY_INTERVAL = 15000;
 const DocumentIdSchema = z.string().uuid();
 
+// SEC-03: Defensive size limits for collaborative updates to prevent memory exhaustion.
+// Document updates might contain base64 image strings (if allowed by the editor),
+// so we set a limit of 10MB to accommodate them. A separate storage-backed image upload
+// flow is the better long-term solution to allow lowering this limit further.
+const MAX_DOC_UPDATE_BYTES = 10 * 1024 * 1024; // 10MB
+
+// Awareness updates only transmit lightweight metadata like cursor position, selection,
+// and user info. This is usually under 1KB, so 64KB is an extremely safe limit.
+const MAX_AWARENESS_UPDATE_BYTES = 64 * 1024; // 64KB
+
 // ─── Helper functions ────────────────────────────────────
 
 function getOrCreateDoc(docId: string): Y.Doc {
@@ -56,7 +66,12 @@ async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
     .where(eq(document.id, docId));
 
   if (doc?.yDocState) {
-    Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
+    try {
+      Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
+    } catch (error) {
+      console.error(`Malformed Yjs document state in DB for document ${docId}:`, error);
+      throw new Error("Malformed document state in database");
+    }
   }
 }
 
@@ -308,10 +323,27 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
+      // Validate that update payload is binary and within the size limit
+      if (!(update instanceof Uint8Array)) {
+        socket.emit("doc:error", "Invalid document update payload type");
+        return;
+      }
+
+      if (update.byteLength > MAX_DOC_UPDATE_BYTES) {
+        socket.emit("doc:error", "Document update exceeds allowed size limit");
+        return;
+      }
+
       const ydoc = docs.get(documentId);
       if (ydoc) {
-        Y.applyUpdate(ydoc, new Uint8Array(update));
-        scheduleSave(documentId, ydoc);
+        try {
+          Y.applyUpdate(ydoc, new Uint8Array(update));
+          scheduleSave(documentId, ydoc);
+        } catch (error) {
+          console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
+          socket.emit("doc:error", "Malformed document update payload");
+          return;
+        }
       }
 
       // Broadcast to all other clients in the room
@@ -326,6 +358,12 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // Must be in the room
       if (!socket.rooms.has(roomName)) {
+        return;
+      }
+
+      // Drop/reject oversized or invalid awareness updates without broadcasting them
+      if (!(update instanceof Uint8Array) || update.byteLength > MAX_AWARENESS_UPDATE_BYTES) {
+        socket.emit("doc:error", "Awareness update rejected");
         return;
       }
 
