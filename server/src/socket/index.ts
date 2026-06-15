@@ -295,8 +295,9 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     console.log(`User connected: ${userEmail} (${userId})`);
 
     socket.on("doc:join", async (documentId: string) => {
+      let parsedDocumentId: string | undefined;
       try {
-        const parsedDocumentId = DocumentIdSchema.parse(documentId);
+        parsedDocumentId = DocumentIdSchema.parse(documentId);
         const { hasAccess, role } = await DocumentService.getDocumentAccess(
           parsedDocumentId,
           userId
@@ -321,6 +322,24 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         console.log(`${userEmail} joined document ${parsedDocumentId} as ${role}`);
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
+        if (parsedDocumentId) {
+          const roomName = `doc:${parsedDocumentId}`;
+          const roomSize = io.sockets.adapter.rooms.get(roomName)?.size ?? 0;
+          if (roomSize === 0 && !loadedDocs.has(parsedDocumentId)) {
+            const ydoc = docs.get(parsedDocumentId);
+            if (ydoc) {
+              ydoc.destroy();
+              docs.delete(parsedDocumentId);
+            }
+            loadedDocs.delete(parsedDocumentId);
+            loadingDocs.delete(parsedDocumentId);
+            const timer = saveTimers.get(parsedDocumentId);
+            if (timer) {
+              clearTimeout(timer);
+              saveTimers.delete(parsedDocumentId);
+            }
+          }
+        }
         socket.emit("doc:error", "Failed to load document");
       }
     });
