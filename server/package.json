@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@typesync/shared": "*",
-    "better-auth": "^1.2.0",
+    "better-auth": "^1.6.18",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.45.2",

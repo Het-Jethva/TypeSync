@@ -2,6 +2,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { Server as HttpServer } from "http";
 import * as Y from "yjs";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../db/index.js";
 import { document } from "../db/schema.js";
 import { DocumentService } from "../services/document.service.js";
@@ -19,6 +20,13 @@ interface SocketData {
   userEmail: string;
 }
 
+export type TypeSyncSocketServer = SocketIOServer<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
+
 // State maps
 const docs = new Map<string, Y.Doc>();
 const saveTimers = new Map<string, NodeJS.Timeout>();
@@ -27,6 +35,8 @@ const loadingDocs = new Map<string, Promise<void>>();
 const socketRoles = new Map<string, Map<string, string>>();
 
 const SAVE_INTERVAL = 5000;
+const SAVE_RETRY_INTERVAL = 15000;
+const DocumentIdSchema = z.string().uuid();
 
 // ─── Helper functions ────────────────────────────────────
 
@@ -40,42 +50,40 @@ function getOrCreateDoc(docId: string): Y.Doc {
 }
 
 async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
-  try {
-    const [doc] = await db
-      .select({ yDocState: document.yDocState })
-      .from(document)
-      .where(eq(document.id, docId));
+  const [doc] = await db
+    .select({ yDocState: document.yDocState })
+    .from(document)
+    .where(eq(document.id, docId));
 
-    if (doc?.yDocState) {
-      Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
-    }
-  } catch (error) {
-    console.error(`Failed to load doc ${docId} from DB:`, error);
+  if (doc?.yDocState) {
+    Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
   }
 }
 
 async function saveDocToDB(docId: string, ydoc: Y.Doc): Promise<void> {
-  try {
-    const state = Y.encodeStateAsUpdate(ydoc);
-    await db
-      .update(document)
-      .set({
-        yDocState: Buffer.from(state),
-        updatedAt: new Date(),
-      })
-      .where(eq(document.id, docId));
-  } catch (error) {
-    console.error(`Failed to save doc ${docId} to DB:`, error);
-  }
+  const state = Y.encodeStateAsUpdate(ydoc);
+  await db
+    .update(document)
+    .set({
+      yDocState: Buffer.from(state),
+      updatedAt: new Date(),
+    })
+    .where(eq(document.id, docId));
 }
 
 function scheduleSave(docId: string, ydoc: Y.Doc): void {
   const existing = saveTimers.get(docId);
   if (existing) clearTimeout(existing);
 
-  const timer = setTimeout(() => {
-    saveDocToDB(docId, ydoc);
-    saveTimers.delete(docId);
+  const timer = setTimeout(async () => {
+    try {
+      await saveDocToDB(docId, ydoc);
+      saveTimers.delete(docId);
+    } catch (error) {
+      console.error(`Failed to save doc ${docId}; retrying:`, error);
+      const retry = setTimeout(() => scheduleSave(docId, ydoc), SAVE_RETRY_INTERVAL);
+      saveTimers.set(docId, retry);
+    }
   }, SAVE_INTERVAL);
 
   saveTimers.set(docId, timer);
@@ -93,10 +101,13 @@ async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
   }
 
   // First load: create a promise, store it, then load
-  const loadPromise = loadDocFromDB(docId, ydoc).then(() => {
-    loadedDocs.add(docId);
-    loadingDocs.delete(docId);
-  });
+  const loadPromise = loadDocFromDB(docId, ydoc)
+    .then(() => {
+      loadedDocs.add(docId);
+    })
+    .finally(() => {
+      loadingDocs.delete(docId);
+    });
   loadingDocs.set(docId, loadPromise);
   await loadPromise;
 }
@@ -121,7 +132,13 @@ async function evictIfEmpty(
   }
 
   // Persist before evicting
-  await saveDocToDB(documentId, ydoc);
+  try {
+    await saveDocToDB(documentId, ydoc);
+  } catch (error) {
+    console.error(`Failed to save doc ${documentId}; keeping it in memory:`, error);
+    scheduleSave(documentId, ydoc);
+    return;
+  }
 
   ydoc.destroy();
   docs.delete(documentId);
@@ -149,9 +166,33 @@ export async function flushAndCleanup(): Promise<void> {
   console.log(`Flushed ${promises.length} documents to DB`);
 }
 
+export function notifyPermissionChange(
+  io: TypeSyncSocketServer,
+  documentId: string,
+  targetUserId: string,
+  role: "editor" | "viewer" | null
+): void {
+  const roomName = `doc:${documentId}`;
+
+  for (const [, socket] of io.sockets.sockets) {
+    if (socket.data.userId !== targetUserId || !socket.rooms.has(roomName)) {
+      continue;
+    }
+
+    if (role) {
+      socketRoles.get(socket.id)?.set(documentId, role);
+      socket.emit("doc:permission-updated", { documentId, role });
+    } else {
+      socket.leave(roomName);
+      socketRoles.get(socket.id)?.delete(documentId);
+      socket.emit("doc:permission-revoked", { documentId });
+    }
+  }
+}
+
 // ─── Socket Setup ────────────────────────────────────────
 
-export function setupSocket(httpServer: HttpServer): SocketIOServer {
+export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
   const io = new SocketIOServer<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -199,33 +240,40 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
     console.log(`User connected: ${userEmail} (${userId})`);
 
     socket.on("doc:join", async (documentId: string) => {
-      const { hasAccess, role } = await DocumentService.getDocumentAccess(
-        documentId,
-        userId
-      );
-      if (!hasAccess) {
-        socket.emit("doc:error", "Access denied");
-        return;
+      try {
+        const parsedDocumentId = DocumentIdSchema.parse(documentId);
+        const { hasAccess, role } = await DocumentService.getDocumentAccess(
+          parsedDocumentId,
+          userId
+        );
+        if (!hasAccess) {
+          socket.emit("doc:error", "Access denied");
+          return;
+        }
+
+        const roomName = `doc:${parsedDocumentId}`;
+
+        // Load before joining so a failed DB read cannot publish an empty state.
+        const ydoc = getOrCreateDoc(parsedDocumentId);
+        await ensureDocLoaded(parsedDocumentId, ydoc);
+
+        socket.join(roomName);
+        socketRoles.get(socket.id)!.set(parsedDocumentId, role);
+
+        const state = Y.encodeStateAsUpdate(ydoc);
+        socket.emit("doc:sync", state);
+
+        console.log(`${userEmail} joined document ${parsedDocumentId} as ${role}`);
+      } catch (error) {
+        console.error(`Failed to join document ${documentId}:`, error);
+        socket.emit("doc:error", "Failed to load document");
       }
-
-      const roomName = `doc:${documentId}`;
-      socket.join(roomName);
-
-      // Store the role for this socket + document
-      socketRoles.get(socket.id)!.set(documentId, role);
-
-      // Load or create Yjs doc
-      const ydoc = getOrCreateDoc(documentId);
-      await ensureDocLoaded(documentId, ydoc);
-
-      // Send current state to the joining client
-      const state = Y.encodeStateAsUpdate(ydoc);
-      socket.emit("doc:sync", state);
-
-      console.log(`${userEmail} joined document ${documentId} as ${role}`);
     });
 
     socket.on("doc:leave", async (documentId: string) => {
+      const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
+      if (!parsedDocumentId.success) return;
+      documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
       socket.leave(roomName);
 
@@ -239,6 +287,12 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("doc:update", (documentId: string, update: Uint8Array) => {
+      const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
+      if (!parsedDocumentId.success) {
+        socket.emit("doc:error", "Invalid document id");
+        return;
+      }
+      documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
 
       // SEC-01: Must be in the room
@@ -265,6 +319,9 @@ export function setupSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("awareness:update", (documentId: string, update: Uint8Array) => {
+      const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
+      if (!parsedDocumentId.success) return;
+      documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
 
       // Must be in the room

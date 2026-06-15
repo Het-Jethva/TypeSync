@@ -27,7 +27,7 @@
     "@tiptap/react": "^3.0.0",
     "@tiptap/starter-kit": "^3.0.0",
     "@typesync/shared": "*",
-    "better-auth": "^1.2.0",
+    "better-auth": "^1.6.18",
     "lowlight": "^3.3.0",
     "motion": "^12.0.0",
     "react": "^19.1.0",
@@ -38,12 +38,12 @@
     "yjs": "^13.6.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.0",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.5.0",
-    "tailwindcss": "^4.1.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "tailwindcss": "^4.3.1",
     "typescript": "~5.8.0",
-    "vite": "^7.0.0"
+    "vite": "^8.0.16"
   }
 }

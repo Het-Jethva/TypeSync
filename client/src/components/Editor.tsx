@@ -21,6 +21,7 @@ import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument"
 import { useSession } from "../lib/auth-client";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
+import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
 
 // Assign random color to each user session (warm, cohesive editorial palette)
@@ -41,10 +42,12 @@ function getRandomColor(): string {
 
 interface EditorProps {
   documentId: string;
+  role: Role | string;
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
+  onAccessLost?: () => void;
 }
 
-export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
+export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }: EditorProps) {
   const { data: session } = useSession();
   const cursorColor = useMemo(() => getRandomColor(), []);
   const [slashMenu, setSlashMenu] = useState<{
@@ -54,7 +57,12 @@ export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
     isOpen: false,
     position: { top: 0, left: 0 },
   });
-  const { ydoc, awareness, isConnected } = useCollaborativeDocument(documentId, onCollaboratorsChange);
+  const { ydoc, awareness, isConnected } = useCollaborativeDocument(
+    documentId,
+    onCollaboratorsChange,
+    onAccessLost
+  );
+  const canEdit = role === "owner" || role === "editor";
 
   const editor = useEditor(
     {
@@ -129,9 +137,14 @@ export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
           setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
         }
       },
+      editable: canEdit,
     },
-    [documentId, ydoc, awareness]
+    [documentId, ydoc, awareness, canEdit]
   );
+
+  useEffect(() => {
+    editor?.setEditable(canEdit);
+  }, [editor, canEdit]);
 
   // Sync user details to awareness when session is loaded/updated
   useEffect(() => {
@@ -150,7 +163,7 @@ export function Editor({ documentId, onCollaboratorsChange }: EditorProps) {
       transition={{ duration: 0.2 }}
       className="h-full flex flex-col"
     >
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} documentId={documentId} canEdit={canEdit} />
 
       <div className="flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
         <div className="w-full max-w-2xl bg-bg-elevated sm:border sm:border-border-strong sm:rounded-md sm:shadow-[0_2px_12px_rgba(0,0,0,0.01)] border-none rounded-none shadow-none sm:min-h-[700px] min-h-[calc(100vh-10rem)] h-fit">

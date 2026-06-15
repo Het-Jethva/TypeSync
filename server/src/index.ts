@@ -4,7 +4,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
-import documentRoutes from "./routes/documents.js";
+import createDocumentRoutes from "./routes/documents.js";
 import { setupSocket, flushAndCleanup } from "./socket/index.js";
 import { errorHandler } from "./middleware/error.js";
 
@@ -23,19 +23,19 @@ app.use(express.json());
 // ─── Better Auth handler ─────────────────────────────────
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
-// ─── API Routes ──────────────────────────────────────────
-app.use("/api/documents", documentRoutes);
-
 // ─── Health check ────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// ─── Socket.IO ───────────────────────────────────────────
+const io = setupSocket(httpServer);
+
+// ─── API Routes ──────────────────────────────────────────
+app.use("/api/documents", createDocumentRoutes(io));
+
 // ─── Error handler (must come after all routes) ──────────
 app.use(errorHandler);
-
-// ─── Socket.IO ───────────────────────────────────────────
-setupSocket(httpServer);
 
 // ─── Start ───────────────────────────────────────────────
 httpServer.listen(config.port, () => {

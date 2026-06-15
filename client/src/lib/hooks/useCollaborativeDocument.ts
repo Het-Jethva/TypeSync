@@ -5,7 +5,8 @@ import { getSocket } from "../socket";
 
 export function useCollaborativeDocument(
   documentId: string,
-  onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void
+  onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void,
+  onAccessLost?: () => void
 ) {
   const [isConnected, setIsConnected] = useState(false);
   const ydoc = useMemo(() => new Y.Doc(), [documentId]);
@@ -15,6 +16,11 @@ export function useCollaborativeDocument(
   useEffect(() => {
     onCollaboratorsChangeRef.current = onCollaboratorsChange;
   }, [onCollaboratorsChange]);
+
+  const onAccessLostRef = useRef(onAccessLost);
+  useEffect(() => {
+    onAccessLostRef.current = onAccessLost;
+  }, [onAccessLost]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -36,9 +42,17 @@ export function useCollaborativeDocument(
       );
     };
 
+    const handlePermissionRevoked = (payload: { documentId: string }) => {
+      if (payload.documentId === documentId) {
+        setIsConnected(false);
+        onAccessLostRef.current?.();
+      }
+    };
+
     socket.on("doc:sync", handleSync);
     socket.on("doc:update", handleUpdate);
     socket.on("awareness:update", handleAwarenessUpdate);
+    socket.on("doc:permission-revoked", handlePermissionRevoked);
 
     // Join the document room
     socket.emit("doc:join", documentId);
@@ -77,6 +91,7 @@ export function useCollaborativeDocument(
       socket.off("doc:sync", handleSync);
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
+      socket.off("doc:permission-revoked", handlePermissionRevoked);
       ydoc.off("update", updateHandler);
       awareness.off("update", awarenessUpdateHandler);
       awareness.off("change", handleAwarenessChange);

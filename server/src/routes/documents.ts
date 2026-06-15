@@ -1,14 +1,18 @@
 import { Router } from "express";
+import { z } from "zod";
 import { DocumentService } from "../services/document.service.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/error.js";
+import { notifyPermissionChange, type TypeSyncSocketServer } from "../socket/index.js";
 import {
   CreateDocumentSchema,
   UpdateDocumentSchema,
   AddCollaboratorSchema,
 } from "@typesync/shared";
 
-const router = Router();
+export default function createDocumentRoutes(io: TypeSyncSocketServer) {
+  const router = Router();
+  const IdParamSchema = z.string().uuid();
 
 // All routes require authentication
 router.use(requireAuth as any);
@@ -17,6 +21,10 @@ router.use(requireAuth as any);
 function paramStr(val: string | string[] | undefined): string {
   if (Array.isArray(val)) return val[0] ?? "";
   return val ?? "";
+}
+
+function uuidParam(val: string | string[] | undefined): string {
+  return IdParamSchema.parse(paramStr(val));
 }
 
 // ─── Create document ─────────────────────────────────────
@@ -42,7 +50,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docId = paramStr(req.params.id);
+    const docId = uuidParam(req.params.id);
     const doc = await DocumentService.getDocument(docId, req.user!.id);
     res.json({ success: true, data: doc });
   })
@@ -52,7 +60,7 @@ router.get(
 router.patch(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docId = paramStr(req.params.id);
+    const docId = uuidParam(req.params.id);
     const { title } = UpdateDocumentSchema.parse(req.body);
     if (title !== undefined) {
       const updated = await DocumentService.updateDocumentTitle(docId, title, req.user!.id);
@@ -67,7 +75,7 @@ router.patch(
 router.delete(
   "/:id",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docId = paramStr(req.params.id);
+    const docId = uuidParam(req.params.id);
     await DocumentService.deleteDocument(docId, req.user!.id);
     res.json({ success: true });
   })
@@ -77,9 +85,10 @@ router.delete(
 router.post(
   "/:id/collaborators",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docId = paramStr(req.params.id);
+    const docId = uuidParam(req.params.id);
     const { email, role } = AddCollaboratorSchema.parse(req.body);
     const collab = await DocumentService.addCollaborator(docId, email, role, req.user!.id);
+    notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
     res.status(201).json({ success: true, data: collab });
   })
 );
@@ -88,11 +97,13 @@ router.post(
 router.delete(
   "/:id/collaborators/:userId",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docId = paramStr(req.params.id);
+    const docId = uuidParam(req.params.id);
     const targetUserId = paramStr(req.params.userId);
     await DocumentService.removeCollaborator(docId, targetUserId, req.user!.id);
+    notifyPermissionChange(io, docId, targetUserId, null);
     res.json({ success: true });
   })
 );
 
-export default router;
+  return router;
+}

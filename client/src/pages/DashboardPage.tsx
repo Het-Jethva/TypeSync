@@ -5,7 +5,7 @@ import { Sidebar } from "../components/Sidebar";
 import { Editor } from "../components/Editor";
 import { DocumentHeader } from "../components/DocumentHeader";
 import { api } from "../lib/api";
-import { connectSocket, disconnectSocket } from "../lib/socket";
+import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import type { Document } from "@typesync/shared";
 
 export default function DashboardPage() {
@@ -53,6 +53,35 @@ export default function DashboardPage() {
     connectSocket();
     return () => disconnectSocket();
   }, [fetchDocuments]);
+
+  useEffect(() => {
+    const socket = getSocket();
+
+    const handlePermissionUpdated = (payload: { documentId: string; role: "editor" | "viewer" | "owner" }) => {
+      setDocuments((current) =>
+        current.map((doc) =>
+          doc.id === payload.documentId ? { ...doc, role: payload.role } : doc
+        )
+      );
+      fetchDocuments();
+    };
+
+    const handlePermissionRevoked = (payload: { documentId: string }) => {
+      setDocuments((current) => current.filter((doc) => doc.id !== payload.documentId));
+      if (documentId === payload.documentId) {
+        navigate("/dashboard");
+      }
+      fetchDocuments();
+    };
+
+    socket.on("doc:permission-updated", handlePermissionUpdated);
+    socket.on("doc:permission-revoked", handlePermissionRevoked);
+
+    return () => {
+      socket.off("doc:permission-updated", handlePermissionUpdated);
+      socket.off("doc:permission-revoked", handlePermissionRevoked);
+    };
+  }, [documentId, fetchDocuments, navigate]);
 
   // Keyboard shortcut for sidebar toggle
   useEffect(() => {
@@ -187,7 +216,12 @@ export default function DashboardPage() {
           {documentId ? (
             <Editor
               documentId={documentId}
+              role={currentDoc?.role ?? "viewer"}
               onCollaboratorsChange={setActiveCollaborators}
+              onAccessLost={() => {
+                fetchDocuments();
+                navigate("/dashboard");
+              }}
             />
           ) : (
             <div className="h-full flex items-center justify-center bg-bg-secondary/20">
