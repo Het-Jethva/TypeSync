@@ -214,15 +214,46 @@ export default function DashboardPage() {
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
           {documentId ? (
-            <Editor
-              documentId={documentId}
-              role={currentDoc?.role ?? "viewer"}
-              onCollaboratorsChange={setActiveCollaborators}
-              onAccessLost={() => {
-                fetchDocuments();
-                navigate("/dashboard");
-              }}
-            />
+            isLoading ? (
+              <div className="h-full flex items-center justify-center bg-bg-secondary/20">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
+                  <span className="text-xs text-text-secondary font-medium">Loading document...</span>
+                </div>
+              </div>
+            ) : currentDoc ? (
+              <Editor
+                documentId={documentId}
+                role={currentDoc.role}
+                onCollaboratorsChange={setActiveCollaborators}
+                onAccessLost={() => {
+                  fetchDocuments();
+                  navigate("/dashboard");
+                }}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center bg-bg-secondary/20">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center max-w-sm px-6"
+                >
+                  <div className="w-12 h-12 rounded bg-bg-secondary border border-border-strong flex items-center justify-center mx-auto mb-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-5 h-5 text-text-muted">
+                      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">Document not found</h3>
+                  <p className="text-xs text-text-secondary mb-5 leading-relaxed">This manuscript does not exist, or you do not have permission to access it.</p>
+                  <button
+                    onClick={() => navigate("/dashboard")}
+                    className="btn-linear-primary text-xs px-4 py-2"
+                  >
+                    Back to dashboard
+                  </button>
+                </motion.div>
+              </div>
+            )
           ) : (
             <div className="h-full flex items-center justify-center bg-bg-secondary/20">
               <motion.div

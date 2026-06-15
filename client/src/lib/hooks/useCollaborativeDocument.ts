@@ -49,10 +49,19 @@ export function useCollaborativeDocument(
       }
     };
 
+    const handleDocError = (message: string) => {
+      console.error(`Socket document error: ${message}`);
+      if (message === "Access denied" || message === "Failed to load document") {
+        setIsConnected(false);
+        onAccessLostRef.current?.();
+      }
+    };
+
     socket.on("doc:sync", handleSync);
     socket.on("doc:update", handleUpdate);
     socket.on("awareness:update", handleAwarenessUpdate);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
+    socket.on("doc:error", handleDocError);
 
     // Join the document room
     socket.emit("doc:join", documentId);
@@ -92,6 +101,7 @@ export function useCollaborativeDocument(
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
+      socket.off("doc:error", handleDocError);
       ydoc.off("update", updateHandler);
       awareness.off("update", awarenessUpdateHandler);
       awareness.off("change", handleAwarenessChange);
