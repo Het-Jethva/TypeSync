@@ -16,6 +16,15 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
+
+  const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setNotifications((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 5000);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -104,6 +113,8 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Failed to create document:", err);
+      const msg = err instanceof Error ? err.message : "Failed to create document";
+      addNotification(`Failed to create document: ${msg}`, "error");
     }
   };
 
@@ -114,8 +125,11 @@ export default function DashboardPage() {
       if (documentId === docId) {
         navigate("/dashboard");
       }
+      addNotification("Document deleted successfully", "success");
     } catch (err) {
       console.error("Failed to delete document:", err);
+      const msg = err instanceof Error ? err.message : "Failed to delete document";
+      addNotification(`Failed to delete document: ${msg}`, "error");
     }
   };
 
@@ -125,6 +139,8 @@ export default function DashboardPage() {
       await fetchDocuments();
     } catch (err) {
       console.error("Failed to rename document:", err);
+      const msg = err instanceof Error ? err.message : "Failed to rename document";
+      addNotification(`Failed to rename document: ${msg}`, "error");
     }
   };
 
@@ -279,6 +295,49 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        <AnimatePresence>
+          {notifications.map((notif) => (
+            <motion.div
+              key={notif.id}
+              initial={{ opacity: 0, y: 12, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className={`pointer-events-auto flex items-center gap-2.5 px-3.5 py-2.5 rounded border shadow-lg text-[11px] font-medium max-w-sm bg-bg-elevated ${
+                notif.type === "error"
+                  ? "border-error/30 text-error"
+                  : "border-success/30 text-success"
+              }`}
+            >
+              {notif.type === "error" ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5 shrink-0" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5 shrink-0" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              )}
+              <span className="flex-1 leading-normal">{notif.message}</span>
+              <button
+                onClick={() => setNotifications((prev) => prev.filter((n) => n.id !== notif.id))}
+                className="text-text-muted hover:text-text-primary transition-colors shrink-0 cursor-pointer"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3 h-3" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -50,7 +50,7 @@ export function Sidebar({
   const navigate = useNavigate();
   const { data: session } = useSession();
   const [search, setSearch] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; role: string; x: number; y: number } | null>(null);
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -73,9 +73,9 @@ export function Sidebar({
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
-  const handleContextMenu = (e: React.MouseEvent, docId: string) => {
+  const handleContextMenu = (e: React.MouseEvent, docId: string, role: string) => {
     e.preventDefault();
-    setContextMenu({ id: docId, x: e.clientX, y: e.clientY });
+    setContextMenu({ id: docId, role, x: e.clientX, y: e.clientY });
   };
 
   const handleSignOut = async () => {
@@ -171,7 +171,7 @@ export function Sidebar({
                 key={doc.id}
                 layout
                 onClick={() => onSelectDocument(doc.id)}
-                onContextMenu={(e) => handleContextMenu(e, doc.id)}
+                onContextMenu={(e) => handleContextMenu(e, doc.id, doc.role)}
                 className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center gap-2.5 group border ${
                   doc.id === activeDocId
                     ? "bg-bg-elevated border-border-strong text-text-primary font-medium shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
@@ -205,24 +205,26 @@ export function Sidebar({
         {contextMenu && (
           <>
             <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.1 }}
-              className="fixed z-50 bg-bg-elevated border border-border-strong rounded shadow-md py-1 min-w-[160px]"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-            >
-              <button
-                onClick={() => {
-                  onDeleteDocument(contextMenu.id);
-                  setContextMenu(null);
-                }}
-                className="w-full text-left px-3 py-1.5 text-xs text-error hover:bg-error/10 transition-colors font-medium"
+            {contextMenu.role === "owner" && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.1 }}
+                className="fixed z-50 bg-bg-elevated border border-border-strong rounded shadow-md py-1 min-w-[160px]"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
               >
-                Delete document
-              </button>
-            </motion.div>
+                <button
+                  onClick={() => {
+                    onDeleteDocument(contextMenu.id);
+                    setContextMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-error hover:bg-error/10 transition-colors font-medium"
+                >
+                  Delete document
+                </button>
+              </motion.div>
+            )}
           </>
         )}
       </AnimatePresence>
