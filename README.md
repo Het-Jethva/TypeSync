@@ -53,10 +53,10 @@ TypeSync is organized as an npm workspaces monorepo with three packages:
    npm install
    ```
 
-5. **Apply the database schema**
+5. **Run database migrations**
 
    ```bash
-   npm run db:push
+   npm run db:migrate
    ```
 
 6. **Start development servers**
@@ -77,7 +77,9 @@ All scripts are run from the repository root.
 | `npm run dev:server` | Start only the server |
 | `npm run dev:client` | Start only the client |
 | `npm run build` | Build the client for production |
-| `npm run db:push` | Push Drizzle schema changes to the database |
+| `npm run db:migrate` | Apply database migrations to PostgreSQL (safe for production) |
+| `npm run db:generate` | Generate database migration files from schema changes |
+| `npm run db:push` | Push Drizzle schema changes directly (local prototyping only) |
 | `npm run db:studio` | Open Drizzle Studio (database GUI) |
 | `npm run docker:up` | Start Docker services (PostgreSQL) |
 | `npm run docker:down` | Stop Docker services |
