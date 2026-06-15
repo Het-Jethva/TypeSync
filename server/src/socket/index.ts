@@ -149,6 +149,11 @@ async function evictIfEmpty(
   // Persist before evicting
   try {
     await saveDocToDB(documentId, ydoc);
+    const postSaveRoomSize = io.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
+    if (postSaveRoomSize > 0) {
+      console.log(`Aborted eviction of document ${documentId} (room active)`);
+      return;
+    }
   } catch (error) {
     console.error(`Failed to save doc ${documentId}; keeping it in memory:`, error);
     scheduleSave(documentId, ydoc);
