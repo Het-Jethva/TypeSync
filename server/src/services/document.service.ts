@@ -68,10 +68,14 @@ export class DocumentService {
       .where(eq(documentCollaborator.userId, userId))
       .orderBy(desc(document.updatedAt));
 
-    return [
+    const combined = [
       ...ownedDocs.map((d) => ({ ...d, role: "owner" as const })),
       ...sharedDocs,
     ];
+
+    return combined.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
   }
 
   static async getDocumentAccess(docId: string, userId: string): Promise<{ hasAccess: boolean; role: string }> {
