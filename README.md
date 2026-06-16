@@ -77,7 +77,7 @@ All scripts are run from the repository root.
 | `npm run dev:server` | Start only the server |
 | `npm run dev:client` | Start only the client |
 | `npm run build` | Build the client for production |
-| `npm run db:migrate` | Apply database migrations to PostgreSQL (safe for production) |
+| `npm run db:migrate` | Apply database migrations to PostgreSQL (safe for production). Migrations are version-controlled in `server/drizzle/`. |
 | `npm run db:generate` | Generate database migration files from schema changes |
 | `npm run db:push` | Push Drizzle schema changes directly (local prototyping only) |
 | `npm run db:studio` | Open Drizzle Studio (database GUI) |

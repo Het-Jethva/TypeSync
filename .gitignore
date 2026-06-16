@@ -25,7 +25,7 @@ Thumbs.db
 npm-debug.log*
 
 # Drizzle
-drizzle/
+
 
 # Docker
 pgdata/
