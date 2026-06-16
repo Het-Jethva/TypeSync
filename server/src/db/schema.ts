@@ -85,6 +85,8 @@ export const document = pgTable("document", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ([
   index("document_owner_id_idx").on(table.ownerId),
+  index("document_owner_id_updated_at_idx").on(table.ownerId, table.updatedAt),
+  index("document_updated_at_idx").on(table.updatedAt),
 ]));
 
 export const documentCollaborator = pgTable("document_collaborator", {
