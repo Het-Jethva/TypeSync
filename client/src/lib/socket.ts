@@ -8,7 +8,7 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (!socket) {
-    socket = io({
+    socket = io(import.meta.env.VITE_API_URL || undefined, {
       withCredentials: true,
       autoConnect: false,
     });
