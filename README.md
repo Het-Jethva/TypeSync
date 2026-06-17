@@ -65,7 +65,7 @@ TypeSync is organized as an npm workspaces monorepo with three packages:
    npm run dev
    ```
 
-   This starts both the API server (`http://localhost:3001`) and the client dev server (`http://localhost:5173`).
+   This starts both the API server (`http://localhost:3000`) and the client dev server (`http://localhost:5173`).
 
 ## Available Scripts
 
@@ -90,8 +90,8 @@ All scripts are run from the repository root.
 | --- | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://typesync:typesync_dev@localhost:5432/typesync` |
 | `BETTER_AUTH_SECRET` | Secret key for Better Auth session signing | `your-secret-key-change-in-production` |
-| `BETTER_AUTH_URL` | Public URL of the auth server | `http://localhost:3001` |
-| `PORT` | Port the Express server listens on | `3001` |
+| `BETTER_AUTH_URL` | Public URL of the auth server | `http://localhost:3000` |
+| `PORT` | Port the Express server listens on | `3000` |
 | `VITE_CLIENT_URL` | Client origin, used by the server for CORS and trusted origins | `http://localhost:5173` |
 
 ## Project Structure
