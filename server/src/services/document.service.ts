@@ -110,8 +110,22 @@ export class DocumentService {
       .where(eq(document.id, docId));
     if (!doc) throw new AppError(404, "Document not found");
 
-    const access = await this.getDocumentAccess(docId, userId);
-    if (!access.hasAccess) throw new AppError(403, "Access denied");
+    let role: string = "";
+    if (doc.ownerId === userId) {
+      role = "owner";
+    } else {
+      const [collab] = await db
+        .select({ role: documentCollaborator.role })
+        .from(documentCollaborator)
+        .where(
+          and(
+            eq(documentCollaborator.documentId, docId),
+            eq(documentCollaborator.userId, userId)
+          )
+        );
+      if (!collab) throw new AppError(403, "Access denied");
+      role = collab.role;
+    }
 
     const collaborators = await db
       .select({
@@ -143,7 +157,7 @@ export class DocumentService {
           image: c.userImage,
         },
       })),
-      role: access.role as Role,
+      role: role as Role,
     };
   }
 
