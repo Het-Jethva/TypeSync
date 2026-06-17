@@ -21,5 +21,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
-# Start the server using tsx to run the TypeScript entry point directly
-CMD ["npx", "tsx", "server/src/index.ts"]
+# Run database migrations and start the server using tsx
+CMD ["sh", "-c", "npm run db:migrate && npx tsx server/src/index.ts"]
