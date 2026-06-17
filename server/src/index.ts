@@ -39,12 +39,12 @@ app.use(errorHandler);
 
 // ─── Start ───────────────────────────────────────────────
 httpServer.listen(config.port, () => {
-  console.log(`⚡ TypeSync server running on http://localhost:${config.port}`);
+  console.log(`TypeSync server running on http://localhost:${config.port}`);
 });
 
 // ─── Graceful shutdown ───────────────────────────────────
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
+async function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down gracefully...`);
   try {
     const { failed } = await flushAndCleanup();
     httpServer.close();
@@ -60,23 +60,8 @@ process.on('SIGTERM', async () => {
     httpServer.close();
     process.exit(1);
   }
-});
+}
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully...');
-  try {
-    const { failed } = await flushAndCleanup();
-    httpServer.close();
-    if (failed.length > 0) {
-      console.error(`Graceful shutdown: failed to save ${failed.length} document(s).`);
-      process.exit(1);
-    } else {
-      console.log('Graceful shutdown completed successfully.');
-      process.exit(0);
-    }
-  } catch (error) {
-    console.error('Fatal error during graceful shutdown:', error);
-    httpServer.close();
-    process.exit(1);
-  }
-});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
