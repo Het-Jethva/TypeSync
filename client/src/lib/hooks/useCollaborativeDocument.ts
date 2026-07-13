@@ -263,7 +263,10 @@ export function useCollaborativeDocument(
 
     // Listen for local changes and broadcast
     const updateHandler = (update: Uint8Array, origin: any) => {
-      if (origin !== "remote" && joined && socket.connected) {
+      if (origin !== "remote") {
+        // Keep offline edits pending in memory so closing the page can be
+        // guarded. A successful rejoin reconciles this queue against the
+        // server state vector before delivery resumes.
         enqueueDocumentUpdate(update);
       }
     };

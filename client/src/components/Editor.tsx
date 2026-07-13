@@ -28,9 +28,16 @@ interface EditorProps {
   role: Role | string;
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
   onAccessLost?: () => void;
+  onPendingUpdatesChange?: (hasPendingUpdates: boolean) => void;
 }
 
-export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }: EditorProps) {
+export function Editor({
+  documentId,
+  role,
+  onCollaboratorsChange,
+  onAccessLost,
+  onPendingUpdatesChange,
+}: EditorProps) {
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
     position: { top: number; left: number };
@@ -38,13 +45,18 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
     isOpen: false,
     position: { top: 0, left: 0 },
   });
-  const { ydoc, awareness, isConnected, documentSizeStatus } = useCollaborativeDocument(
-    documentId,
-    onCollaboratorsChange,
-    onAccessLost
-  );
+  const {
+    ydoc,
+    awareness,
+    isConnected,
+    documentSizeStatus,
+    hasPendingUpdates,
+    syncError,
+  } = useCollaborativeDocument(documentId, onCollaboratorsChange, onAccessLost);
   const canEdit =
-    (role === "owner" || role === "editor") && documentSizeStatus?.level !== "limit";
+    (role === "owner" || role === "editor") &&
+    documentSizeStatus?.level !== "limit" &&
+    syncError === null;
 
   const editor = useEditor(
     {
@@ -129,6 +141,26 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
 
+  useEffect(() => {
+    onPendingUpdatesChange?.(hasPendingUpdates);
+  }, [hasPendingUpdates, onPendingUpdatesChange]);
+
+  useEffect(() => {
+    return () => onPendingUpdatesChange?.(false);
+  }, [onPendingUpdatesChange]);
+
+  useEffect(() => {
+    if (!hasPendingUpdates) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasPendingUpdates]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -157,23 +189,32 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
         <div className="flex items-center gap-1.5">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              documentSizeStatus?.level === "limit"
+              documentSizeStatus?.level === "limit" || syncError
                 ? "bg-error"
-                : documentSizeStatus?.level === "warning" || !isConnected
+                : documentSizeStatus?.level === "warning" || !isConnected || hasPendingUpdates
                   ? "bg-warning animate-pulse"
                   : "bg-success"
             }`}
           />
-          <span className="text-[10px] text-text-muted font-medium">
+          <span
+            className="text-[10px] text-text-muted font-medium"
+            title={syncError ?? undefined}
+          >
             {documentSizeStatus?.level === "limit"
               ? documentSizeStatus.reason === "update"
                 ? "Edit exceeds size limit"
                 : "Document size limit reached"
+              : syncError
+                ? "Unable to save changes"
               : documentSizeStatus?.level === "warning"
                 ? "Document nearing size limit"
-                : isConnected
-                  ? "Connected"
-                  : "Connecting"}
+                : !isConnected
+                  ? hasPendingUpdates
+                    ? "Offline — changes pending"
+                    : "Connecting"
+                  : hasPendingUpdates
+                    ? "Saving…"
+                    : "Saved"}
           </span>
         </div>
         <span className="text-[10px] text-text-muted font-medium">

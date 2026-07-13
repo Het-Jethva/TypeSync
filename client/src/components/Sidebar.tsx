@@ -12,6 +12,7 @@ interface SidebarProps {
   onCreateDocument: () => void;
   onDeleteDocument: (id: string) => void;
   onSelectDocument: (id: string) => void;
+  onBeforeSignOut?: () => boolean;
   onClose?: () => void;
   showCloseButton?: boolean;
 }
@@ -44,6 +45,7 @@ export function Sidebar({
   onCreateDocument,
   onDeleteDocument,
   onSelectDocument,
+  onBeforeSignOut,
   onClose,
   showCloseButton,
 }: SidebarProps) {
@@ -79,6 +81,7 @@ export function Sidebar({
   };
 
   const handleSignOut = async () => {
+    if (onBeforeSignOut && !onBeforeSignOut()) return;
     await signOut();
     navigate("/");
   };

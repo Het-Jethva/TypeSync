@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
+  const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
   const hasLoadedDocumentsRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
@@ -27,6 +28,13 @@ export default function DashboardPage() {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 5000);
   }, []);
+
+  const confirmLeavingWithPendingUpdates = useCallback(() => {
+    if (!hasPendingDocumentUpdates) return true;
+    return window.confirm(
+      "Some edits have not reached the server yet. Leave anyway? Those edits will be lost."
+    );
+  }, [hasPendingDocumentUpdates]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -125,6 +133,8 @@ export default function DashboardPage() {
   }, []);
 
   const handleCreateDocument = async () => {
+    if (!confirmLeavingWithPendingUpdates()) return;
+
     try {
       const res = await api.documents.create({ title: "Untitled" });
       if (res.data) {
@@ -139,6 +149,8 @@ export default function DashboardPage() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
+    if (documentId === docId && !confirmLeavingWithPendingUpdates()) return;
+
     try {
       await api.documents.delete(docId);
       await fetchDocuments();
@@ -230,11 +242,15 @@ export default function DashboardPage() {
               onCreateDocument={handleCreateDocument}
               onDeleteDocument={handleDeleteDocument}
               onSelectDocument={(id) => {
-                navigate(`/document/${id}`);
+                if (id !== documentId) {
+                  if (!confirmLeavingWithPendingUpdates()) return;
+                  navigate(`/document/${id}`);
+                }
                 if (isMobile) {
                   setSidebarOpen(false);
                 }
               }}
+              onBeforeSignOut={confirmLeavingWithPendingUpdates}
               onClose={() => setSidebarOpen(false)}
               showCloseButton={isMobile}
             />
@@ -285,6 +301,7 @@ export default function DashboardPage() {
                 documentId={documentId}
                 role={currentDoc.role}
                 onCollaboratorsChange={setActiveCollaborators}
+                onPendingUpdatesChange={setHasPendingDocumentUpdates}
                 onAccessLost={() => {
                   fetchDocuments();
                   navigate("/dashboard");
