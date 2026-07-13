@@ -165,6 +165,18 @@ export function useCollaborativeDocument(
           }
 
           if (!result.success) {
+            if (result.code === "server-draining") {
+              scheduleRetry();
+              return;
+            }
+            if (
+              result.code === "not-joined" ||
+              result.code === "document-not-loaded"
+            ) {
+              joinDocument();
+              return;
+            }
+
             deliveryBlocked = true;
             setSyncError(result.error);
             refreshPendingState();
@@ -213,7 +225,7 @@ export function useCollaborativeDocument(
       flushPendingUpdates();
     }
 
-    const joinDocument = () => {
+    function joinDocument() {
       cancelDeliveryAttempt();
       joined = false;
       setIsConnected(false);
@@ -240,7 +252,7 @@ export function useCollaborativeDocument(
         );
         socket.volatile.emit("awareness:update", documentId, awarenessUpdate);
       });
-    };
+    }
 
     const handleDisconnect = () => {
       cancelDeliveryAttempt();
