@@ -51,20 +51,34 @@ export interface UserPresence {
 
 // ─── Socket Events ───────────────────────────────────────
 export interface ClientToServerEvents {
-  "doc:join": (documentId: string) => void;
+  "doc:join": (
+    documentId: string,
+    acknowledge: (result: DocumentJoinResult) => void
+  ) => void;
   "doc:leave": (documentId: string) => void;
   "doc:update": (documentId: string, update: Uint8Array) => void;
   "awareness:update": (documentId: string, update: Uint8Array) => void;
 }
 
+export type DocumentJoinResult =
+  | {
+      success: true;
+      state: Uint8Array;
+      stateVector: Uint8Array;
+      role: Role;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 export interface ServerToClientEvents {
-  "doc:sync": (state: Uint8Array) => void;
-  "doc:update": (update: Uint8Array) => void;
-  "awareness:update": (update: Uint8Array) => void;
+  "doc:update": (payload: { documentId: string; update: Uint8Array }) => void;
+  "awareness:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
   "doc:permission-revoked": (payload: { documentId: string }) => void;
   "doc:title-updated": (payload: { documentId: string; title: string; updatedAt: string }) => void;
-  "doc:error": (message: string) => void;
+  "doc:error": (payload: { documentId?: string; message: string }) => void;
 }
 
 // ─── API Types ───────────────────────────────────────────

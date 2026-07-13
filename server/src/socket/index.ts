@@ -10,6 +10,8 @@ import { auth } from "../lib/auth.js";
 import { config } from "../config.js";
 import type {
   ClientToServerEvents,
+  DocumentJoinResult,
+  Role,
   ServerToClientEvents,
 } from "@typesync/shared";
 
@@ -33,6 +35,8 @@ const saveTimers = new Map<string, NodeJS.Timeout>();
 const loadedDocs = new Set<string>();
 const loadingDocs = new Map<string, Promise<void>>();
 const socketRoles = new Map<string, Map<string, string>>();
+const socketJoinGenerations = new Map<string, Map<string, number>>();
+const pendingJoinCounts = new Map<string, number>();
 
 const SAVE_INTERVAL = 5000;
 const SAVE_RETRY_INTERVAL = 15000;
@@ -233,6 +237,22 @@ export function notifyPermissionChange(
   }
 }
 
+function advanceJoinGeneration(socketId: string, documentId: string): number {
+  let generations = socketJoinGenerations.get(socketId);
+  if (!generations) {
+    generations = new Map();
+    socketJoinGenerations.set(socketId, generations);
+  }
+
+  const generation = (generations.get(documentId) ?? 0) + 1;
+  generations.set(documentId, generation);
+  return generation;
+}
+
+function isCurrentJoin(socketId: string, documentId: string, generation: number): boolean {
+  return socketJoinGenerations.get(socketId)?.get(documentId) === generation;
+}
+
 export function handleDocumentDeleted(
   io: TypeSyncSocketServer,
   documentId: string
@@ -319,19 +339,31 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
     // Initialize per-socket role map
     socketRoles.set(socket.id, new Map());
+    socketJoinGenerations.set(socket.id, new Map());
 
     console.log(`User connected: ${userEmail} (${userId})`);
 
-    socket.on("doc:join", async (documentId: string) => {
+    socket.on("doc:join", async (
+      documentId: string,
+      acknowledge: (result: DocumentJoinResult) => void
+    ) => {
       let parsedDocumentId: string | undefined;
+      let pendingJoinTracked = false;
+      const respond = typeof acknowledge === "function" ? acknowledge : () => {};
       try {
         parsedDocumentId = DocumentIdSchema.parse(documentId);
-        const { hasAccess, role } = await DocumentService.getDocumentAccess(
+        pendingJoinCounts.set(
+          parsedDocumentId,
+          (pendingJoinCounts.get(parsedDocumentId) ?? 0) + 1
+        );
+        pendingJoinTracked = true;
+        const joinGeneration = advanceJoinGeneration(socket.id, parsedDocumentId);
+        const { hasAccess } = await DocumentService.getDocumentAccess(
           parsedDocumentId,
           userId
         );
         if (!hasAccess) {
-          socket.emit("doc:error", "Access denied");
+          respond({ success: false, error: "Access denied" });
           return;
         }
 
@@ -341,13 +373,37 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         const ydoc = getOrCreateDoc(parsedDocumentId);
         await ensureDocLoaded(parsedDocumentId, ydoc);
 
+        if (!socket.connected || !isCurrentJoin(socket.id, parsedDocumentId, joinGeneration)) {
+          respond({ success: false, error: "Document join was cancelled" });
+          return;
+        }
+
+        // Access may have changed while the document was loading. Revalidate at
+        // the final boundary before joining the room and caching the role.
+        const currentAccess = await DocumentService.getDocumentAccess(parsedDocumentId, userId);
+        if (!currentAccess.hasAccess) {
+          respond({ success: false, error: "Access denied" });
+          return;
+        }
+
+        if (!socket.connected || !isCurrentJoin(socket.id, parsedDocumentId, joinGeneration)) {
+          respond({ success: false, error: "Document join was cancelled" });
+          return;
+        }
+
         socket.join(roomName);
-        socketRoles.get(socket.id)!.set(parsedDocumentId, role);
+        socketRoles.get(socket.id)!.set(parsedDocumentId, currentAccess.role);
 
         const state = Y.encodeStateAsUpdate(ydoc);
-        socket.emit("doc:sync", state);
+        const stateVector = Y.encodeStateVector(ydoc);
+        respond({
+          success: true,
+          state,
+          stateVector,
+          role: currentAccess.role as Role,
+        });
 
-        console.log(`${userEmail} joined document ${parsedDocumentId} as ${role}`);
+        console.log(`${userEmail} joined document ${parsedDocumentId} as ${currentAccess.role}`);
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
         if (parsedDocumentId) {
@@ -368,7 +424,17 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
             }
           }
         }
-        socket.emit("doc:error", "Failed to load document");
+        respond({ success: false, error: "Failed to load document" });
+      } finally {
+        if (parsedDocumentId && pendingJoinTracked) {
+          const remaining = (pendingJoinCounts.get(parsedDocumentId) ?? 1) - 1;
+          if (remaining > 0) {
+            pendingJoinCounts.set(parsedDocumentId, remaining);
+          } else {
+            pendingJoinCounts.delete(parsedDocumentId);
+            await evictIfEmpty(io, parsedDocumentId);
+          }
+        }
       }
     });
 
@@ -376,6 +442,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
       if (!parsedDocumentId.success) return;
       documentId = parsedDocumentId.data;
+      advanceJoinGeneration(socket.id, documentId);
       const roomName = `doc:${documentId}`;
       socket.leave(roomName);
 
@@ -391,7 +458,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     socket.on("doc:update", (documentId: string, update: Uint8Array) => {
       const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
       if (!parsedDocumentId.success) {
-        socket.emit("doc:error", "Invalid document id");
+        socket.emit("doc:error", { message: "Invalid document id" });
         return;
       }
       documentId = parsedDocumentId.data;
@@ -399,25 +466,25 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // SEC-01: Must be in the room
       if (!socket.rooms.has(roomName)) {
-        socket.emit("doc:error", "Not joined to this document");
+        socket.emit("doc:error", { documentId, message: "Not joined to this document" });
         return;
       }
 
       // SEC-02: Only explicit "owner" and "editor" roles may apply/broadcast document updates
       const role = socketRoles.get(socket.id)?.get(documentId);
       if (role !== "owner" && role !== "editor") {
-        socket.emit("doc:error", "Unauthorized to edit this document");
+        socket.emit("doc:error", { documentId, message: "Unauthorized to edit this document" });
         return;
       }
 
       // Validate that update payload is binary and within the size limit
       if (!(update instanceof Uint8Array)) {
-        socket.emit("doc:error", "Invalid document update payload type");
+        socket.emit("doc:error", { documentId, message: "Invalid document update payload type" });
         return;
       }
 
       if (update.byteLength > MAX_DOC_UPDATE_BYTES) {
-        socket.emit("doc:error", "Document update exceeds allowed size limit");
+        socket.emit("doc:error", { documentId, message: "Document update exceeds allowed size limit" });
         return;
       }
 
@@ -428,13 +495,13 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           scheduleSave(documentId, ydoc);
         } catch (error) {
           console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
-          socket.emit("doc:error", "Malformed document update payload");
+          socket.emit("doc:error", { documentId, message: "Malformed document update payload" });
           return;
         }
       }
 
       // Broadcast to all other clients in the room
-      socket.to(roomName).emit("doc:update", update);
+      socket.to(roomName).emit("doc:update", { documentId, update });
     });
 
     socket.on("awareness:update", (documentId: string, update: Uint8Array) => {
@@ -450,11 +517,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // Drop/reject oversized or invalid awareness updates without broadcasting them
       if (!(update instanceof Uint8Array) || update.byteLength > MAX_AWARENESS_UPDATE_BYTES) {
-        socket.emit("doc:error", "Awareness update rejected");
+        socket.emit("doc:error", { documentId, message: "Awareness update rejected" });
         return;
       }
 
-      socket.to(roomName).emit("awareness:update", update);
+      socket.to(roomName).emit("awareness:update", { documentId, update });
     });
 
     socket.on("disconnect", async () => {
@@ -464,6 +531,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const roles = socketRoles.get(socket.id);
       const docIds = roles ? [...roles.keys()] : [];
       socketRoles.delete(socket.id);
+      socketJoinGenerations.delete(socket.id);
 
       // Evict any now-empty docs
       for (const docId of docIds) {
