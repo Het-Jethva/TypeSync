@@ -21,7 +21,7 @@ TypeSync is organized as an npm workspaces monorepo with three packages:
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+
+- [Node.js](https://nodejs.org/) 24+
 - [Docker](https://www.docker.com/) (for PostgreSQL)
 
 ## Getting Started
@@ -76,7 +76,7 @@ All scripts are run from the repository root.
 | `npm run dev` | Start client and server in development mode (concurrently) |
 | `npm run dev:server` | Start only the server |
 | `npm run dev:client` | Start only the client |
-| `npm run build` | Build the client for production |
+| `npm run build` | Build the shared package, client, and server for production |
 | `npm run db:migrate` | Apply database migrations to PostgreSQL (safe for production). Migrations are version-controlled in `server/drizzle/`. |
 | `npm run db:generate` | Generate database migration files from schema changes |
 | `npm run db:push` | Push Drizzle schema changes directly (local prototyping only) |
@@ -101,7 +101,7 @@ TypeSync/
 ├── client/             # React + Vite frontend
 │   ├── src/
 │   │   ├── components/ # UI components
-│   │   ├── hooks/      # Custom React hooks
+│   │   ├── lib/hooks/  # Custom React hooks
 │   │   ├── lib/        # Utilities & API client
 │   │   └── pages/      # Route pages
 │   └── package.json

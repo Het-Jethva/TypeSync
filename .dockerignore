@@ -1,6 +1,7 @@
 node_modules
-client
-dist
+client/*
+!client/package.json
+**/dist
 .git
 .gitignore
 .env

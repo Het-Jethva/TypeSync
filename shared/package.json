@@ -3,9 +3,23 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "main": "./types.ts",
+  "main": "./dist/types.js",
   "types": "./types.ts",
+  "exports": {
+    ".": {
+      "types": "./types.ts",
+      "import": "./dist/types.js"
+    }
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.0"
   }
 }

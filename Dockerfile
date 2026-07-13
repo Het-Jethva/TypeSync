@@ -1,18 +1,33 @@
-FROM node:24-alpine
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
-# Copy root workspace and package manifests
 COPY package.json package-lock.json ./
+COPY client/package.json ./client/
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 
-# Install dependencies (including devDependencies so tsx and typescript are available)
-RUN npm ci
+RUN npm ci --workspace @typesync/server --workspace @typesync/shared --include-workspace-root
 
-# Copy source code (client is ignored by .dockerignore)
 COPY shared/ ./shared/
 COPY server/ ./server/
+RUN npm run build -w shared && npm run build -w server
+
+FROM node:24-alpine AS runtime
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY client/package.json ./client/
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+
+RUN npm ci --omit=dev --workspace @typesync/server --workspace @typesync/shared \
+    && npm cache clean --force
+
+COPY --from=build /app/shared/dist ./shared/dist
+COPY --from=build /app/server/dist ./server/dist
+COPY server/drizzle ./server/drizzle
 
 # Expose server port
 EXPOSE 3000
@@ -21,5 +36,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
-# Run database migrations and start the server using tsx
-CMD ["sh", "-c", "npm run db:migrate && npx tsx server/src/index.ts"]
+CMD ["sh", "-c", "npm run migrate -w server && npm run start -w server"]
