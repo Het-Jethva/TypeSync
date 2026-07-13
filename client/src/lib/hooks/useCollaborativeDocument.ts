@@ -9,7 +9,7 @@ export function useCollaborativeDocument(
   onAccessLost?: () => void
 ) {
   const [isConnected, setIsConnected] = useState(false);
-  const ydoc = useMemo(() => new Y.Doc(), [documentId]);
+  const ydoc = useMemo(() => new Y.Doc({ guid: documentId }), [documentId]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
   const resourceVersionsRef = useRef(new Map<Y.Doc, number>());
 
@@ -25,10 +25,11 @@ export function useCollaborativeDocument(
 
   useEffect(() => {
     const socket = getSocket();
+    const resourceVersions = resourceVersionsRef.current;
     let joined = false;
     let disposed = false;
-    const resourceVersion = (resourceVersionsRef.current.get(ydoc) ?? 0) + 1;
-    resourceVersionsRef.current.set(ydoc, resourceVersion);
+    const resourceVersion = (resourceVersions.get(ydoc) ?? 0) + 1;
+    resourceVersions.set(ydoc, resourceVersion);
 
     const handleUpdate = (payload: { documentId: string; update: Uint8Array }) => {
       if (payload.documentId !== documentId) return;
@@ -166,8 +167,8 @@ export function useCollaborativeDocument(
       // StrictMode immediately replays effects with the same memoized Y.Doc.
       // Defer irreversible cleanup and skip it when a newer setup owns it.
       queueMicrotask(() => {
-        if (resourceVersionsRef.current.get(ydoc) === resourceVersion) {
-          resourceVersionsRef.current.delete(ydoc);
+        if (resourceVersions.get(ydoc) === resourceVersion) {
+          resourceVersions.delete(ydoc);
           awareness.destroy();
           ydoc.destroy();
         }

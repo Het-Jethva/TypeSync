@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
 import { api } from "../lib/api";
 
@@ -17,7 +17,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
 
-  const fetchCollaborators = async () => {
+  const fetchCollaborators = useCallback(async () => {
     try {
       const res = await api.documents.get(documentId);
       if (res.data) {
@@ -28,11 +28,11 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, [documentId]);
 
   useEffect(() => {
     fetchCollaborators();
-  }, [documentId]);
+  }, [fetchCollaborators]);
 
   const handleUpdateRole = async (targetEmail: string, newRole: "editor" | "viewer") => {
     try {

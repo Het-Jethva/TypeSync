@@ -10,6 +10,7 @@ node_modules/
 client/dist/
 server/dist/
 shared/dist/
+*.tsbuildinfo
 
 # IDE
 .vscode/

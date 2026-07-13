@@ -110,7 +110,7 @@ export class DocumentService {
       .where(eq(document.id, docId));
     if (!doc) throw new AppError(404, "Document not found");
 
-    let role: string = "";
+    let role: string;
     if (doc.ownerId === userId) {
       role = "owner";
     } else {
@@ -233,4 +233,3 @@ export class DocumentService {
       );
   }
 }
-

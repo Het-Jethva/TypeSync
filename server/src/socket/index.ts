@@ -163,7 +163,7 @@ async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
       Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
     } catch (error) {
       console.error(`Malformed Yjs document state in DB for document ${docId}:`, error);
-      throw new Error("Malformed document state in database");
+      throw new Error("Malformed document state in database", { cause: error });
     }
   }
 }
@@ -500,7 +500,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
   io.on("connection", (socket) => {
     const userId = socket.data.userId!;
-    const userName = socket.data.userName!;
     const userEmail = socket.data.userEmail!;
 
     // Initialize per-socket role map

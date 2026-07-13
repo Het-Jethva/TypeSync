@@ -63,7 +63,7 @@ const getCookieConfig = (clientUrl: string, authUrl: string) => {
         },
       };
     }
-  } catch (error) {
+  } catch {
     // Fail-safe default fallback
     return {
       crossSubDomainCookies: { enabled: false },
@@ -100,4 +100,3 @@ export const auth = betterAuth({
     defaultCookieAttributes: cookieConfig.defaultCookieAttributes,
   },
 });
-
