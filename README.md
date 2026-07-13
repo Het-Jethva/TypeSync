@@ -29,7 +29,7 @@ TypeSync is organized as an npm workspaces monorepo with three packages:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/your-username/TypeSync.git
+   git clone https://github.com/Het-Jethva/TypeSync.git
    cd TypeSync
    ```
 
@@ -77,6 +77,8 @@ All scripts are run from the repository root.
 | `npm run dev:server` | Start only the server |
 | `npm run dev:client` | Start only the client |
 | `npm run build` | Build the shared package, client, and server for production |
+| `npm run lint` | Check all workspaces with ESLint |
+| `npm run typecheck` | Type-check the shared package, client, and server |
 | `npm run db:migrate` | Apply database migrations to PostgreSQL (safe for production). Migrations are version-controlled in `server/drizzle/`. |
 | `npm run db:generate` | Generate database migration files from schema changes |
 | `npm run db:push` | Push Drizzle schema changes directly (local prototyping only) |
@@ -91,8 +93,25 @@ All scripts are run from the repository root.
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://typesync:typesync_dev@localhost:5432/typesync` |
 | `BETTER_AUTH_SECRET` | Secret key for Better Auth session signing | `your-secret-key-change-in-production` |
 | `BETTER_AUTH_URL` | Public URL of the auth server | `http://localhost:3000` |
+| `AUTH_COOKIE_SAME_SITE` | Auth cookie policy: `lax` for same-site deployments or `none` for cross-site HTTPS deployments. Required in production. | `lax` outside production |
 | `PORT` | Port the Express server listens on | `3000` |
 | `VITE_CLIENT_URL` | Client origin, used by the server for CORS and trusted origins | `http://localhost:5173` |
+
+For the production setup with the client on Vercel and the API on Render, set
+`AUTH_COOKIE_SAME_SITE=none`. The API must be served over HTTPS when this value
+is used.
+
+## Deployment Constraints
+
+Run exactly one TypeSync server instance. Active Yjs documents, Socket.IO rooms,
+presence, and update acknowledgements are held in that process; the current
+architecture does not coordinate this state between replicas. PostgreSQL stores
+debounced full-document snapshots for recovery, but it is not a real-time event
+bus between servers.
+
+This single-instance constraint matches the current free Render deployment. Do
+not enable horizontal scaling without first adding shared real-time coordination
+and revisiting document persistence.
 
 ## Project Structure
 
@@ -118,7 +137,3 @@ TypeSync/
 ├── .env.example        # Environment variable template
 └── package.json        # Root workspace config
 ```
-
-## License
-
-[MIT](LICENSE)
