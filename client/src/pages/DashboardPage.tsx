@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "../components/Sidebar";
@@ -14,9 +14,11 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<(Document & { role: string })[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
+  const hasLoadedDocumentsRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -49,13 +51,21 @@ export default function DashboardPage() {
       const res = await api.documents.list();
       if (res.data) {
         setDocuments(res.data);
+        hasLoadedDocumentsRef.current = true;
+        setDocumentsError(null);
       }
     } catch (err) {
       console.error("Failed to fetch documents:", err);
+      const message = err instanceof Error ? err.message : "Failed to load documents";
+      if (hasLoadedDocumentsRef.current) {
+        addNotification(`Failed to refresh documents: ${message}`, "error");
+      } else {
+        setDocumentsError(message);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [addNotification]);
 
   useEffect(() => {
     fetchDocuments();
@@ -156,6 +166,27 @@ export default function DashboardPage() {
 
   const currentDoc = documents.find((d) => d.id === documentId);
 
+  const renderDocumentsError = () => (
+    <div className="h-full flex items-center justify-center bg-bg-secondary/20">
+      <div className="text-center max-w-sm px-6">
+        <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">
+          Couldn't load documents
+        </h3>
+        <p className="text-xs text-text-secondary mb-5 leading-relaxed">{documentsError}</p>
+        <button
+          onClick={() => {
+            setDocumentsError(null);
+            setIsLoading(true);
+            void fetchDocuments();
+          }}
+          className="btn-linear-primary text-xs px-4 py-2"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-screen flex bg-bg-primary overflow-hidden">
       {/* Sidebar Backdrop Overlay for Mobile */}
@@ -247,6 +278,8 @@ export default function DashboardPage() {
                   <span className="text-xs text-text-secondary font-medium">Loading document...</span>
                 </div>
               </div>
+            ) : documentsError ? (
+              renderDocumentsError()
             ) : currentDoc ? (
               <Editor
                 documentId={documentId}
@@ -280,6 +313,8 @@ export default function DashboardPage() {
                 </motion.div>
               </div>
             )
+          ) : documentsError ? (
+            renderDocumentsError()
           ) : (
             <div className="h-full flex items-center justify-center bg-bg-secondary/20">
               <motion.div
