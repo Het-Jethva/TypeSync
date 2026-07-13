@@ -31,14 +31,26 @@ export type TypeSyncSocketServer = SocketIOServer<
 
 // State maps
 const docs = new Map<string, Y.Doc>();
-const saveTimers = new Map<string, NodeJS.Timeout>();
 const loadedDocs = new Set<string>();
 const loadingDocs = new Map<string, Promise<void>>();
 const socketRoles = new Map<string, Map<string, string>>();
 const socketJoinGenerations = new Map<string, Map<string, number>>();
 const pendingJoinCounts = new Map<string, number>();
 
-const SAVE_INTERVAL = 5000;
+interface PersistenceState {
+  dirty: boolean;
+  flushRequested: boolean;
+  persisting?: Promise<void>;
+  debounceTimer?: NodeJS.Timeout;
+  maxWaitTimer?: NodeJS.Timeout;
+  retryTimer?: NodeJS.Timeout;
+  cancelled: boolean;
+}
+
+const persistenceStates = new Map<string, PersistenceState>();
+
+const SAVE_DEBOUNCE_INTERVAL = 5000;
+const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
 const DocumentIdSchema = z.string().uuid();
 
@@ -79,8 +91,7 @@ async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
   }
 }
 
-async function saveDocToDB(docId: string, ydoc: Y.Doc): Promise<void> {
-  const state = Y.encodeStateAsUpdate(ydoc);
+async function saveDocToDB(docId: string, state: Uint8Array): Promise<void> {
   await db
     .update(document)
     .set({
@@ -90,22 +101,112 @@ async function saveDocToDB(docId: string, ydoc: Y.Doc): Promise<void> {
     .where(eq(document.id, docId));
 }
 
-function scheduleSave(docId: string, ydoc: Y.Doc): void {
-  const existing = saveTimers.get(docId);
-  if (existing) clearTimeout(existing);
+function getPersistenceState(docId: string): PersistenceState {
+  let state = persistenceStates.get(docId);
+  if (!state) {
+    state = { dirty: false, flushRequested: false, cancelled: false };
+    persistenceStates.set(docId, state);
+  }
+  return state;
+}
 
-  const timer = setTimeout(async () => {
-    try {
-      await saveDocToDB(docId, ydoc);
-      saveTimers.delete(docId);
-    } catch (error) {
-      console.error(`Failed to save doc ${docId}; retrying:`, error);
-      const retry = setTimeout(() => scheduleSave(docId, ydoc), SAVE_RETRY_INTERVAL);
-      saveTimers.set(docId, retry);
+function clearPersistenceTimers(state: PersistenceState): void {
+  if (state.debounceTimer) clearTimeout(state.debounceTimer);
+  if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
+  if (state.retryTimer) clearTimeout(state.retryTimer);
+  state.debounceTimer = undefined;
+  state.maxWaitTimer = undefined;
+  state.retryTimer = undefined;
+}
+
+async function runPersistence(docId: string, ydoc: Y.Doc, state: PersistenceState): Promise<void> {
+  if (state.persisting) {
+    return state.persisting;
+  }
+
+  const operation = (async () => {
+    while (state.flushRequested && !state.cancelled) {
+      state.flushRequested = false;
+      clearPersistenceTimers(state);
+      if (!state.dirty) continue;
+
+      state.dirty = false;
+      const snapshot = Y.encodeStateAsUpdate(ydoc);
+      try {
+        await saveDocToDB(docId, snapshot);
+      } catch (error) {
+        state.dirty = true;
+        throw error;
+      }
     }
-  }, SAVE_INTERVAL);
+  })();
 
-  saveTimers.set(docId, timer);
+  state.persisting = operation;
+  try {
+    await operation;
+  } finally {
+    if (state.persisting === operation) {
+      state.persisting = undefined;
+    }
+  }
+}
+
+function scheduleRetry(docId: string, ydoc: Y.Doc, state: PersistenceState): void {
+  if (state.cancelled || state.retryTimer) return;
+  state.retryTimer = setTimeout(() => {
+    state.retryTimer = undefined;
+    triggerScheduledFlush(docId, ydoc, state);
+  }, SAVE_RETRY_INTERVAL);
+}
+
+function triggerScheduledFlush(docId: string, ydoc: Y.Doc, state: PersistenceState): void {
+  if (state.cancelled) return;
+  state.flushRequested = true;
+  if (state.persisting) return;
+
+  void runPersistence(docId, ydoc, state).catch((error) => {
+    if (state.cancelled) return;
+    console.error(`Failed to save doc ${docId}; retrying:`, error);
+    scheduleRetry(docId, ydoc, state);
+  });
+}
+
+function scheduleSave(docId: string, ydoc: Y.Doc): void {
+  const state = getPersistenceState(docId);
+  state.dirty = true;
+
+  if (state.debounceTimer) clearTimeout(state.debounceTimer);
+  state.debounceTimer = setTimeout(() => {
+    state.debounceTimer = undefined;
+    triggerScheduledFlush(docId, ydoc, state);
+  }, SAVE_DEBOUNCE_INTERVAL);
+
+  if (!state.maxWaitTimer) {
+    state.maxWaitTimer = setTimeout(() => {
+      state.maxWaitTimer = undefined;
+      triggerScheduledFlush(docId, ydoc, state);
+    }, SAVE_MAX_WAIT_INTERVAL);
+  }
+}
+
+async function flushDocumentNow(docId: string, ydoc: Y.Doc): Promise<void> {
+  const state = getPersistenceState(docId);
+  clearPersistenceTimers(state);
+
+  while (!state.cancelled) {
+    state.flushRequested = true;
+    await runPersistence(docId, ydoc, state);
+    if (!state.dirty && !state.persisting) return;
+  }
+}
+
+function discardPersistenceState(docId: string): void {
+  const state = persistenceStates.get(docId);
+  if (!state) return;
+  state.cancelled = true;
+  state.flushRequested = false;
+  clearPersistenceTimers(state);
+  persistenceStates.delete(docId);
 }
 
 async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
@@ -143,16 +244,9 @@ async function evictIfEmpty(
   const ydoc = docs.get(documentId);
   if (!ydoc) return;
 
-  // Clear any pending save timer
-  const timer = saveTimers.get(documentId);
-  if (timer) {
-    clearTimeout(timer);
-    saveTimers.delete(documentId);
-  }
-
   // Persist before evicting
   try {
-    await saveDocToDB(documentId, ydoc);
+    await flushDocumentNow(documentId, ydoc);
     const postSaveRoomSize = io.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
     if (postSaveRoomSize > 0) {
       console.log(`Aborted eviction of document ${documentId} (room active)`);
@@ -160,10 +254,12 @@ async function evictIfEmpty(
     }
   } catch (error) {
     console.error(`Failed to save doc ${documentId}; keeping it in memory:`, error);
-    scheduleSave(documentId, ydoc);
+    const state = getPersistenceState(documentId);
+    scheduleRetry(documentId, ydoc, state);
     return;
   }
 
+  discardPersistenceState(documentId);
   ydoc.destroy();
   docs.delete(documentId);
   loadedDocs.delete(documentId);
@@ -182,18 +278,9 @@ export async function flushAndCleanup(): Promise<{ succeeded: string[]; failed: 
     return { succeeded, failed };
   }
 
-  // Cancel pending debounced saves — we'll save immediately
-  for (const [docId] of docEntries) {
-    const timer = saveTimers.get(docId);
-    if (timer) {
-      clearTimeout(timer);
-      saveTimers.delete(docId);
-    }
-  }
-
   const results = await Promise.allSettled(
     docEntries.map(async ([docId, ydoc]) => {
-      await saveDocToDB(docId, ydoc);
+      await flushDocumentNow(docId, ydoc);
       return docId;
     })
   );
@@ -273,12 +360,7 @@ export function handleDocumentDeleted(
     }
   }
 
-  // Clear any pending save timer
-  const timer = saveTimers.get(documentId);
-  if (timer) {
-    clearTimeout(timer);
-    saveTimers.delete(documentId);
-  }
+  discardPersistenceState(documentId);
 
   // Evict/destroy the in-memory Y.Doc state immediately
   const ydoc = docs.get(documentId);
@@ -417,11 +499,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
             }
             loadedDocs.delete(parsedDocumentId);
             loadingDocs.delete(parsedDocumentId);
-            const timer = saveTimers.get(parsedDocumentId);
-            if (timer) {
-              clearTimeout(timer);
-              saveTimers.delete(parsedDocumentId);
-            }
+            discardPersistenceState(parsedDocumentId);
           }
         }
         respond({ success: false, error: "Failed to load document" });
