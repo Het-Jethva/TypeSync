@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "motion/react";
 
 import { ShareModal } from "./ShareModal";
 import { CollaboratorPresence } from "./CollaboratorPresence";
-import type { Document } from "@typesync/shared";
+import type { DocumentWithRole } from "@typesync/shared";
 
 interface DocumentHeaderProps {
-  document: Document & { role: string };
+  document: DocumentWithRole;
   onRename: (title: string) => void;
   onDocumentUpdate: () => void;
   activeCollaborators: { name: string; color: string }[];

@@ -36,7 +36,7 @@ async function request<T>(
 export const api = {
   documents: {
     list: () =>
-      request<(Document & { role: string })[]>("/documents"),
+      request<DocumentWithRole[]>("/documents"),
 
     get: (id: string) =>
       request<DocumentWithRole>(`/documents/${id}`),

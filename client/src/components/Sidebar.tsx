@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
-import type { Document } from "@typesync/shared";
+import type { DocumentWithRole, Role } from "@typesync/shared";
 import { toggleThemeWithTransition } from "../lib/theme";
 
 interface SidebarProps {
-  documents: (Document & { role: string })[];
+  documents: DocumentWithRole[];
   activeDocId?: string;
   isLoading: boolean;
   onCreateDocument: () => void;
@@ -52,7 +52,7 @@ export function Sidebar({
   const navigate = useNavigate();
   const { data: session } = useSession();
   const [search, setSearch] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ id: string; role: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; role: Role; x: number; y: number } | null>(null);
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -75,7 +75,7 @@ export function Sidebar({
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
-  const handleContextMenu = (e: React.MouseEvent, docId: string, role: string) => {
+  const handleContextMenu = (e: React.MouseEvent, docId: string, role: Role) => {
     e.preventDefault();
     setContextMenu({ id: docId, role, x: e.clientX, y: e.clientY });
   };

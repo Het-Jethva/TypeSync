@@ -7,7 +7,7 @@ import { Editor } from "../components/Editor";
 import { DocumentHeader } from "../components/DocumentHeader";
 import { api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
-import type { Document } from "@typesync/shared";
+import type { DocumentWithRole } from "@typesync/shared";
 
 const PENDING_UPDATES_MESSAGE =
   "Some edits have not reached the server yet. Leave anyway? Those edits will be lost.";
@@ -15,7 +15,7 @@ const PENDING_UPDATES_MESSAGE =
 export default function DashboardPage() {
   const { id: documentId } = useParams();
   const navigate = useNavigate();
-  const [documents, setDocuments] = useState<(Document & { role: string })[]>([]);
+  const [documents, setDocuments] = useState<DocumentWithRole[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState<string | null>(null);

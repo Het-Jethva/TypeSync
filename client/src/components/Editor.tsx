@@ -25,7 +25,7 @@ const lowlight = createLowlight(common);
 
 interface EditorProps {
   documentId: string;
-  role: Role | string;
+  role: Role;
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
   onAccessLost?: () => void;
   onPendingUpdatesChange?: (hasPendingUpdates: boolean) => void;
