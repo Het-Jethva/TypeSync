@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -18,27 +18,10 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { motion } from "motion/react";
 import { common, createLowlight } from "lowlight";
 import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
-import { useSession } from "../lib/auth-client";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
-
-// Assign random color to each user session (warm, cohesive editorial palette)
-const CURSOR_COLORS = [
-  "#c2593f", // Terracotta
-  "#4e655d", // Sage
-  "#d99a4c", // Warm Gold
-  "#a3523f", // Rust
-  "#5a6b7c", // Slate
-  "#8c6f5e", // Bronze
-  "#9c5a6c", // Dusty Rose
-  "#6b5c7b", // Muted Violet
-];
-
-function getRandomColor(): string {
-  return CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)];
-}
 
 interface EditorProps {
   documentId: string;
@@ -48,8 +31,6 @@ interface EditorProps {
 }
 
 export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }: EditorProps) {
-  const { data: session } = useSession();
-  const cursorColor = useMemo(() => getRandomColor(), []);
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
     position: { top: number; left: number };
@@ -104,8 +85,9 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
         CollaborationCaret.configure({
           provider: { awareness },
           user: {
-            name: session?.user?.name || "Anonymous",
-            color: cursorColor,
+            userId: "",
+            name: "Connecting…",
+            color: "#5a6b7c",
           },
         }),
       ],
@@ -146,16 +128,6 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
   useEffect(() => {
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
-
-  // Sync user details to awareness when session is loaded/updated
-  useEffect(() => {
-    if (editor && !editor.isDestroyed && session?.user?.name) {
-      editor.commands.updateUser({
-        name: session.user.name,
-        color: cursorColor,
-      });
-    }
-  }, [editor, session?.user?.name, cursorColor]);
 
   return (
     <motion.div

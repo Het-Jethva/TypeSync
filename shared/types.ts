@@ -41,15 +41,10 @@ export interface DocumentCollaboratorWithUser extends DocumentCollaborator {
 }
 
 // ─── User Presence ───────────────────────────────────────
-export interface UserPresence {
+export interface PresenceIdentity {
   userId: string;
   name: string;
-  email: string;
   color: string;
-  cursor?: {
-    anchor: number;
-    head: number;
-  };
 }
 
 // ─── Socket Events ───────────────────────────────────────
@@ -69,6 +64,7 @@ export type DocumentJoinResult =
       state: Uint8Array;
       stateVector: Uint8Array;
       role: Role;
+      presence: PresenceIdentity;
     }
   | {
       success: false;

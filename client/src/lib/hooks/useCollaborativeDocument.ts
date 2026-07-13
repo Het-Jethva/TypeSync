@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
-import type { DocumentSizeStatus } from "@typesync/shared";
+import type { DocumentSizeStatus, PresenceIdentity } from "@typesync/shared";
+
+function isPresenceIdentity(value: unknown): value is PresenceIdentity {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PresenceIdentity>;
+  return (
+    typeof candidate.userId === "string" && candidate.userId.length > 0 &&
+    typeof candidate.name === "string" &&
+    typeof candidate.color === "string"
+  );
+}
 
 export function useCollaborativeDocument(
   documentId: string,
@@ -41,11 +51,15 @@ export function useCollaborativeDocument(
 
     const handleAwarenessUpdate = (payload: { documentId: string; update: Uint8Array }) => {
       if (payload.documentId !== documentId) return;
-      awarenessProtocol.applyAwarenessUpdate(
-        awareness,
-        new Uint8Array(payload.update),
-        "remote"
-      );
+      try {
+        awarenessProtocol.applyAwarenessUpdate(
+          awareness,
+          new Uint8Array(payload.update),
+          "remote"
+        );
+      } catch (error) {
+        console.error("Rejected malformed remote awareness update:", error);
+      }
     };
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
@@ -88,6 +102,7 @@ export function useCollaborativeDocument(
         }
 
         Y.applyUpdate(ydoc, new Uint8Array(result.state), "remote");
+        awareness.setLocalStateField("user", result.presence);
         joined = true;
         setIsConnected(true);
 
@@ -146,9 +161,14 @@ export function useCollaborativeDocument(
 
     const handleAwarenessChange = () => {
       const states = awareness.getStates();
-      const activeUsers = Array.from(states.values())
-        .map((state: any) => state.user)
-        .filter(Boolean);
+      const seenUserIds = new Set<string>();
+      const activeUsers: { name: string; color: string }[] = [];
+      for (const state of states.values()) {
+        const user = (state as { user?: unknown }).user;
+        if (!isPresenceIdentity(user) || seenUserIds.has(user.userId)) continue;
+        seenUserIds.add(user.userId);
+        activeUsers.push({ name: user.name, color: user.color });
+      }
       onCollaboratorsChangeRef.current?.(activeUsers);
     };
     awareness.on("change", handleAwarenessChange);
