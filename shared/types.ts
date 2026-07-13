@@ -54,9 +54,31 @@ export interface ClientToServerEvents {
     acknowledge: (result: DocumentJoinResult) => void
   ) => void;
   "doc:leave": (documentId: string) => void;
-  "doc:update": (documentId: string, update: Uint8Array) => void;
+  "doc:update": (
+    documentId: string,
+    update: Uint8Array,
+    acknowledge: (result: DocumentUpdateResult) => void
+  ) => void;
   "awareness:update": (documentId: string, update: Uint8Array) => void;
 }
+
+export type DocumentUpdateErrorCode =
+  | "server-draining"
+  | "session-expired"
+  | "not-joined"
+  | "forbidden"
+  | "invalid-payload"
+  | "update-too-large"
+  | "document-too-large"
+  | "document-not-loaded";
+
+export type DocumentUpdateResult =
+  | { success: true }
+  | {
+      success: false;
+      code: DocumentUpdateErrorCode;
+      error: string;
+    };
 
 export type DocumentJoinResult =
   | {

@@ -14,6 +14,7 @@ import type {
   ClientToServerEvents,
   DocumentSizeStatus,
   DocumentJoinResult,
+  DocumentUpdateResult,
   PresenceIdentity,
   Role,
   ServerToClientEvents,
@@ -923,10 +924,16 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       }
     });
 
-    socket.on("doc:update", async (documentId: string, update: Uint8Array) => {
+    socket.on("doc:update", async (
+      documentId: string,
+      update: Uint8Array,
+      acknowledge: (result: DocumentUpdateResult) => void
+    ) => {
+      const respond = typeof acknowledge === "function" ? acknowledge : () => {};
       const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
       if (!parsedDocumentId.success) {
         socket.emit("doc:error", { message: "Invalid document id" });
+        respond({ success: false, code: "invalid-payload", error: "Invalid document id" });
         return;
       }
       documentId = parsedDocumentId.data;
@@ -934,13 +941,18 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       if (isDraining) {
         socket.emit("doc:error", { documentId, message: "Server is shutting down" });
+        respond({ success: false, code: "server-draining", error: "Server is shutting down" });
         return;
       }
-      if (!(await ensureSocketSession(socket))) return;
+      if (!(await ensureSocketSession(socket))) {
+        respond({ success: false, code: "session-expired", error: "Session expired" });
+        return;
+      }
 
       // SEC-01: Must be in the room
       if (!socket.rooms.has(roomName)) {
         socket.emit("doc:error", { documentId, message: "Not joined to this document" });
+        respond({ success: false, code: "not-joined", error: "Not joined to this document" });
         return;
       }
 
@@ -948,12 +960,14 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const role = socketRoles.get(socket.id)?.get(documentId);
       if (role !== "owner" && role !== "editor") {
         socket.emit("doc:error", { documentId, message: "Unauthorized to edit this document" });
+        respond({ success: false, code: "forbidden", error: "Unauthorized to edit this document" });
         return;
       }
 
       // Validate that update payload is binary and within the size limit
       if (!(update instanceof Uint8Array)) {
         socket.emit("doc:error", { documentId, message: "Invalid document update payload type" });
+        respond({ success: false, code: "invalid-payload", error: "Invalid document update payload" });
         return;
       }
 
@@ -965,12 +979,14 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           bytes: update.byteLength,
           maxBytes: MAX_DOC_UPDATE_BYTES,
         });
+        respond({ success: false, code: "update-too-large", error: "Document update exceeds 1 MiB" });
         return;
       }
 
       const ydoc = docs.get(documentId);
       if (!ydoc) {
         socket.emit("doc:error", { documentId, message: "Document is not loaded" });
+        respond({ success: false, code: "document-not-loaded", error: "Document is not loaded" });
         return;
       }
 
@@ -978,6 +994,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         const preflight = preflightDocumentUpdate(documentId, ydoc, update);
         if (!preflight.allowed) {
           if (preflight.status) socket.emit("doc:size-status", preflight.status);
+          respond({ success: false, code: "document-too-large", error: "Document size limit reached" });
           return;
         }
 
@@ -990,11 +1007,13 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         recordEncodedDocumentSize(documentId, ydoc);
         console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
         socket.emit("doc:error", { documentId, message: "Malformed document update payload" });
+        respond({ success: false, code: "invalid-payload", error: "Malformed document update payload" });
         return;
       }
 
       // Broadcast to all other clients in the room
       socket.to(roomName).emit("doc:update", { documentId, update });
+      respond({ success: true });
     });
 
     socket.on("awareness:update", async (documentId: string, update: Uint8Array) => {

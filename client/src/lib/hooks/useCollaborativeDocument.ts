@@ -4,6 +4,10 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
 import type { DocumentSizeStatus, PresenceIdentity } from "@typesync/shared";
 
+const DOCUMENT_UPDATE_ACK_TIMEOUT_MS = 5_000;
+const MAX_MERGED_UPDATE_BYTES = 512 * 1024;
+const MAX_RETRY_DELAY_MS = 10_000;
+
 function isPresenceIdentity(value: unknown): value is PresenceIdentity {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<PresenceIdentity>;
@@ -21,6 +25,8 @@ export function useCollaborativeDocument(
 ) {
   const [isConnected, setIsConnected] = useState(false);
   const [documentSizeStatus, setDocumentSizeStatus] = useState<DocumentSizeStatus | null>(null);
+  const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const ydoc = useMemo(() => new Y.Doc({ guid: documentId }), [documentId]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
   const resourceVersionsRef = useRef(new Map<Y.Doc, number>());
@@ -40,7 +46,16 @@ export function useCollaborativeDocument(
     const resourceVersions = resourceVersionsRef.current;
     let joined = false;
     let disposed = false;
+    let nextBatchId = 1;
+    let activeBatchId: number | null = null;
+    let deliveryGeneration = 0;
+    let retryAttempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let deliveryBlocked = false;
+    let pendingBatches: { id: number; update: Uint8Array }[] = [];
     setDocumentSizeStatus(null);
+    setHasPendingUpdates(false);
+    setSyncError(null);
     const resourceVersion = (resourceVersions.get(ydoc) ?? 0) + 1;
     resourceVersions.set(ydoc, resourceVersion);
 
@@ -89,7 +104,117 @@ export function useCollaborativeDocument(
       }
     };
 
+    function clearRetryTimer() {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+
+    function cancelDeliveryAttempt() {
+      deliveryGeneration += 1;
+      activeBatchId = null;
+      clearRetryTimer();
+    }
+
+    function refreshPendingState() {
+      if (!disposed) setHasPendingUpdates(pendingBatches.length > 0);
+    }
+
+    function scheduleRetry() {
+      if (disposed || retryTimer || !joined || !socket.connected || deliveryBlocked) return;
+      const delay = Math.min(1_000 * 2 ** retryAttempt, MAX_RETRY_DELAY_MS);
+      retryAttempt += 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        flushPendingUpdates();
+      }, delay);
+    }
+
+    function flushPendingUpdates() {
+      if (
+        disposed ||
+        !joined ||
+        !socket.connected ||
+        deliveryBlocked ||
+        activeBatchId !== null ||
+        pendingBatches.length === 0
+      ) {
+        return;
+      }
+
+      const batch = pendingBatches[0];
+      activeBatchId = batch.id;
+      const generation = ++deliveryGeneration;
+
+      socket.timeout(DOCUMENT_UPDATE_ACK_TIMEOUT_MS).emit(
+        "doc:update",
+        documentId,
+        batch.update,
+        (error, result) => {
+          if (
+            disposed ||
+            generation !== deliveryGeneration ||
+            activeBatchId !== batch.id
+          ) {
+            return;
+          }
+
+          activeBatchId = null;
+          if (error) {
+            scheduleRetry();
+            return;
+          }
+
+          if (!result.success) {
+            deliveryBlocked = true;
+            setSyncError(result.error);
+            refreshPendingState();
+            return;
+          }
+
+          pendingBatches.shift();
+          retryAttempt = 0;
+          setSyncError(null);
+          refreshPendingState();
+          flushPendingUpdates();
+        }
+      );
+    }
+
+    function enqueueDocumentUpdate(update: Uint8Array) {
+      const mergeableIndex = activeBatchId === null ? 0 : 1;
+      const lastBatch = pendingBatches.at(-1);
+      if (lastBatch && pendingBatches.length > mergeableIndex) {
+        const merged = Y.mergeUpdates([lastBatch.update, update]);
+        if (merged.byteLength <= MAX_MERGED_UPDATE_BYTES) {
+          lastBatch.update = merged;
+          refreshPendingState();
+          flushPendingUpdates();
+          return;
+        }
+      }
+
+      pendingBatches.push({ id: nextBatchId++, update });
+      refreshPendingState();
+      flushPendingUpdates();
+    }
+
+    function reconcilePendingUpdates(serverStateVector: Uint8Array) {
+      cancelDeliveryAttempt();
+      deliveryBlocked = false;
+      retryAttempt = 0;
+      setSyncError(null);
+      pendingBatches = [];
+
+      const localDelta = Y.encodeStateAsUpdate(ydoc, serverStateVector);
+      if (localDelta.byteLength > 2) {
+        pendingBatches.push({ id: nextBatchId++, update: localDelta });
+      }
+      refreshPendingState();
+      flushPendingUpdates();
+    }
+
     const joinDocument = () => {
+      cancelDeliveryAttempt();
       joined = false;
       setIsConnected(false);
       socket.emit("doc:join", documentId, (result) => {
@@ -107,10 +232,7 @@ export function useCollaborativeDocument(
         setIsConnected(true);
 
         // Reconcile edits made before the join completed or while offline.
-        const localDelta = Y.encodeStateAsUpdate(ydoc, new Uint8Array(result.stateVector));
-        if (localDelta.byteLength > 2) {
-          socket.volatile.emit("doc:update", documentId, localDelta);
-        }
+        reconcilePendingUpdates(new Uint8Array(result.stateVector));
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
@@ -121,6 +243,7 @@ export function useCollaborativeDocument(
     };
 
     const handleDisconnect = () => {
+      cancelDeliveryAttempt();
       joined = false;
       setIsConnected(false);
     };
@@ -141,7 +264,7 @@ export function useCollaborativeDocument(
     // Listen for local changes and broadcast
     const updateHandler = (update: Uint8Array, origin: any) => {
       if (origin !== "remote" && joined && socket.connected) {
-        socket.volatile.emit("doc:update", documentId, update);
+        enqueueDocumentUpdate(update);
       }
     };
     ydoc.on("update", updateHandler);
@@ -175,6 +298,7 @@ export function useCollaborativeDocument(
 
     return () => {
       disposed = true;
+      cancelDeliveryAttempt();
       if (joined && socket.connected) {
         // Destroying Awareness emits a local-state removal. Forward that frame
         // before detaching the handler and leaving the room.
@@ -207,5 +331,12 @@ export function useCollaborativeDocument(
     };
   }, [documentId, ydoc, awareness]);
 
-  return { ydoc, awareness, isConnected, documentSizeStatus };
+  return {
+    ydoc,
+    awareness,
+    isConnected,
+    documentSizeStatus,
+    hasPendingUpdates,
+    syncError,
+  };
 }
