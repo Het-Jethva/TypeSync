@@ -57,12 +57,13 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
     isOpen: false,
     position: { top: 0, left: 0 },
   });
-  const { ydoc, awareness, isConnected } = useCollaborativeDocument(
+  const { ydoc, awareness, isConnected, documentSizeStatus } = useCollaborativeDocument(
     documentId,
     onCollaboratorsChange,
     onAccessLost
   );
-  const canEdit = role === "owner" || role === "editor";
+  const canEdit =
+    (role === "owner" || role === "editor") && documentSizeStatus?.level !== "limit";
 
   const editor = useEditor(
     {
@@ -184,11 +185,23 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
         <div className="flex items-center gap-1.5">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              isConnected ? "bg-success" : "bg-warning animate-pulse"
+              documentSizeStatus?.level === "limit"
+                ? "bg-error"
+                : documentSizeStatus?.level === "warning" || !isConnected
+                  ? "bg-warning animate-pulse"
+                  : "bg-success"
             }`}
           />
           <span className="text-[10px] text-text-muted font-medium">
-            {isConnected ? "Connected" : "Connecting"}
+            {documentSizeStatus?.level === "limit"
+              ? documentSizeStatus.reason === "update"
+                ? "Edit exceeds size limit"
+                : "Document size limit reached"
+              : documentSizeStatus?.level === "warning"
+                ? "Document nearing size limit"
+                : isConnected
+                  ? "Connected"
+                  : "Connecting"}
           </span>
         </div>
         <span className="text-[10px] text-text-muted font-medium">

@@ -10,6 +10,7 @@ import { auth } from "../lib/auth.js";
 import { config } from "../config.js";
 import type {
   ClientToServerEvents,
+  DocumentSizeStatus,
   DocumentJoinResult,
   Role,
   ServerToClientEvents,
@@ -63,6 +64,13 @@ interface PersistenceState {
 
 const persistenceStates = new Map<string, PersistenceState>();
 
+interface DocumentSizeState {
+  encodedBytes: number;
+  pendingUpdateBytes: number;
+}
+
+const documentSizeStates = new Map<string, DocumentSizeState>();
+
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
@@ -70,11 +78,9 @@ const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
 const trustedClientOrigin = new URL(config.clientUrl).origin;
 
-// SEC-03: Defensive size limits for collaborative updates to prevent memory exhaustion.
-// Document updates might contain base64 image strings (if allowed by the editor),
-// so we set a limit of 10MB to accommodate them. A separate storage-backed image upload
-// flow is the better long-term solution to allow lowering this limit further.
-const MAX_DOC_UPDATE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_DOC_UPDATE_BYTES = 1 * 1024 * 1024;
+const DOC_SIZE_WARNING_BYTES = 8 * 1024 * 1024;
+const MAX_DOC_STATE_BYTES = 10 * 1024 * 1024;
 
 // Awareness updates only transmit lightweight metadata like cursor position, selection,
 // and user info. This is usually under 1KB, so 64KB is an extremely safe limit.
@@ -152,6 +158,74 @@ function getOrCreateDoc(docId: string): Y.Doc {
   return doc;
 }
 
+function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): number {
+  const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
+  documentSizeStates.set(docId, { encodedBytes, pendingUpdateBytes: 0 });
+  return encodedBytes;
+}
+
+function getDocumentSizeState(docId: string, ydoc: Y.Doc): DocumentSizeState {
+  let state = documentSizeStates.get(docId);
+  if (!state) {
+    recordEncodedDocumentSize(docId, ydoc);
+    state = documentSizeStates.get(docId)!;
+  }
+  return state;
+}
+
+function sizeStatus(documentId: string, bytes: number): DocumentSizeStatus | null {
+  if (bytes < DOC_SIZE_WARNING_BYTES) return null;
+  return {
+    documentId,
+    level: bytes >= MAX_DOC_STATE_BYTES ? "limit" : "warning",
+    reason: "document",
+    bytes,
+    maxBytes: MAX_DOC_STATE_BYTES,
+  };
+}
+
+function preflightDocumentUpdate(
+  docId: string,
+  ydoc: Y.Doc,
+  update: Uint8Array
+): { allowed: boolean; status: DocumentSizeStatus | null } {
+  const state = getDocumentSizeState(docId, ydoc);
+  if (state.encodedBytes >= MAX_DOC_STATE_BYTES) {
+    return { allowed: false, status: sizeStatus(docId, state.encodedBytes) };
+  }
+
+  const projectedUpperBound =
+    state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
+  if (projectedUpperBound < DOC_SIZE_WARNING_BYTES) {
+    state.pendingUpdateBytes += update.byteLength;
+    return { allowed: true, status: null };
+  }
+
+  const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
+  const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
+  state.encodedBytes = currentSnapshot.byteLength;
+  state.pendingUpdateBytes = 0;
+
+  if (candidateSnapshot.byteLength > MAX_DOC_STATE_BYTES) {
+    return {
+      allowed: false,
+      status: {
+        documentId: docId,
+        level: "limit",
+        reason: "document",
+        bytes: candidateSnapshot.byteLength,
+        maxBytes: MAX_DOC_STATE_BYTES,
+      },
+    };
+  }
+
+  state.encodedBytes = candidateSnapshot.byteLength;
+  return {
+    allowed: true,
+    status: sizeStatus(docId, candidateSnapshot.byteLength),
+  };
+}
+
 async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
   const [doc] = await db
     .select({ yDocState: document.yDocState })
@@ -209,6 +283,10 @@ async function runPersistence(docId: string, ydoc: Y.Doc, state: PersistenceStat
 
       state.dirty = false;
       const snapshot = Y.encodeStateAsUpdate(ydoc);
+      documentSizeStates.set(docId, {
+        encodedBytes: snapshot.byteLength,
+        pendingUpdateBytes: 0,
+      });
       try {
         await saveDocToDB(docId, snapshot);
       } catch (error) {
@@ -279,6 +357,7 @@ async function flushDocumentNow(docId: string, ydoc: Y.Doc): Promise<void> {
 
 function discardPersistenceState(docId: string): void {
   const state = persistenceStates.get(docId);
+  documentSizeStates.delete(docId);
   if (!state) return;
   state.cancelled = true;
   state.flushRequested = false;
@@ -301,6 +380,7 @@ async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
   const loadPromise = loadDocFromDB(docId, ydoc)
     .then(() => {
       loadedDocs.add(docId);
+      recordEncodedDocumentSize(docId, ydoc);
     })
     .finally(() => {
       loadingDocs.delete(docId);
@@ -340,6 +420,7 @@ async function evictIfEmpty(
   ydoc.destroy();
   docs.delete(documentId);
   loadedDocs.delete(documentId);
+  documentSizeStates.delete(documentId);
 
   console.log(`Evicted idle document ${documentId} from memory`);
 }
@@ -447,6 +528,7 @@ export function handleDocumentDeleted(
   }
   loadedDocs.delete(documentId);
   loadingDocs.delete(documentId);
+  documentSizeStates.delete(documentId);
 
   console.log(`Document ${documentId} deleted: sockets evicted and Y.Doc destroyed`);
 }
@@ -589,6 +671,14 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           role: currentAccess.role as Role,
         });
 
+        const currentSizeStatus = sizeStatus(
+          parsedDocumentId,
+          getDocumentSizeState(parsedDocumentId, ydoc).encodedBytes
+        );
+        if (currentSizeStatus) {
+          socket.emit("doc:size-status", currentSizeStatus);
+        }
+
         console.log(`${userEmail} joined document ${parsedDocumentId} as ${currentAccess.role}`);
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
@@ -675,20 +765,39 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       }
 
       if (update.byteLength > MAX_DOC_UPDATE_BYTES) {
-        socket.emit("doc:error", { documentId, message: "Document update exceeds allowed size limit" });
+        socket.emit("doc:size-status", {
+          documentId,
+          level: "limit",
+          reason: "update",
+          bytes: update.byteLength,
+          maxBytes: MAX_DOC_UPDATE_BYTES,
+        });
         return;
       }
 
       const ydoc = docs.get(documentId);
-      if (ydoc) {
-        try {
-          Y.applyUpdate(ydoc, new Uint8Array(update));
-          scheduleSave(documentId, ydoc);
-        } catch (error) {
-          console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
-          socket.emit("doc:error", { documentId, message: "Malformed document update payload" });
+      if (!ydoc) {
+        socket.emit("doc:error", { documentId, message: "Document is not loaded" });
+        return;
+      }
+
+      try {
+        const preflight = preflightDocumentUpdate(documentId, ydoc, update);
+        if (!preflight.allowed) {
+          if (preflight.status) socket.emit("doc:size-status", preflight.status);
           return;
         }
+
+        Y.applyUpdate(ydoc, new Uint8Array(update));
+        scheduleSave(documentId, ydoc);
+        if (preflight.status) {
+          io.to(roomName).emit("doc:size-status", preflight.status);
+        }
+      } catch (error) {
+        recordEncodedDocumentSize(documentId, ydoc);
+        console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
+        socket.emit("doc:error", { documentId, message: "Malformed document update payload" });
+        return;
       }
 
       // Broadcast to all other clients in the room

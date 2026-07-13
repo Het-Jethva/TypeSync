@@ -81,7 +81,16 @@ export interface ServerToClientEvents {
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
   "doc:permission-revoked": (payload: { documentId: string }) => void;
   "doc:title-updated": (payload: { documentId: string; title: string; updatedAt: string }) => void;
+  "doc:size-status": (payload: DocumentSizeStatus) => void;
   "doc:error": (payload: { documentId?: string; message: string }) => void;
+}
+
+export interface DocumentSizeStatus {
+  documentId: string;
+  level: "warning" | "limit";
+  reason: "update" | "document";
+  bytes: number;
+  maxBytes: number;
 }
 
 // ─── API Types ───────────────────────────────────────────

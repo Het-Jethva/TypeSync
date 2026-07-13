@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
+import type { DocumentSizeStatus } from "@typesync/shared";
 
 export function useCollaborativeDocument(
   documentId: string,
@@ -9,6 +10,7 @@ export function useCollaborativeDocument(
   onAccessLost?: () => void
 ) {
   const [isConnected, setIsConnected] = useState(false);
+  const [documentSizeStatus, setDocumentSizeStatus] = useState<DocumentSizeStatus | null>(null);
   const ydoc = useMemo(() => new Y.Doc({ guid: documentId }), [documentId]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
   const resourceVersionsRef = useRef(new Map<Y.Doc, number>());
@@ -28,6 +30,7 @@ export function useCollaborativeDocument(
     const resourceVersions = resourceVersionsRef.current;
     let joined = false;
     let disposed = false;
+    setDocumentSizeStatus(null);
     const resourceVersion = (resourceVersions.get(ydoc) ?? 0) + 1;
     resourceVersions.set(ydoc, resourceVersion);
 
@@ -49,6 +52,12 @@ export function useCollaborativeDocument(
       if (payload.documentId === documentId) {
         setIsConnected(false);
         onAccessLostRef.current?.();
+      }
+    };
+
+    const handleDocumentSizeStatus = (payload: DocumentSizeStatus) => {
+      if (payload.documentId === documentId) {
+        setDocumentSizeStatus(payload);
       }
     };
 
@@ -104,6 +113,7 @@ export function useCollaborativeDocument(
     socket.on("doc:update", handleUpdate);
     socket.on("awareness:update", handleAwarenessUpdate);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
+    socket.on("doc:size-status", handleDocumentSizeStatus);
     socket.on("doc:error", handleDocError);
     socket.on("connect", joinDocument);
     socket.on("disconnect", handleDisconnect);
@@ -153,6 +163,7 @@ export function useCollaborativeDocument(
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
+      socket.off("doc:size-status", handleDocumentSizeStatus);
       socket.off("doc:error", handleDocError);
       socket.off("connect", joinDocument);
       socket.off("disconnect", handleDisconnect);
@@ -176,5 +187,5 @@ export function useCollaborativeDocument(
     };
   }, [documentId, ydoc, awareness]);
 
-  return { ydoc, awareness, isConnected };
+  return { ydoc, awareness, isConnected, documentSizeStatus };
 }
