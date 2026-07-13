@@ -1,4 +1,4 @@
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer, Socket as SocketIOSocket } from "socket.io";
 import { Server as HttpServer } from "http";
 import * as Y from "yjs";
 import { eq } from "drizzle-orm";
@@ -20,7 +20,19 @@ interface SocketData {
   userId: string;
   userName: string;
   userEmail: string;
+  authCookie: string;
+  sessionId: string;
+  lastSessionValidation: number;
+  sessionValidation?: Promise<boolean>;
+  sessionValidationTimer?: NodeJS.Timeout;
 }
+
+type TypeSyncSocket = SocketIOSocket<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
 
 export type TypeSyncSocketServer = SocketIOServer<
   ClientToServerEvents,
@@ -54,7 +66,9 @@ const persistenceStates = new Map<string, PersistenceState>();
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
+const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
+const trustedClientOrigin = new URL(config.clientUrl).origin;
 
 // SEC-03: Defensive size limits for collaborative updates to prevent memory exhaustion.
 // Document updates might contain base64 image strings (if allowed by the editor),
@@ -81,6 +95,52 @@ function resolvePendingJoinWaiters(): void {
   if (pendingJoinCounts.size > 0) return;
   for (const resolve of pendingJoinWaiters) resolve();
   pendingJoinWaiters.clear();
+}
+
+function isTrustedSocketOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  try {
+    return new URL(origin).origin === trustedClientOrigin;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promise<boolean> {
+  if (
+    !force &&
+    Date.now() - socket.data.lastSessionValidation < SESSION_REVALIDATION_INTERVAL
+  ) {
+    return true;
+  }
+
+  if (socket.data.sessionValidation) {
+    return socket.data.sessionValidation;
+  }
+
+  const headers = new Headers();
+  headers.set("cookie", socket.data.authCookie);
+  const validation = auth.api
+    .getSession({ headers })
+    .then((session) => session?.session.id === socket.data.sessionId)
+    .catch(() => false);
+  socket.data.sessionValidation = validation;
+
+  try {
+    const valid = await validation;
+    if (valid) {
+      socket.data.lastSessionValidation = Date.now();
+      return true;
+    }
+
+    socket.emit("doc:error", { message: "Session expired" });
+    socket.disconnect(true);
+    return false;
+  } finally {
+    if (socket.data.sessionValidation === validation) {
+      socket.data.sessionValidation = undefined;
+    }
+  }
 }
 
 function getOrCreateDoc(docId: string): Y.Doc {
@@ -406,6 +466,9 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       origin: config.clientUrl,
       credentials: true,
     },
+    allowRequest: (request, callback) => {
+      callback(null, isTrustedSocketOrigin(request.headers.origin));
+    },
   });
 
   // Auth middleware
@@ -426,6 +489,9 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       socket.data.userId = session.user.id;
       socket.data.userName = session.user.name;
       socket.data.userEmail = session.user.email;
+      socket.data.authCookie = cookies;
+      socket.data.sessionId = session.session.id;
+      socket.data.lastSessionValidation = Date.now();
       next();
     } catch {
       next(new Error("Authentication failed"));
@@ -440,6 +506,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     // Initialize per-socket role map
     socketRoles.set(socket.id, new Map());
     socketJoinGenerations.set(socket.id, new Map());
+    const sessionValidationTimer = setInterval(() => {
+      void ensureSocketSession(socket, true);
+    }, SESSION_REVALIDATION_INTERVAL);
+    sessionValidationTimer.unref();
+    socket.data.sessionValidationTimer = sessionValidationTimer;
 
     console.log(`User connected: ${userEmail} (${userId})`);
 
@@ -462,6 +533,18 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         );
         pendingJoinTracked = true;
         const joinGeneration = advanceJoinGeneration(socket.id, parsedDocumentId);
+        if (!(await ensureSocketSession(socket))) {
+          respond({ success: false, error: "Session expired" });
+          return;
+        }
+        if (
+          isDraining ||
+          !socket.connected ||
+          !isCurrentJoin(socket.id, parsedDocumentId, joinGeneration)
+        ) {
+          respond({ success: false, error: "Document join was cancelled" });
+          return;
+        }
         const { hasAccess } = await DocumentService.getDocumentAccess(
           parsedDocumentId,
           userId
@@ -558,7 +641,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       }
     });
 
-    socket.on("doc:update", (documentId: string, update: Uint8Array) => {
+    socket.on("doc:update", async (documentId: string, update: Uint8Array) => {
       const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
       if (!parsedDocumentId.success) {
         socket.emit("doc:error", { message: "Invalid document id" });
@@ -571,6 +654,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         socket.emit("doc:error", { documentId, message: "Server is shutting down" });
         return;
       }
+      if (!(await ensureSocketSession(socket))) return;
 
       // SEC-01: Must be in the room
       if (!socket.rooms.has(roomName)) {
@@ -612,13 +696,14 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       socket.to(roomName).emit("doc:update", { documentId, update });
     });
 
-    socket.on("awareness:update", (documentId: string, update: Uint8Array) => {
+    socket.on("awareness:update", async (documentId: string, update: Uint8Array) => {
       const parsedDocumentId = DocumentIdSchema.safeParse(documentId);
       if (!parsedDocumentId.success) return;
       documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
 
       if (isDraining) return;
+      if (!(await ensureSocketSession(socket))) return;
 
       // Must be in the room
       if (!socket.rooms.has(roomName)) {
@@ -642,6 +727,10 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const docIds = roles ? [...roles.keys()] : [];
       socketRoles.delete(socket.id);
       socketJoinGenerations.delete(socket.id);
+      if (socket.data.sessionValidationTimer) {
+        clearInterval(socket.data.sessionValidationTimer);
+        socket.data.sessionValidationTimer = undefined;
+      }
 
       // Evict any now-empty docs
       if (!isDraining) {

@@ -55,7 +55,11 @@ export function useCollaborativeDocument(
       if (payload.documentId && payload.documentId !== documentId) return;
       const { message } = payload;
       console.error(`Socket document error: ${message}`);
-      if (message === "Access denied" || message === "Failed to load document") {
+      if (
+        message === "Access denied" ||
+        message === "Failed to load document" ||
+        message === "Session expired"
+      ) {
         setIsConnected(false);
         onAccessLostRef.current?.();
       }
