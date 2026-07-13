@@ -45,6 +45,15 @@ function Divider() {
   return <div className="w-px h-4 bg-border mx-1" />;
 }
 
+function parseExternalImageUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProps) {
   if (!editor) return null;
 
@@ -240,10 +249,16 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
       {/* Image */}
       <ToolbarButton
         onClick={() => {
-          const url = window.prompt("Enter image URL:");
-          if (url) {
-            editor.chain().focus().setImage({ src: url }).run();
+          const value = window.prompt("Enter image URL:");
+          if (!value) return;
+
+          const imageUrl = parseExternalImageUrl(value);
+          if (!imageUrl) {
+            window.alert("Images must use an http:// or https:// URL.");
+            return;
           }
+
+          editor.chain().focus().setImage({ src: imageUrl }).run();
         }}
         title="Insert image"
         disabled={!canEdit}

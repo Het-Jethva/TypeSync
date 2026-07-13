@@ -79,7 +79,7 @@ export function Editor({ documentId, role, onCollaboratorsChange, onAccessLost }
         CharacterCount,
         Image.configure({
           inline: false,
-          allowBase64: true,
+          allowBase64: false,
         }),
         Table.configure({
           resizable: true,
