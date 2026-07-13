@@ -1,11 +1,12 @@
 import type {
   ApiResponse,
   Document,
-  DocumentWithCollaborators,
+  DocumentWithRole,
   CreateDocumentRequest,
   UpdateDocumentRequest,
   AddCollaboratorRequest,
   DocumentCollaborator,
+  DocumentCollaboratorWithUser,
 } from "@typesync/shared";
 
 const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
@@ -38,7 +39,7 @@ export const api = {
       request<(Document & { role: string })[]>("/documents"),
 
     get: (id: string) =>
-      request<DocumentWithCollaborators>(`/documents/${id}`),
+      request<DocumentWithRole>(`/documents/${id}`),
 
     create: (body: CreateDocumentRequest) =>
       request<Document>("/documents", {
@@ -62,6 +63,9 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+
+    listCollaborators: (docId: string) =>
+      request<DocumentCollaboratorWithUser[]>(`/documents/${docId}/collaborators`),
 
     removeCollaborator: (docId: string, userId: string) =>
       request(`/documents/${docId}/collaborators/${userId}`, {

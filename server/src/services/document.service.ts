@@ -127,6 +127,15 @@ export class DocumentService {
       role = collab.role;
     }
 
+    return {
+      ...doc,
+      role: role as Role,
+    };
+  }
+
+  static async listCollaborators(docId: string, userId: string) {
+    await this.getDocumentOrThrow(docId, userId, "owner");
+
     const collaborators = await db
       .select({
         id: documentCollaborator.id,
@@ -142,23 +151,19 @@ export class DocumentService {
       .innerJoin(user, eq(documentCollaborator.userId, user.id))
       .where(eq(documentCollaborator.documentId, docId));
 
-    return {
-      ...doc,
-      collaborators: collaborators.map((c) => ({
-        id: c.id,
-        documentId: c.documentId,
-        userId: c.userId,
-        role: c.role as Role,
-        invitedAt: c.invitedAt,
-        user: {
-          id: c.userId,
-          name: c.userName,
-          email: c.userEmail,
-          image: c.userImage,
-        },
-      })),
-      role: role as Role,
-    };
+    return collaborators.map((c) => ({
+      id: c.id,
+      documentId: c.documentId,
+      userId: c.userId,
+      role: c.role as Role,
+      invitedAt: c.invitedAt,
+      user: {
+        id: c.userId,
+        name: c.userName,
+        email: c.userEmail,
+        image: c.userImage,
+      },
+    }));
   }
 
   static async updateDocumentTitle(docId: string, title: string, userId: string) {
@@ -179,7 +184,12 @@ export class DocumentService {
     await db.delete(document).where(eq(document.id, docId));
   }
 
-  static async addCollaborator(docId: string, email: string, role: string, userId: string) {
+  static async addCollaborator(
+    docId: string,
+    email: string,
+    role: "editor" | "viewer",
+    userId: string
+  ) {
     await this.getDocumentOrThrow(docId, userId, 'owner');
 
     const [targetUser] = await db
@@ -194,26 +204,16 @@ export class DocumentService {
       throw new AppError(400, "Cannot add yourself as a collaborator");
     }
 
-    const [existing] = await db
-      .select({ id: documentCollaborator.id })
-      .from(documentCollaborator)
-      .where(and(eq(documentCollaborator.documentId, docId), eq(documentCollaborator.userId, targetUser.id)));
-
-    if (existing) {
-      const [updated] = await db
-        .update(documentCollaborator)
-        .set({ role: (role as "editor" | "viewer") || "editor" })
-        .where(eq(documentCollaborator.id, existing.id))
-        .returning();
-      return updated;
-    }
-
     const [collab] = await db
       .insert(documentCollaborator)
       .values({
         documentId: docId,
         userId: targetUser.id,
-        role: (role as "editor" | "viewer") || "editor",
+        role,
+      })
+      .onConflictDoUpdate({
+        target: [documentCollaborator.documentId, documentCollaborator.userId],
+        set: { role },
       })
       .returning();
 

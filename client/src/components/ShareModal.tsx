@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
 import { api } from "../lib/api";
+import type { DocumentCollaboratorWithUser } from "@typesync/shared";
 
 interface ShareModalProps {
   documentId: string;
@@ -14,14 +15,14 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [collaborators, setCollaborators] = useState<DocumentCollaboratorWithUser[]>([]);
   const [isFetching, setIsFetching] = useState(true);
 
   const fetchCollaborators = useCallback(async () => {
     try {
-      const res = await api.documents.get(documentId);
+      const res = await api.documents.listCollaborators(documentId);
       if (res.data) {
-        setCollaborators(res.data.collaborators || []);
+        setCollaborators(res.data);
       }
     } catch (err) {
       console.error("Failed to fetch collaborators:", err);

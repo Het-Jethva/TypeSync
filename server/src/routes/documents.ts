@@ -87,7 +87,16 @@ router.delete(
   })
 );
 
-// ─── Add collaborator ────────────────────────────────────
+// ─── Collaborators ───────────────────────────────────────
+router.get(
+  "/:id/collaborators",
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const docId = uuidParam(req.params.id);
+    const collaborators = await DocumentService.listCollaborators(docId, req.user!.id);
+    res.json({ success: true, data: collaborators });
+  })
+);
+
 router.post(
   "/:id/collaborators",
   asyncHandler(async (req: AuthenticatedRequest, res) => {

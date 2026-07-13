@@ -18,8 +18,7 @@ export interface Document {
   updatedAt: string;
 }
 
-export interface DocumentWithCollaborators extends Document {
-  collaborators: DocumentCollaborator[];
+export interface DocumentWithRole extends Document {
   role: Role;
 }
 
@@ -35,6 +34,10 @@ export interface DocumentCollaborator {
     email: string;
     image?: string | null;
   };
+}
+
+export interface DocumentCollaboratorWithUser extends DocumentCollaborator {
+  user: NonNullable<DocumentCollaborator["user"]>;
 }
 
 // ─── User Presence ───────────────────────────────────────
