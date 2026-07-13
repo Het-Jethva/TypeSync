@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useBlocker } from "react-router-dom";
+import type { BlockerFunction } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "../components/Sidebar";
 import { Editor } from "../components/Editor";
@@ -7,6 +8,9 @@ import { DocumentHeader } from "../components/DocumentHeader";
 import { api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import type { Document } from "@typesync/shared";
+
+const PENDING_UPDATES_MESSAGE =
+  "Some edits have not reached the server yet. Leave anyway? Those edits will be lost.";
 
 export default function DashboardPage() {
   const { id: documentId } = useParams();
@@ -20,6 +24,7 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
   const hasLoadedDocumentsRef = useRef(false);
+  const bypassNextNavigationRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -31,10 +36,32 @@ export default function DashboardPage() {
 
   const confirmLeavingWithPendingUpdates = useCallback(() => {
     if (!hasPendingDocumentUpdates) return true;
-    return window.confirm(
-      "Some edits have not reached the server yet. Leave anyway? Those edits will be lost."
-    );
+    return window.confirm(PENDING_UPDATES_MESSAGE);
   }, [hasPendingDocumentUpdates]);
+
+  const shouldBlockNavigation: BlockerFunction = useCallback(
+    ({ currentLocation, nextLocation }) => {
+      if (bypassNextNavigationRef.current) {
+        bypassNextNavigationRef.current = false;
+        return false;
+      }
+      return (
+        hasPendingDocumentUpdates &&
+        currentLocation.pathname !== nextLocation.pathname
+      );
+    },
+    [hasPendingDocumentUpdates]
+  );
+  const navigationBlocker = useBlocker(shouldBlockNavigation);
+
+  useEffect(() => {
+    if (navigationBlocker.state !== "blocked") return;
+    if (window.confirm(PENDING_UPDATES_MESSAGE)) {
+      navigationBlocker.proceed();
+    } else {
+      navigationBlocker.reset();
+    }
+  }, [navigationBlocker]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -96,6 +123,7 @@ export default function DashboardPage() {
     const handlePermissionRevoked = (payload: { documentId: string }) => {
       setDocuments((current) => current.filter((doc) => doc.id !== payload.documentId));
       if (documentId === payload.documentId) {
+        bypassNextNavigationRef.current = true;
         navigate("/dashboard");
       }
       fetchDocuments();
@@ -133,12 +161,14 @@ export default function DashboardPage() {
   }, []);
 
   const handleCreateDocument = async () => {
+    const confirmedPendingUpdates = hasPendingDocumentUpdates;
     if (!confirmLeavingWithPendingUpdates()) return;
 
     try {
       const res = await api.documents.create({ title: "Untitled" });
       if (res.data) {
         await fetchDocuments();
+        if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
         navigate(`/document/${res.data.id}`);
       }
     } catch (err) {
@@ -149,12 +179,14 @@ export default function DashboardPage() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
+    const confirmedPendingUpdates = documentId === docId && hasPendingDocumentUpdates;
     if (documentId === docId && !confirmLeavingWithPendingUpdates()) return;
 
     try {
       await api.documents.delete(docId);
       await fetchDocuments();
       if (documentId === docId) {
+        if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
         navigate("/dashboard");
       }
       addNotification("Document deleted successfully", "success");
@@ -243,14 +275,19 @@ export default function DashboardPage() {
               onDeleteDocument={handleDeleteDocument}
               onSelectDocument={(id) => {
                 if (id !== documentId) {
-                  if (!confirmLeavingWithPendingUpdates()) return;
                   navigate(`/document/${id}`);
                 }
                 if (isMobile) {
                   setSidebarOpen(false);
                 }
               }}
-              onBeforeSignOut={confirmLeavingWithPendingUpdates}
+              onBeforeSignOut={() => {
+                const canLeave = confirmLeavingWithPendingUpdates();
+                if (canLeave && hasPendingDocumentUpdates) {
+                  bypassNextNavigationRef.current = true;
+                }
+                return canLeave;
+              }}
               onClose={() => setSidebarOpen(false)}
               showCloseButton={isMobile}
             />
@@ -304,6 +341,7 @@ export default function DashboardPage() {
                 onPendingUpdatesChange={setHasPendingDocumentUpdates}
                 onAccessLost={() => {
                   fetchDocuments();
+                  bypassNextNavigationRef.current = true;
                   navigate("/dashboard");
                 }}
               />
