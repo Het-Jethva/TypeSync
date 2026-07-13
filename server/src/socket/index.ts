@@ -36,6 +36,8 @@ const loadingDocs = new Map<string, Promise<void>>();
 const socketRoles = new Map<string, Map<string, string>>();
 const socketJoinGenerations = new Map<string, Map<string, number>>();
 const pendingJoinCounts = new Map<string, number>();
+const pendingJoinWaiters = new Set<() => void>();
+let isDraining = false;
 
 interface PersistenceState {
   dirty: boolean;
@@ -65,6 +67,21 @@ const MAX_DOC_UPDATE_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_AWARENESS_UPDATE_BYTES = 64 * 1024; // 64KB
 
 // ─── Helper functions ────────────────────────────────────
+
+export function beginSocketDrain(): void {
+  isDraining = true;
+}
+
+export function waitForSocketDrain(): Promise<void> {
+  if (pendingJoinCounts.size === 0) return Promise.resolve();
+  return new Promise((resolve) => pendingJoinWaiters.add(resolve));
+}
+
+function resolvePendingJoinWaiters(): void {
+  if (pendingJoinCounts.size > 0) return;
+  for (const resolve of pendingJoinWaiters) resolve();
+  pendingJoinWaiters.clear();
+}
 
 function getOrCreateDoc(docId: string): Y.Doc {
   let doc = docs.get(docId);
@@ -378,6 +395,7 @@ export function handleDocumentDeleted(
 // ─── Socket Setup ────────────────────────────────────────
 
 export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
+  isDraining = false;
   const io = new SocketIOServer<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -433,6 +451,10 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       let pendingJoinTracked = false;
       const respond = typeof acknowledge === "function" ? acknowledge : () => {};
       try {
+        if (isDraining) {
+          respond({ success: false, error: "Server is shutting down" });
+          return;
+        }
         parsedDocumentId = DocumentIdSchema.parse(documentId);
         pendingJoinCounts.set(
           parsedDocumentId,
@@ -511,6 +533,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           } else {
             pendingJoinCounts.delete(parsedDocumentId);
             await evictIfEmpty(io, parsedDocumentId);
+            resolvePendingJoinWaiters();
           }
         }
       }
@@ -530,7 +553,9 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       console.log(`${userEmail} left document ${documentId}`);
 
       // Evict from memory if room is now empty
-      await evictIfEmpty(io, documentId);
+      if (!isDraining) {
+        await evictIfEmpty(io, documentId);
+      }
     });
 
     socket.on("doc:update", (documentId: string, update: Uint8Array) => {
@@ -541,6 +566,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       }
       documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
+
+      if (isDraining) {
+        socket.emit("doc:error", { documentId, message: "Server is shutting down" });
+        return;
+      }
 
       // SEC-01: Must be in the room
       if (!socket.rooms.has(roomName)) {
@@ -588,6 +618,8 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       documentId = parsedDocumentId.data;
       const roomName = `doc:${documentId}`;
 
+      if (isDraining) return;
+
       // Must be in the room
       if (!socket.rooms.has(roomName)) {
         return;
@@ -612,8 +644,10 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       socketJoinGenerations.delete(socket.id);
 
       // Evict any now-empty docs
-      for (const docId of docIds) {
-        await evictIfEmpty(io, docId);
+      if (!isDraining) {
+        for (const docId of docIds) {
+          await evictIfEmpty(io, docId);
+        }
       }
     });
   });

@@ -5,8 +5,14 @@ import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
-import { setupSocket, flushAndCleanup } from "./socket/index.js";
+import {
+  beginSocketDrain,
+  setupSocket,
+  flushAndCleanup,
+  waitForSocketDrain,
+} from "./socket/index.js";
 import { errorHandler } from "./middleware/error.js";
+import { pool } from "./db/index.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -43,25 +49,41 @@ httpServer.listen(config.port, () => {
 });
 
 // ─── Graceful shutdown ───────────────────────────────────
+let shuttingDown = false;
+const SHUTDOWN_TIMEOUT_MS = 30_000;
+
 async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log(`${signal} received, shutting down gracefully...`);
+  let exitCode = 0;
+  const forcedExit = setTimeout(() => {
+    console.error(`Graceful shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms; forcing exit.`);
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forcedExit.unref();
   try {
+    beginSocketDrain();
+    await io.close();
+    await waitForSocketDrain();
     const { failed } = await flushAndCleanup();
-    httpServer.close();
     if (failed.length > 0) {
       console.error(`Graceful shutdown: failed to save ${failed.length} document(s).`);
-      process.exit(1);
+      exitCode = 1;
     } else {
       console.log('Graceful shutdown completed successfully.');
-      process.exit(0);
     }
+    await pool.end();
   } catch (error) {
     console.error('Fatal error during graceful shutdown:', error);
-    httpServer.close();
-    process.exit(1);
+    exitCode = 1;
+    await pool.end().catch((poolError) => {
+      console.error('Failed to close database pool:', poolError);
+    });
   }
+  clearTimeout(forcedExit);
+  process.exitCode = exitCode;
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
