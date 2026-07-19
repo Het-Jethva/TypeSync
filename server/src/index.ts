@@ -17,6 +17,10 @@ import { pool } from "./db/index.js";
 const app = express();
 const httpServer = createServer(app);
 
+pool.on("error", () => {
+  console.error("Unexpected database pool error");
+});
+
 // ─── Middleware ───────────────────────────────────────────
 app.use(
   cors({
@@ -32,6 +36,16 @@ app.all("/api/auth/*splat", toNodeHandler(auth));
 // ─── Health check ────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.get("/api/ready", async (_req, res) => {
+  try {
+    await pool.query("select 1");
+    res.json({ status: "ready", timestamp: new Date().toISOString() });
+  } catch {
+    console.error("Database readiness check failed");
+    res.status(503).json({ status: "not_ready", timestamp: new Date().toISOString() });
+  }
 });
 
 // ─── Socket.IO ───────────────────────────────────────────

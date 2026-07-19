@@ -113,6 +113,10 @@ This single-instance constraint matches the current free Render deployment. Do
 not enable horizontal scaling without first adding shared real-time coordination
 and revisiting document persistence.
 
+Use `GET /api/health` as the dependency-free process liveness probe. Configure
+`GET /api/ready` as the routing/readiness target; it returns 200 only when
+PostgreSQL is reachable.
+
 ## Project Structure
 
 ```
