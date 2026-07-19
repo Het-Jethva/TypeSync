@@ -1,16 +1,11 @@
 import { Server as SocketIOServer } from "socket.io";
 import { Server as HttpServer } from "http";
-import * as Y from "yjs";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../db/index.js";
-import { document } from "../db/schema.js";
 import { DocumentService } from "../services/document.service.js";
 import { auth } from "../lib/auth.js";
 import { config } from "../config.js";
 import type {
   ClientToServerEvents,
-  DocumentSizeStatus,
   DocumentJoinResult,
   DocumentUpdateResult,
   Role,
@@ -18,54 +13,27 @@ import type {
 } from "@typesync/shared";
 import { createAwarenessManager } from "./awareness.js";
 import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
+import { createDocumentRuntime } from "./document-runtime.js";
 
 export type { TypeSyncSocketServer } from "./types.js";
 
 // State maps
-const docs = new Map<string, Y.Doc>();
-const loadedDocs = new Set<string>();
-const loadingDocs = new Map<string, Promise<void>>();
 const socketRoles = new Map<string, Map<string, string>>();
 const socketJoinGenerations = new Map<string, Map<string, number>>();
 const pendingJoinCounts = new Map<string, number>();
 const pendingJoinWaiters = new Set<() => void>();
 let isDraining = false;
 let activeAwarenessManager: ReturnType<typeof createAwarenessManager> | undefined;
+const documentRuntime = createDocumentRuntime();
 
 function getAwarenessManager(): ReturnType<typeof createAwarenessManager> {
   if (!activeAwarenessManager) throw new Error("Awareness manager is not initialized");
   return activeAwarenessManager;
 }
 
-interface PersistenceState {
-  dirty: boolean;
-  flushRequested: boolean;
-  persisting?: Promise<void>;
-  debounceTimer?: NodeJS.Timeout;
-  maxWaitTimer?: NodeJS.Timeout;
-  retryTimer?: NodeJS.Timeout;
-  cancelled: boolean;
-}
-
-const persistenceStates = new Map<string, PersistenceState>();
-
-interface DocumentSizeState {
-  encodedBytes: number;
-  pendingUpdateBytes: number;
-}
-
-const documentSizeStates = new Map<string, DocumentSizeState>();
-
-const SAVE_DEBOUNCE_INTERVAL = 5000;
-const SAVE_MAX_WAIT_INTERVAL = 30000;
-const SAVE_RETRY_INTERVAL = 15000;
 const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
 const trustedClientOrigin = new URL(config.clientUrl).origin;
-
-const MAX_DOC_UPDATE_BYTES = 1 * 1024 * 1024;
-const DOC_SIZE_WARNING_BYTES = 8 * 1024 * 1024;
-const MAX_DOC_STATE_BYTES = 10 * 1024 * 1024;
 
 // ─── Helper functions ────────────────────────────────────
 
@@ -130,311 +98,9 @@ async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promi
   }
 }
 
-function getOrCreateDoc(docId: string): Y.Doc {
-  let doc = docs.get(docId);
-  if (!doc) {
-    doc = new Y.Doc();
-    docs.set(docId, doc);
-  }
-  return doc;
-}
-
-function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): number {
-  const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
-  documentSizeStates.set(docId, { encodedBytes, pendingUpdateBytes: 0 });
-  return encodedBytes;
-}
-
-function getDocumentSizeState(docId: string, ydoc: Y.Doc): DocumentSizeState {
-  let state = documentSizeStates.get(docId);
-  if (!state) {
-    recordEncodedDocumentSize(docId, ydoc);
-    state = documentSizeStates.get(docId)!;
-  }
-  return state;
-}
-
-function sizeStatus(documentId: string, bytes: number): DocumentSizeStatus | null {
-  if (bytes < DOC_SIZE_WARNING_BYTES) return null;
-  return {
-    documentId,
-    level: bytes >= MAX_DOC_STATE_BYTES ? "limit" : "warning",
-    reason: "document",
-    bytes,
-    maxBytes: MAX_DOC_STATE_BYTES,
-  };
-}
-
-function preflightDocumentUpdate(
-  docId: string,
-  ydoc: Y.Doc,
-  update: Uint8Array
-): { allowed: boolean; status: DocumentSizeStatus | null } {
-  const state = getDocumentSizeState(docId, ydoc);
-  if (state.encodedBytes >= MAX_DOC_STATE_BYTES) {
-    return { allowed: false, status: sizeStatus(docId, state.encodedBytes) };
-  }
-
-  const projectedUpperBound =
-    state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
-  if (projectedUpperBound < DOC_SIZE_WARNING_BYTES) {
-    state.pendingUpdateBytes += update.byteLength;
-    return { allowed: true, status: null };
-  }
-
-  const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
-  const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
-  state.encodedBytes = currentSnapshot.byteLength;
-  state.pendingUpdateBytes = 0;
-
-  if (candidateSnapshot.byteLength > MAX_DOC_STATE_BYTES) {
-    return {
-      allowed: false,
-      status: {
-        documentId: docId,
-        level: "limit",
-        reason: "document",
-        bytes: candidateSnapshot.byteLength,
-        maxBytes: MAX_DOC_STATE_BYTES,
-      },
-    };
-  }
-
-  state.encodedBytes = candidateSnapshot.byteLength;
-  return {
-    allowed: true,
-    status: sizeStatus(docId, candidateSnapshot.byteLength),
-  };
-}
-
-async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
-  const [doc] = await db
-    .select({ yDocState: document.yDocState })
-    .from(document)
-    .where(eq(document.id, docId));
-
-  if (doc?.yDocState) {
-    try {
-      Y.applyUpdate(ydoc, new Uint8Array(doc.yDocState));
-    } catch (error) {
-      console.error(`Malformed Yjs document state in DB for document ${docId}:`, error);
-      throw new Error("Malformed document state in database", { cause: error });
-    }
-  }
-}
-
-async function saveDocToDB(docId: string, state: Uint8Array): Promise<void> {
-  await db
-    .update(document)
-    .set({
-      yDocState: Buffer.from(state),
-      updatedAt: new Date(),
-    })
-    .where(eq(document.id, docId));
-}
-
-function getPersistenceState(docId: string): PersistenceState {
-  let state = persistenceStates.get(docId);
-  if (!state) {
-    state = { dirty: false, flushRequested: false, cancelled: false };
-    persistenceStates.set(docId, state);
-  }
-  return state;
-}
-
-function clearPersistenceTimers(state: PersistenceState): void {
-  if (state.debounceTimer) clearTimeout(state.debounceTimer);
-  if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
-  if (state.retryTimer) clearTimeout(state.retryTimer);
-  state.debounceTimer = undefined;
-  state.maxWaitTimer = undefined;
-  state.retryTimer = undefined;
-}
-
-async function runPersistence(docId: string, ydoc: Y.Doc, state: PersistenceState): Promise<void> {
-  if (state.persisting) {
-    return state.persisting;
-  }
-
-  const operation = (async () => {
-    while (state.flushRequested && !state.cancelled) {
-      state.flushRequested = false;
-      clearPersistenceTimers(state);
-      if (!state.dirty) continue;
-
-      state.dirty = false;
-      const snapshot = Y.encodeStateAsUpdate(ydoc);
-      documentSizeStates.set(docId, {
-        encodedBytes: snapshot.byteLength,
-        pendingUpdateBytes: 0,
-      });
-      try {
-        await saveDocToDB(docId, snapshot);
-      } catch (error) {
-        state.dirty = true;
-        throw error;
-      }
-    }
-  })();
-
-  state.persisting = operation;
-  try {
-    await operation;
-  } finally {
-    if (state.persisting === operation) {
-      state.persisting = undefined;
-    }
-  }
-}
-
-function scheduleRetry(docId: string, ydoc: Y.Doc, state: PersistenceState): void {
-  if (state.cancelled || state.retryTimer) return;
-  state.retryTimer = setTimeout(() => {
-    state.retryTimer = undefined;
-    triggerScheduledFlush(docId, ydoc, state);
-  }, SAVE_RETRY_INTERVAL);
-}
-
-function triggerScheduledFlush(docId: string, ydoc: Y.Doc, state: PersistenceState): void {
-  if (state.cancelled) return;
-  state.flushRequested = true;
-  if (state.persisting) return;
-
-  void runPersistence(docId, ydoc, state).catch((error) => {
-    if (state.cancelled) return;
-    console.error(`Failed to save doc ${docId}; retrying:`, error);
-    scheduleRetry(docId, ydoc, state);
-  });
-}
-
-function scheduleSave(docId: string, ydoc: Y.Doc): void {
-  const state = getPersistenceState(docId);
-  state.dirty = true;
-
-  if (state.debounceTimer) clearTimeout(state.debounceTimer);
-  state.debounceTimer = setTimeout(() => {
-    state.debounceTimer = undefined;
-    triggerScheduledFlush(docId, ydoc, state);
-  }, SAVE_DEBOUNCE_INTERVAL);
-
-  if (!state.maxWaitTimer) {
-    state.maxWaitTimer = setTimeout(() => {
-      state.maxWaitTimer = undefined;
-      triggerScheduledFlush(docId, ydoc, state);
-    }, SAVE_MAX_WAIT_INTERVAL);
-  }
-}
-
-async function flushDocumentNow(docId: string, ydoc: Y.Doc): Promise<void> {
-  const state = getPersistenceState(docId);
-  clearPersistenceTimers(state);
-
-  while (!state.cancelled) {
-    state.flushRequested = true;
-    await runPersistence(docId, ydoc, state);
-    if (!state.dirty && !state.persisting) return;
-  }
-}
-
-function discardPersistenceState(docId: string): void {
-  const state = persistenceStates.get(docId);
-  documentSizeStates.delete(docId);
-  if (!state) return;
-  state.cancelled = true;
-  state.flushRequested = false;
-  clearPersistenceTimers(state);
-  persistenceStates.delete(docId);
-}
-
-async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
-  // Already loaded from DB
-  if (loadedDocs.has(docId)) return;
-
-  // Another client is already loading this doc — wait for it
-  const existingLoad = loadingDocs.get(docId);
-  if (existingLoad) {
-    await existingLoad;
-    return;
-  }
-
-  // First load: create a promise, store it, then load
-  const loadPromise = loadDocFromDB(docId, ydoc)
-    .then(() => {
-      loadedDocs.add(docId);
-      recordEncodedDocumentSize(docId, ydoc);
-    })
-    .finally(() => {
-      loadingDocs.delete(docId);
-    });
-  loadingDocs.set(docId, loadPromise);
-  await loadPromise;
-}
-
-async function evictIfEmpty(
-  io: TypeSyncSocketServer,
-  documentId: string
-): Promise<void> {
-  const roomName = `doc:${documentId}`;
-  const roomSize = io.sockets.adapter.rooms.get(roomName)?.size ?? 0;
-
-  if (roomSize > 0) return;
-
-  const ydoc = docs.get(documentId);
-  if (!ydoc) return;
-
-  // Persist before evicting
-  try {
-    await flushDocumentNow(documentId, ydoc);
-    const postSaveRoomSize = io.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
-    if (postSaveRoomSize > 0) {
-      return;
-    }
-  } catch (error) {
-    console.error(`Failed to save doc ${documentId}; keeping it in memory:`, error);
-    const state = getPersistenceState(documentId);
-    scheduleRetry(documentId, ydoc, state);
-    return;
-  }
-
-  discardPersistenceState(documentId);
-  ydoc.destroy();
-  docs.delete(documentId);
-  loadedDocs.delete(documentId);
-  documentSizeStates.delete(documentId);
-}
-
-// ─── Flush & Cleanup (BUG-05) ───────────────────────────
-
 export async function flushAndCleanup(): Promise<{ succeeded: string[]; failed: string[] }> {
-  const docEntries = Array.from(docs.entries());
-  const succeeded: string[] = [];
-  const failed: string[] = [];
-
-  if (docEntries.length === 0) {
-    return { succeeded, failed };
-  }
-
-  const results = await Promise.allSettled(
-    docEntries.map(async ([docId, ydoc]) => {
-      await flushDocumentNow(docId, ydoc);
-      return docId;
-    })
-  );
-
-  results.forEach((result, index) => {
-    const docId = docEntries[index][0];
-    if (result.status === "fulfilled") {
-      succeeded.push(docId);
-    } else {
-      failed.push(docId);
-      console.error(`Failed to save document ${docId} during flushAndCleanup:`, result.reason);
-    }
-  });
-
-  console.log(`Flushed ${succeeded.length} documents successfully, ${failed.length} failed to save.`);
-  return { succeeded, failed };
+  return documentRuntime.flushAll();
 }
-
 
 export function notifyPermissionChange(
   io: TypeSyncSocketServer,
@@ -498,17 +164,7 @@ export function handleDocumentDeleted(
     }
   }
 
-  discardPersistenceState(documentId);
-
-  // Evict/destroy the in-memory Y.Doc state immediately
-  const ydoc = docs.get(documentId);
-  if (ydoc) {
-    ydoc.destroy();
-    docs.delete(documentId);
-  }
-  loadedDocs.delete(documentId);
-  loadingDocs.delete(documentId);
-  documentSizeStates.delete(documentId);
+  documentRuntime.discard(documentId);
   getAwarenessManager().forgetDocument(documentId);
 }
 
@@ -617,8 +273,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         const roomName = `doc:${parsedDocumentId}`;
 
         // Load before joining so a failed DB read cannot publish an empty state.
-        const ydoc = getOrCreateDoc(parsedDocumentId);
-        await ensureDocLoaded(parsedDocumentId, ydoc);
+        const loaded = await documentRuntime.loadForJoin(parsedDocumentId);
 
         if (!socket.connected || !isCurrentJoin(socket.id, parsedDocumentId, joinGeneration)) {
           respond({ success: false, error: "Document join was cancelled" });
@@ -641,39 +296,19 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         socket.join(roomName);
         socketRoles.get(socket.id)!.set(parsedDocumentId, currentAccess.role);
 
-        const state = Y.encodeStateAsUpdate(ydoc);
-        const stateVector = Y.encodeStateVector(ydoc);
         respond({
           success: true,
-          state,
-          stateVector,
+          state: loaded.state,
+          stateVector: loaded.stateVector,
           role: currentAccess.role as Role,
           presence,
         });
 
-        const currentSizeStatus = sizeStatus(
-          parsedDocumentId,
-          getDocumentSizeState(parsedDocumentId, ydoc).encodedBytes
-        );
-        if (currentSizeStatus) {
-          socket.emit("doc:size-status", currentSizeStatus);
+        if (loaded.sizeStatus) {
+          socket.emit("doc:size-status", loaded.sizeStatus);
         }
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
-        if (parsedDocumentId) {
-          const roomName = `doc:${parsedDocumentId}`;
-          const roomSize = io.sockets.adapter.rooms.get(roomName)?.size ?? 0;
-          if (roomSize === 0 && !loadedDocs.has(parsedDocumentId)) {
-            const ydoc = docs.get(parsedDocumentId);
-            if (ydoc) {
-              ydoc.destroy();
-              docs.delete(parsedDocumentId);
-            }
-            loadedDocs.delete(parsedDocumentId);
-            loadingDocs.delete(parsedDocumentId);
-            discardPersistenceState(parsedDocumentId);
-          }
-        }
         respond({ success: false, error: "Failed to load document" });
       } finally {
         if (parsedDocumentId && pendingJoinTracked) {
@@ -682,7 +317,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
             pendingJoinCounts.set(parsedDocumentId, remaining);
           } else {
             pendingJoinCounts.delete(parsedDocumentId);
-            await evictIfEmpty(io, parsedDocumentId);
+            await documentRuntime.evictIfEmpty(io, parsedDocumentId);
             resolvePendingJoinWaiters();
           }
         }
@@ -703,7 +338,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // Evict from memory if room is now empty
       if (!isDraining) {
-        await evictIfEmpty(io, documentId);
+        await documentRuntime.evictIfEmpty(io, documentId);
       }
     });
 
@@ -747,51 +382,37 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
-      // Validate that update payload is binary and within the size limit
+      // Validate that the update payload is binary before passing it to the runtime.
       if (!(update instanceof Uint8Array)) {
         socket.emit("doc:error", { documentId, message: "Invalid document update payload type" });
         respond({ success: false, code: "invalid-payload", error: "Invalid document update payload" });
         return;
       }
 
-      if (update.byteLength > MAX_DOC_UPDATE_BYTES) {
-        socket.emit("doc:size-status", {
-          documentId,
-          level: "limit",
-          reason: "update",
-          bytes: update.byteLength,
-          maxBytes: MAX_DOC_UPDATE_BYTES,
-        });
+      const result = documentRuntime.applyUpdate(documentId, update);
+      if (result.kind === "update-too-large") {
+        socket.emit("doc:size-status", result.status);
         respond({ success: false, code: "update-too-large", error: "Document update exceeds 1 MiB" });
         return;
       }
-
-      const ydoc = docs.get(documentId);
-      if (!ydoc) {
+      if (result.kind === "not-loaded") {
         socket.emit("doc:error", { documentId, message: "Document is not loaded" });
         respond({ success: false, code: "document-not-loaded", error: "Document is not loaded" });
         return;
       }
-
-      try {
-        const preflight = preflightDocumentUpdate(documentId, ydoc, update);
-        if (!preflight.allowed) {
-          if (preflight.status) socket.emit("doc:size-status", preflight.status);
-          respond({ success: false, code: "document-too-large", error: "Document size limit reached" });
-          return;
-        }
-
-        Y.applyUpdate(ydoc, new Uint8Array(update));
-        scheduleSave(documentId, ydoc);
-        if (preflight.status) {
-          io.to(roomName).emit("doc:size-status", preflight.status);
-        }
-      } catch (error) {
-        recordEncodedDocumentSize(documentId, ydoc);
-        console.error(`Failed to apply Yjs document update for document ${documentId}:`, error);
+      if (result.kind === "document-too-large") {
+        if (result.status) socket.emit("doc:size-status", result.status);
+        respond({ success: false, code: "document-too-large", error: "Document size limit reached" });
+        return;
+      }
+      if (result.kind === "invalid") {
+        console.error(`Failed to apply Yjs document update for document ${documentId}:`, result.error);
         socket.emit("doc:error", { documentId, message: "Malformed document update payload" });
         respond({ success: false, code: "invalid-payload", error: "Malformed document update payload" });
         return;
+      }
+      if (result.status) {
+        io.to(roomName).emit("doc:size-status", result.status);
       }
 
       // Broadcast to all other clients in the room
@@ -840,7 +461,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       // Evict any now-empty docs
       if (!isDraining) {
         for (const docId of docIds) {
-          await evictIfEmpty(io, docId);
+          await documentRuntime.evictIfEmpty(io, docId);
         }
       }
     });
