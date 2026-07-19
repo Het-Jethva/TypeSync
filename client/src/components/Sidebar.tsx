@@ -9,6 +9,9 @@ interface SidebarProps {
   documents: DocumentWithRole[];
   activeDocId?: string;
   isLoading: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
   onCreateDocument: () => void;
   onDeleteDocument: (id: string) => void;
   onSelectDocument: (id: string) => void;
@@ -42,6 +45,9 @@ export function Sidebar({
   documents,
   activeDocId,
   isLoading,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   onCreateDocument,
   onDeleteDocument,
   onSelectDocument,
@@ -138,7 +144,7 @@ export function Sidebar({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..."
+          placeholder={hasMore ? "Search loaded documents…" : "Search…"}
           className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
         />
         <select
@@ -159,46 +165,58 @@ export function Sidebar({
           <div className="p-4 flex justify-center">
             <div className="w-5 h-5 border-2 border-border-strong border-t-accent rounded-full animate-spin" />
           </div>
-        ) : sortedAndFiltered.length === 0 ? (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-[11px] text-text-muted text-center py-8"
-          >
-            {search ? "No documents found" : "No documents yet"}
-          </motion.p>
         ) : (
           <div className="space-y-0.5">
-            {sortedAndFiltered.map((doc) => (
-              <motion.button
-                key={doc.id}
-                layout
-                onClick={() => onSelectDocument(doc.id)}
-                onContextMenu={(e) => handleContextMenu(e, doc.id, doc.role)}
-                className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center gap-2.5 group border ${
-                  doc.id === activeDocId
-                    ? "bg-bg-elevated border-border-strong text-text-primary font-medium shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
-                    : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                }`}
+            {sortedAndFiltered.length === 0 ? (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-[11px] text-text-muted text-center py-8"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`w-3.5 h-3.5 shrink-0 mt-0.5 align-top transition-colors ${
-                  doc.id === activeDocId ? "text-accent" : "text-text-muted opacity-50 group-hover:text-text-primary group-hover:opacity-100"
-                }`}>
-                  <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <p className={`truncate text-xs ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
-                  <p className="text-[9px] text-text-muted">
-                    {formatRelativeTime(doc.updatedAt)}
-                  </p>
-                </div>
-                {doc.role !== "owner" && (
-                  <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
-                    {doc.role}
-                  </span>
-                )}
-              </motion.button>
-            ))}
+                {search ? "No documents found" : "No documents yet"}
+              </motion.p>
+            ) : (
+              sortedAndFiltered.map((doc) => (
+                <motion.button
+                  key={doc.id}
+                  layout
+                  onClick={() => onSelectDocument(doc.id)}
+                  onContextMenu={(e) => handleContextMenu(e, doc.id, doc.role)}
+                  className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center gap-2.5 group border ${
+                    doc.id === activeDocId
+                      ? "bg-bg-elevated border-border-strong text-text-primary font-medium shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                      : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`w-3.5 h-3.5 shrink-0 mt-0.5 align-top transition-colors ${
+                    doc.id === activeDocId ? "text-accent" : "text-text-muted opacity-50 group-hover:text-text-primary group-hover:opacity-100"
+                  }`}>
+                    <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className={`truncate text-xs ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
+                    <p className="text-[9px] text-text-muted">
+                      {formatRelativeTime(doc.updatedAt)}
+                    </p>
+                  </div>
+                  {doc.role !== "owner" && (
+                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
+                      {doc.role}
+                    </span>
+                  )}
+                </motion.button>
+              ))
+            )}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="w-full mt-2 px-3 py-2 rounded text-[11px] font-medium text-text-secondary border border-border hover:bg-bg-hover hover:text-text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
           </div>
         )}
       </div>

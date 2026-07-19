@@ -1,8 +1,38 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, lt, or } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../db/index.js";
 import { document, documentCollaborator, user } from "../db/schema.js";
 import { AppError } from "../middleware/error.js";
-import type { Role } from "@typesync/shared";
+import type { ListDocumentsQuery, Role } from "@typesync/shared";
+
+const DocumentCursorSchema = z.object({
+  updatedAt: z.string().datetime(),
+  id: z.string().uuid(),
+}).strict();
+
+type DocumentCursor = {
+  updatedAt: Date;
+  id: string;
+};
+
+function encodeDocumentCursor(cursor: DocumentCursor): string {
+  return Buffer.from(JSON.stringify({
+    updatedAt: cursor.updatedAt.toISOString(),
+    id: cursor.id,
+  })).toString("base64url");
+}
+
+function decodeDocumentCursor(cursor: string): DocumentCursor {
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) throw new Error("Invalid encoding");
+    const parsed = DocumentCursorSchema.parse(
+      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"))
+    );
+    return { updatedAt: new Date(parsed.updatedAt), id: parsed.id };
+  } catch {
+    throw new AppError(400, "Invalid document cursor");
+  }
+}
 
 export class DocumentService {
   private static async getDocumentOrThrow(
@@ -41,41 +71,59 @@ export class DocumentService {
     return doc;
   }
 
-  static async listUserDocuments(userId: string) {
-    const ownedDocs = await db
-      .select({
-        id: document.id,
-        title: document.title,
-        ownerId: document.ownerId,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-      })
-      .from(document)
-      .where(eq(document.ownerId, userId))
-      .orderBy(desc(document.updatedAt));
+  static async listUserDocuments(userId: string, pagination: ListDocumentsQuery) {
+    const cursor = pagination.cursor ? decodeDocumentCursor(pagination.cursor) : null;
+    const cursorFilter = cursor
+      ? or(
+          lt(document.updatedAt, cursor.updatedAt),
+          and(eq(document.updatedAt, cursor.updatedAt), lt(document.id, cursor.id))
+        )
+      : undefined;
+    const queryLimit = pagination.limit + 1;
 
-    const sharedDocs = await db
-      .select({
-        id: document.id,
-        title: document.title,
-        ownerId: document.ownerId,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-        role: documentCollaborator.role,
-      })
-      .from(documentCollaborator)
-      .innerJoin(document, eq(documentCollaborator.documentId, document.id))
-      .where(eq(documentCollaborator.userId, userId))
-      .orderBy(desc(document.updatedAt));
+    const [ownedDocs, sharedDocs] = await Promise.all([
+      db
+        .select({
+          id: document.id,
+          title: document.title,
+          ownerId: document.ownerId,
+          createdAt: document.createdAt,
+          updatedAt: document.updatedAt,
+        })
+        .from(document)
+        .where(and(eq(document.ownerId, userId), cursorFilter))
+        .orderBy(desc(document.updatedAt), desc(document.id))
+        .limit(queryLimit),
+      db
+        .select({
+          id: document.id,
+          title: document.title,
+          ownerId: document.ownerId,
+          createdAt: document.createdAt,
+          updatedAt: document.updatedAt,
+          role: documentCollaborator.role,
+        })
+        .from(documentCollaborator)
+        .innerJoin(document, eq(documentCollaborator.documentId, document.id))
+        .where(and(eq(documentCollaborator.userId, userId), cursorFilter))
+        .orderBy(desc(document.updatedAt), desc(document.id))
+        .limit(queryLimit),
+    ]);
 
     const combined = [
-      ...ownedDocs.map((d) => ({ ...d, role: "owner" as const })),
+      ...ownedDocs.map((doc) => ({ ...doc, role: "owner" as const })),
       ...sharedDocs,
-    ];
+    ].sort((a, b) => {
+      const updatedAtDifference = b.updatedAt.getTime() - a.updatedAt.getTime();
+      return updatedAtDifference || b.id.localeCompare(a.id);
+    });
+    const items = combined.slice(0, pagination.limit);
+    const lastItem = items.at(-1);
+    const nextCursor = combined.length > pagination.limit && lastItem
+      ? encodeDocumentCursor(lastItem)
+      : null;
 
-    return combined.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
+    return { items, nextCursor };
   }
 
   static async getDocumentAccess(docId: string, userId: string): Promise<{ hasAccess: boolean; role: string }> {

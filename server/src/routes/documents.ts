@@ -8,6 +8,7 @@ import {
   CreateDocumentSchema,
   UpdateDocumentSchema,
   AddCollaboratorSchema,
+  ListDocumentsQuerySchema,
 } from "@typesync/shared";
 
 export default function createDocumentRoutes(io: TypeSyncSocketServer) {
@@ -41,8 +42,9 @@ router.post(
 router.get(
   "/",
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const docs = await DocumentService.listUserDocuments(req.user!.id);
-    res.json({ success: true, data: docs });
+    const pagination = ListDocumentsQuerySchema.parse(req.query);
+    const page = await DocumentService.listUserDocuments(req.user!.id, pagination);
+    res.json({ success: true, data: page });
   })
 );
 

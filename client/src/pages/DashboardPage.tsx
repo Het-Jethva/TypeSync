@@ -19,12 +19,15 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [nextDocumentsCursor, setNextDocumentsCursor] = useState<string | null>(null);
+  const [isLoadingMoreDocuments, setIsLoadingMoreDocuments] = useState(false);
   const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
   const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
+  const documentsAppendRequestGenerationRef = useRef(0);
   const bypassNextNavigationRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
@@ -84,12 +87,16 @@ export default function DashboardPage() {
 
   const fetchDocuments = useCallback(async () => {
     const requestGeneration = ++documentsRequestGenerationRef.current;
+    documentsAppendRequestGenerationRef.current += 1;
+    setNextDocumentsCursor(null);
+    setIsLoadingMoreDocuments(false);
 
     try {
       const res = await api.documents.list();
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
       if (res.data) {
-        setDocuments(res.data);
+        setDocuments(res.data.items);
+        setNextDocumentsCursor(res.data.nextCursor);
         hasLoadedDocumentsRef.current = true;
         setDocumentsError(null);
       }
@@ -108,6 +115,46 @@ export default function DashboardPage() {
       }
     }
   }, [addNotification]);
+
+  const loadMoreDocuments = useCallback(async () => {
+    if (!nextDocumentsCursor || isLoadingMoreDocuments) return;
+
+    const refreshGeneration = documentsRequestGenerationRef.current;
+    const appendGeneration = ++documentsAppendRequestGenerationRef.current;
+    setIsLoadingMoreDocuments(true);
+
+    try {
+      const res = await api.documents.list({ cursor: nextDocumentsCursor });
+      if (
+        refreshGeneration !== documentsRequestGenerationRef.current ||
+        appendGeneration !== documentsAppendRequestGenerationRef.current
+      ) return;
+      if (res.data) {
+        const page = res.data;
+        setDocuments((current) => {
+          const loadedIds = new Set(current.map((document) => document.id));
+          const newItems = page.items.filter((document) => !loadedIds.has(document.id));
+          return [...current, ...newItems];
+        });
+        setNextDocumentsCursor(page.nextCursor);
+      }
+    } catch (err) {
+      if (
+        refreshGeneration !== documentsRequestGenerationRef.current ||
+        appendGeneration !== documentsAppendRequestGenerationRef.current
+      ) return;
+      console.error("Failed to load more documents:", err);
+      const message = err instanceof Error ? err.message : "Failed to load more documents";
+      addNotification(`Failed to load more documents: ${message}`, "error");
+    } finally {
+      if (
+        refreshGeneration === documentsRequestGenerationRef.current &&
+        appendGeneration === documentsAppendRequestGenerationRef.current
+      ) {
+        setIsLoadingMoreDocuments(false);
+      }
+    }
+  }, [addNotification, isLoadingMoreDocuments, nextDocumentsCursor]);
 
   useEffect(() => {
     fetchDocuments();
@@ -142,6 +189,7 @@ export default function DashboardPage() {
           doc.id === payload.documentId ? { ...doc, title: payload.title, updatedAt: payload.updatedAt } : doc
         )
       );
+      fetchDocuments();
     };
 
     socket.on("doc:permission-updated", handlePermissionUpdated);
@@ -279,6 +327,9 @@ export default function DashboardPage() {
               documents={documents}
               activeDocId={documentId}
               isLoading={isLoading}
+              hasMore={nextDocumentsCursor !== null}
+              isLoadingMore={isLoadingMoreDocuments}
+              onLoadMore={loadMoreDocuments}
               onCreateDocument={handleCreateDocument}
               onDeleteDocument={handleDeleteDocument}
               onSelectDocument={(id) => {

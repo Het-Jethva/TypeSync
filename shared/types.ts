@@ -112,6 +112,17 @@ export interface DocumentSizeStatus {
 }
 
 // ─── API Types ───────────────────────────────────────────
+export const ListDocumentsQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type ListDocumentsQuery = z.infer<typeof ListDocumentsQuerySchema>;
+
+export interface DocumentListPage {
+  items: DocumentWithRole[];
+  nextCursor: string | null;
+}
+
 export const CreateDocumentSchema = z.object({
   title: z.string().min(1, "Title is required").max(100).optional().default("Untitled"),
 });

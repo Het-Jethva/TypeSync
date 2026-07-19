@@ -7,6 +7,8 @@ import type {
   AddCollaboratorRequest,
   DocumentCollaborator,
   DocumentCollaboratorWithUser,
+  DocumentListPage,
+  ListDocumentsQuery,
 } from "@typesync/shared";
 
 const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
@@ -35,8 +37,13 @@ async function request<T>(
 
 export const api = {
   documents: {
-    list: () =>
-      request<DocumentWithRole[]>("/documents"),
+    list: (pagination: Partial<ListDocumentsQuery> = {}) => {
+      const params = new URLSearchParams();
+      if (pagination.cursor) params.set("cursor", pagination.cursor);
+      if (pagination.limit !== undefined) params.set("limit", String(pagination.limit));
+      const query = params.size > 0 ? `?${params.toString()}` : "";
+      return request<DocumentListPage>(`/documents${query}`);
+    },
 
     get: (id: string) =>
       request<DocumentWithRole>(`/documents/${id}`),
