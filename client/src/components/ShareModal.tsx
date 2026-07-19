@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "motion/react";
 import { api } from "../lib/api";
 import type { DocumentCollaboratorWithUser } from "@typesync/shared";
@@ -17,22 +17,40 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [collaborators, setCollaborators] = useState<DocumentCollaboratorWithUser[]>([]);
   const [isFetching, setIsFetching] = useState(true);
+  const collaboratorsRequestGenerationRef = useRef(0);
 
   const fetchCollaborators = useCallback(async () => {
+    const requestGeneration = ++collaboratorsRequestGenerationRef.current;
+    setIsFetching(true);
+
     try {
       const res = await api.documents.listCollaborators(documentId);
+      if (requestGeneration !== collaboratorsRequestGenerationRef.current) return;
       if (res.data) {
         setCollaborators(res.data);
       }
     } catch (err) {
+      if (requestGeneration !== collaboratorsRequestGenerationRef.current) return;
       console.error("Failed to fetch collaborators:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch collaborators");
     } finally {
-      setIsFetching(false);
+      if (requestGeneration === collaboratorsRequestGenerationRef.current) {
+        setIsFetching(false);
+      }
     }
   }, [documentId]);
 
   useEffect(() => {
-    fetchCollaborators();
+    collaboratorsRequestGenerationRef.current += 1;
+    setCollaborators([]);
+    setError("");
+    setSuccess("");
+    setIsFetching(true);
+    void fetchCollaborators();
+
+    return () => {
+      collaboratorsRequestGenerationRef.current += 1;
+    };
   }, [fetchCollaborators]);
 
   const handleUpdateRole = async (targetEmail: string, newRole: "editor" | "viewer") => {
@@ -40,7 +58,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
       setError("");
       setSuccess("");
       await api.documents.addCollaborator(documentId, { email: targetEmail, role: newRole });
-      fetchCollaborators();
+      await fetchCollaborators();
       onUpdate();
     } catch (err: any) {
       setError(err.message || "Failed to update collaborator role");
@@ -52,7 +70,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
       setError("");
       setSuccess("");
       await api.documents.removeCollaborator(documentId, userId);
-      fetchCollaborators();
+      await fetchCollaborators();
       onUpdate();
     } catch (err: any) {
       setError(err.message || "Failed to remove collaborator");
@@ -75,7 +93,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
       setSuccess(`Invited ${email} as ${role}`);
       setEmail("");
       onUpdate();
-      fetchCollaborators();
+      await fetchCollaborators();
     } catch (err: any) {
       setError(err.message || "Failed to add collaborator");
     } finally {
