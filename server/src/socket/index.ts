@@ -1,8 +1,6 @@
-import { Server as SocketIOServer, Socket as SocketIOSocket } from "socket.io";
+import { Server as SocketIOServer } from "socket.io";
 import { Server as HttpServer } from "http";
 import * as Y from "yjs";
-import * as decoding from "lib0/decoding";
-import * as encoding from "lib0/encoding";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
@@ -15,39 +13,13 @@ import type {
   DocumentSizeStatus,
   DocumentJoinResult,
   DocumentUpdateResult,
-  PresenceIdentity,
   Role,
   ServerToClientEvents,
 } from "@typesync/shared";
+import { createAwarenessManager } from "./awareness.js";
+import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
 
-// Types
-interface SocketData {
-  userId: string;
-  userName: string;
-  userEmail: string;
-  authCookie: string;
-  sessionId: string;
-  lastSessionValidation: number;
-  sessionValidation?: Promise<boolean>;
-  sessionValidationTimer?: NodeJS.Timeout;
-  awarenessTokens: number;
-  awarenessLastRefill: number;
-  awarenessViolations: number;
-}
-
-type TypeSyncSocket = SocketIOSocket<
-  ClientToServerEvents,
-  ServerToClientEvents,
-  Record<string, never>,
-  SocketData
->;
-
-export type TypeSyncSocketServer = SocketIOServer<
-  ClientToServerEvents,
-  ServerToClientEvents,
-  Record<string, never>,
-  SocketData
->;
+export type { TypeSyncSocketServer } from "./types.js";
 
 // State maps
 const docs = new Map<string, Y.Doc>();
@@ -58,6 +30,12 @@ const socketJoinGenerations = new Map<string, Map<string, number>>();
 const pendingJoinCounts = new Map<string, number>();
 const pendingJoinWaiters = new Set<() => void>();
 let isDraining = false;
+let activeAwarenessManager: ReturnType<typeof createAwarenessManager> | undefined;
+
+function getAwarenessManager(): ReturnType<typeof createAwarenessManager> {
+  if (!activeAwarenessManager) throw new Error("Awareness manager is not initialized");
+  return activeAwarenessManager;
+}
 
 interface PersistenceState {
   dirty: boolean;
@@ -78,14 +56,6 @@ interface DocumentSizeState {
 
 const documentSizeStates = new Map<string, DocumentSizeState>();
 
-interface AwarenessBinding {
-  clientId: number;
-  clock: number;
-}
-
-const socketAwarenessBindings = new Map<string, Map<string, AwarenessBinding>>();
-const awarenessClientOwners = new Map<string, Map<number, string>>();
-
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
@@ -96,42 +66,6 @@ const trustedClientOrigin = new URL(config.clientUrl).origin;
 const MAX_DOC_UPDATE_BYTES = 1 * 1024 * 1024;
 const DOC_SIZE_WARNING_BYTES = 8 * 1024 * 1024;
 const MAX_DOC_STATE_BYTES = 10 * 1024 * 1024;
-
-const MAX_AWARENESS_UPDATE_BYTES = 16 * 1024;
-const AWARENESS_UPDATES_PER_SECOND = 20;
-const AWARENESS_BURST_SIZE = 40;
-const MAX_AWARENESS_VIOLATIONS = 5;
-const PRESENCE_COLORS = [
-  "#c2593f",
-  "#4e655d",
-  "#d99a4c",
-  "#a3523f",
-  "#5a6b7c",
-  "#8c6f5e",
-  "#9c5a6c",
-  "#6b5c7b",
-] as const;
-const AwarenessClientIdSchema = z.number().int().nonnegative().max(0xffff_ffff);
-const AwarenessClockSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const RelativePositionIdSchema = z.object({
-  client: AwarenessClientIdSchema,
-  clock: AwarenessClockSchema,
-});
-const RelativePositionSchema = z.object({
-  type: RelativePositionIdSchema.optional(),
-  tname: z.string().max(256).optional(),
-  item: RelativePositionIdSchema.optional(),
-  assoc: z.number().int().safe().optional(),
-});
-const AwarenessStateSchema = z.object({
-  cursor: z
-    .object({
-      anchor: RelativePositionSchema,
-      head: RelativePositionSchema,
-    })
-    .nullable()
-    .optional(),
-});
 
 // ─── Helper functions ────────────────────────────────────
 
@@ -157,144 +91,6 @@ function isTrustedSocketOrigin(origin: string | undefined): boolean {
   } catch {
     return false;
   }
-}
-
-function presenceIdentity(socket: TypeSyncSocket): PresenceIdentity {
-  let hash = 0;
-  for (const char of socket.data.userId) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-
-  return {
-    userId: socket.data.userId,
-    name: socket.data.userName,
-    color: PRESENCE_COLORS[hash % PRESENCE_COLORS.length],
-  };
-}
-
-function consumeAwarenessToken(socket: TypeSyncSocket): boolean {
-  const now = Date.now();
-  const elapsedSeconds = (now - socket.data.awarenessLastRefill) / 1000;
-  socket.data.awarenessTokens = Math.min(
-    AWARENESS_BURST_SIZE,
-    socket.data.awarenessTokens + elapsedSeconds * AWARENESS_UPDATES_PER_SECOND
-  );
-  socket.data.awarenessLastRefill = now;
-
-  if (socket.data.awarenessTokens < 1) return false;
-  socket.data.awarenessTokens -= 1;
-  return true;
-}
-
-function rejectAwarenessUpdate(socket: TypeSyncSocket, documentId: string): void {
-  socket.data.awarenessViolations += 1;
-  socket.emit("doc:error", { documentId, message: "Awareness update rejected" });
-  if (socket.data.awarenessViolations >= MAX_AWARENESS_VIOLATIONS) {
-    socket.disconnect(true);
-  }
-}
-
-function encodeAwarenessEntry(
-  clientId: number,
-  clock: number,
-  state: Record<string, unknown> | null
-): Uint8Array {
-  const encoder = encoding.createEncoder();
-  encoding.writeVarUint(encoder, 1);
-  encoding.writeVarUint(encoder, clientId);
-  encoding.writeVarUint(encoder, clock);
-  encoding.writeVarString(encoder, JSON.stringify(state));
-  return encoding.toUint8Array(encoder);
-}
-
-function forgetAwarenessBinding(socketId: string, documentId: string): void {
-  const bindings = socketAwarenessBindings.get(socketId);
-  if (!bindings) return;
-  const binding = bindings.get(documentId);
-  if (!binding) return;
-
-  bindings.delete(documentId);
-  if (bindings.size === 0) socketAwarenessBindings.delete(socketId);
-
-  const owners = awarenessClientOwners.get(documentId);
-  if (owners?.get(binding.clientId) === socketId) {
-    owners.delete(binding.clientId);
-    if (owners.size === 0) awarenessClientOwners.delete(documentId);
-  }
-}
-
-function releaseAwarenessBinding(socket: TypeSyncSocket, documentId: string): void {
-  const binding = socketAwarenessBindings.get(socket.id)?.get(documentId);
-  if (!binding) return;
-
-  socket.to(`doc:${documentId}`).emit("awareness:update", {
-    documentId,
-    update: encodeAwarenessEntry(binding.clientId, binding.clock + 1, null),
-  });
-  forgetAwarenessBinding(socket.id, documentId);
-}
-
-function sanitizeAwarenessUpdate(
-  socket: TypeSyncSocket,
-  documentId: string,
-  update: Uint8Array
-): { update: Uint8Array; removed: boolean } | null {
-  const decoder = decoding.createDecoder(update);
-  const entryCount = decoding.readVarUint(decoder);
-  if (entryCount !== 1) throw new Error("Awareness frames must contain exactly one client");
-
-  const clientId = AwarenessClientIdSchema.parse(decoding.readVarUint(decoder));
-  const clock = AwarenessClockSchema.parse(decoding.readVarUint(decoder));
-  const rawState: unknown = JSON.parse(decoding.readVarString(decoder));
-  if (decoding.hasContent(decoder)) throw new Error("Awareness frame has trailing data");
-  const parsedState = rawState === null ? null : AwarenessStateSchema.parse(rawState);
-
-  let bindings = socketAwarenessBindings.get(socket.id);
-  if (!bindings) {
-    bindings = new Map();
-    socketAwarenessBindings.set(socket.id, bindings);
-  }
-  const existingBinding = bindings.get(documentId);
-
-  if (existingBinding && existingBinding.clientId !== clientId) {
-    throw new Error("Awareness client id changed within a document session");
-  }
-  if (!existingBinding && rawState === null) {
-    throw new Error("Cannot remove an unregistered awareness client");
-  }
-
-  let owners = awarenessClientOwners.get(documentId);
-  if (!owners) {
-    owners = new Map();
-    awarenessClientOwners.set(documentId, owners);
-  }
-  const ownerSocketId = owners.get(clientId);
-  if (ownerSocketId && ownerSocketId !== socket.id) {
-    throw new Error("Awareness client id is already owned by another socket");
-  }
-
-  if (existingBinding) {
-    const isStale = rawState === null
-      ? clock < existingBinding.clock
-      : clock <= existingBinding.clock;
-    if (isStale) return null;
-    existingBinding.clock = clock;
-  } else {
-    bindings.set(documentId, { clientId, clock });
-    owners.set(clientId, socket.id);
-  }
-
-  if (rawState === null) {
-    return { update: encodeAwarenessEntry(clientId, clock, null), removed: true };
-  }
-
-  return {
-    update: encodeAwarenessEntry(clientId, clock, {
-      ...parsedState,
-      user: presenceIdentity(socket),
-    }),
-    removed: false,
-  };
 }
 
 async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promise<boolean> {
@@ -575,7 +371,7 @@ async function ensureDocLoaded(docId: string, ydoc: Y.Doc): Promise<void> {
 }
 
 async function evictIfEmpty(
-  io: SocketIOServer<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>,
+  io: TypeSyncSocketServer,
   documentId: string
 ): Promise<void> {
   const roomName = `doc:${documentId}`;
@@ -657,7 +453,7 @@ export function notifyPermissionChange(
       socketRoles.get(socket.id)?.set(documentId, role);
       socket.emit("doc:permission-updated", { documentId, role });
     } else {
-      releaseAwarenessBinding(socket, documentId);
+      getAwarenessManager().releaseBinding(socket, documentId);
       socket.leave(roomName);
       socketRoles.get(socket.id)?.delete(documentId);
       socket.emit("doc:permission-revoked", { documentId });
@@ -694,7 +490,7 @@ export function handleDocumentDeleted(
     for (const socketId of socketIds) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-        releaseAwarenessBinding(socket, documentId);
+        getAwarenessManager().releaseBinding(socket, documentId);
         socketRoles.get(socketId)?.delete(documentId);
         socket.emit("doc:permission-revoked", { documentId });
         socket.leave(roomName);
@@ -713,7 +509,7 @@ export function handleDocumentDeleted(
   loadedDocs.delete(documentId);
   loadingDocs.delete(documentId);
   documentSizeStates.delete(documentId);
-  awarenessClientOwners.delete(documentId);
+  getAwarenessManager().forgetDocument(documentId);
 }
 
 
@@ -735,6 +531,8 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       callback(null, isTrustedSocketOrigin(request.headers.origin));
     },
   });
+  const awarenessManager = createAwarenessManager();
+  activeAwarenessManager = awarenessManager;
 
   // Auth middleware
   io.use(async (socket, next) => {
@@ -757,9 +555,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       socket.data.authCookie = cookies;
       socket.data.sessionId = session.session.id;
       socket.data.lastSessionValidation = Date.now();
-      socket.data.awarenessTokens = AWARENESS_BURST_SIZE;
-      socket.data.awarenessLastRefill = Date.now();
-      socket.data.awarenessViolations = 0;
       next();
     } catch {
       next(new Error("Authentication failed"));
@@ -768,11 +563,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
   io.on("connection", (socket) => {
     const userId = socket.data.userId!;
+    const presence = awarenessManager.initializeSocket(socket);
 
     // Initialize per-socket role map
     socketRoles.set(socket.id, new Map());
     socketJoinGenerations.set(socket.id, new Map());
-    socketAwarenessBindings.set(socket.id, new Map());
     const sessionValidationTimer = setInterval(() => {
       void ensureSocketSession(socket, true);
     }, SESSION_REVALIDATION_INTERVAL);
@@ -853,7 +648,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           state,
           stateVector,
           role: currentAccess.role as Role,
-          presence: presenceIdentity(socket),
+          presence,
         });
 
         const currentSizeStatus = sizeStatus(
@@ -900,7 +695,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       documentId = parsedDocumentId.data;
       advanceJoinGeneration(socket.id, documentId);
       const roomName = `doc:${documentId}`;
-      releaseAwarenessBinding(socket, documentId);
+      awarenessManager.releaseBinding(socket, documentId);
       socket.leave(roomName);
 
       // Remove role entry for this doc
@@ -1018,31 +813,13 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
-      if (!consumeAwarenessToken(socket)) {
-        rejectAwarenessUpdate(socket, documentId);
-        return;
-      }
+      const sanitized = awarenessManager.consumeUpdate(socket, documentId, update);
+      if (!sanitized) return;
 
-      if (!(update instanceof Uint8Array) || update.byteLength > MAX_AWARENESS_UPDATE_BYTES) {
-        rejectAwarenessUpdate(socket, documentId);
-        return;
-      }
-
-      try {
-        const sanitized = sanitizeAwarenessUpdate(socket, documentId, update);
-        if (!sanitized) return;
-
-        socket.data.awarenessViolations = Math.max(0, socket.data.awarenessViolations - 1);
-        socket.to(roomName).emit("awareness:update", {
-          documentId,
-          update: sanitized.update,
-        });
-        if (sanitized.removed) {
-          forgetAwarenessBinding(socket.id, documentId);
-        }
-      } catch {
-        rejectAwarenessUpdate(socket, documentId);
-      }
+      socket.to(roomName).emit("awareness:update", {
+        documentId,
+        update: sanitized.update,
+      });
     });
 
     socket.on("disconnect", async () => {
@@ -1050,11 +827,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const roles = socketRoles.get(socket.id);
       const docIds = roles ? [...roles.keys()] : [];
       for (const docId of docIds) {
-        releaseAwarenessBinding(socket, docId);
+        awarenessManager.releaseBinding(socket, docId);
       }
+      awarenessManager.forgetSocket(socket.id);
       socketRoles.delete(socket.id);
       socketJoinGenerations.delete(socket.id);
-      socketAwarenessBindings.delete(socket.id);
       if (socket.data.sessionValidationTimer) {
         clearInterval(socket.data.sessionValidationTimer);
         socket.data.sessionValidationTimer = undefined;
