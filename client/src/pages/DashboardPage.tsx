@@ -205,6 +205,7 @@ export default function DashboardPage() {
       console.error("Failed to rename document:", err);
       const msg = err instanceof Error ? err.message : "Failed to rename document";
       addNotification(`Failed to rename document: ${msg}`, "error");
+      throw err;
     }
   };
 

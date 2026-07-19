@@ -7,7 +7,7 @@ import type { DocumentWithRole } from "@typesync/shared";
 
 interface DocumentHeaderProps {
   document: DocumentWithRole;
-  onRename: (title: string) => void;
+  onRename: (title: string) => Promise<void>;
   onDocumentUpdate: () => void;
   activeCollaborators: { name: string; color: string }[];
 }
@@ -28,14 +28,22 @@ export function DocumentHeader({
     setTitle(document.title);
   }, [document.id, document.title]);
 
-  const handleBlur = () => {
+  const handleBlur = async () => {
+    const trimmedTitle = title.trim();
     setIsEditing(false);
-    if (title.trim() && title !== document.title) {
-      setSaveStatus("saving");
-      onRename(title.trim());
-      setTimeout(() => setSaveStatus("saved"), 1000);
-    } else {
+
+    if (!trimmedTitle || trimmedTitle === document.title) {
       setTitle(document.title);
+      return;
+    }
+
+    setSaveStatus("saving");
+    try {
+      await onRename(trimmedTitle);
+    } catch {
+      setTitle(document.title);
+    } finally {
+      setSaveStatus("saved");
     }
   };
 
