@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
   const hasLoadedDocumentsRef = useRef(false);
+  const documentsRequestGenerationRef = useRef(0);
   const bypassNextNavigationRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
@@ -82,14 +83,18 @@ export default function DashboardPage() {
   }, [documentId]);
 
   const fetchDocuments = useCallback(async () => {
+    const requestGeneration = ++documentsRequestGenerationRef.current;
+
     try {
       const res = await api.documents.list();
+      if (requestGeneration !== documentsRequestGenerationRef.current) return;
       if (res.data) {
         setDocuments(res.data);
         hasLoadedDocumentsRef.current = true;
         setDocumentsError(null);
       }
     } catch (err) {
+      if (requestGeneration !== documentsRequestGenerationRef.current) return;
       console.error("Failed to fetch documents:", err);
       const message = err instanceof Error ? err.message : "Failed to load documents";
       if (hasLoadedDocumentsRef.current) {
@@ -98,7 +103,9 @@ export default function DashboardPage() {
         setDocumentsError(message);
       }
     } finally {
-      setIsLoading(false);
+      if (requestGeneration === documentsRequestGenerationRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [addNotification]);
 
