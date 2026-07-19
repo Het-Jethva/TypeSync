@@ -9,7 +9,7 @@ The maintainer explicitly chose not to add automated tests; every plan preserves
 | Plan | Title | Priority | Effort | Depends on | Status |
 |---|---|---:|---:|---|---|
 | [001](001-reliable-title-renames.md) | Report document title saves truthfully | P1 | S | — | DONE |
-| [002](002-minimize-realtime-logs.md) | Remove sensitive identifiers from routine realtime logs | P1 | S | — | TODO |
+| [002](002-minimize-realtime-logs.md) | Remove sensitive identifiers from routine realtime logs | P1 | S | — | DONE |
 | [003](003-order-document-refreshes.md) | Prevent stale document-list refreshes | P1 | S | — | TODO |
 | [004](004-order-collaborator-refreshes.md) | Prevent stale collaborator-list responses | P1 | S | — | TODO |
 | [005](005-add-readiness-probe.md) | Add a PostgreSQL-aware readiness probe | P1 | S | — | TODO |

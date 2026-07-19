@@ -591,7 +591,6 @@ async function evictIfEmpty(
     await flushDocumentNow(documentId, ydoc);
     const postSaveRoomSize = io.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
     if (postSaveRoomSize > 0) {
-      console.log(`Aborted eviction of document ${documentId} (room active)`);
       return;
     }
   } catch (error) {
@@ -606,8 +605,6 @@ async function evictIfEmpty(
   docs.delete(documentId);
   loadedDocs.delete(documentId);
   documentSizeStates.delete(documentId);
-
-  console.log(`Evicted idle document ${documentId} from memory`);
 }
 
 // ─── Flush & Cleanup (BUG-05) ───────────────────────────
@@ -717,8 +714,6 @@ export function handleDocumentDeleted(
   loadingDocs.delete(documentId);
   documentSizeStates.delete(documentId);
   awarenessClientOwners.delete(documentId);
-
-  console.log(`Document ${documentId} deleted: sockets evicted and Y.Doc destroyed`);
 }
 
 
@@ -773,7 +768,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
   io.on("connection", (socket) => {
     const userId = socket.data.userId!;
-    const userEmail = socket.data.userEmail!;
 
     // Initialize per-socket role map
     socketRoles.set(socket.id, new Map());
@@ -784,8 +778,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     }, SESSION_REVALIDATION_INTERVAL);
     sessionValidationTimer.unref();
     socket.data.sessionValidationTimer = sessionValidationTimer;
-
-    console.log(`User connected: ${userEmail} (${userId})`);
 
     socket.on("doc:join", async (
       documentId: string,
@@ -871,8 +863,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         if (currentSizeStatus) {
           socket.emit("doc:size-status", currentSizeStatus);
         }
-
-        console.log(`${userEmail} joined document ${parsedDocumentId} as ${currentAccess.role}`);
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
         if (parsedDocumentId) {
@@ -915,8 +905,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // Remove role entry for this doc
       socketRoles.get(socket.id)?.delete(documentId);
-
-      console.log(`${userEmail} left document ${documentId}`);
 
       // Evict from memory if room is now empty
       if (!isDraining) {
@@ -1058,8 +1046,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     });
 
     socket.on("disconnect", async () => {
-      console.log(`User disconnected: ${userEmail}`);
-
       // Collect doc IDs this socket was tracking, then clean up
       const roles = socketRoles.get(socket.id);
       const docIds = roles ? [...roles.keys()] : [];
