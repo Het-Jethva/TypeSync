@@ -26,7 +26,8 @@ function ToolbarButton({
       }}
       title={title}
       disabled={disabled}
-      className={`w-6.5 h-6.5 rounded flex items-center justify-center transition-all border text-xs ${
+      aria-label={title}
+      className={`toolbar-button touch-target w-6.5 h-6.5 rounded flex items-center justify-center transition-[background-color,border-color,color,box-shadow,transform,opacity] border text-xs ${
         disabled
           ? "cursor-not-allowed border-transparent text-text-muted opacity-50"
           : "cursor-pointer"

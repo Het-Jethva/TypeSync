@@ -16,6 +16,8 @@ export interface SocketData {
   awarenessTokens: number;
   awarenessLastRefill: number;
   awarenessViolations: number;
+  documentUpdateTokens: number;
+  documentUpdateLastRefill: number;
 }
 
 export type TypeSyncSocket = SocketIOSocket<

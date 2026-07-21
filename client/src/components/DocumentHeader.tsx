@@ -72,7 +72,7 @@ export function DocumentHeader({
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-all"
+            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
           />
         ) : (
           <button
@@ -105,7 +105,8 @@ export function DocumentHeader({
         {document.role === "owner" && (
           <button
             onClick={() => setShareOpen(true)}
-            className="btn-linear flex items-center gap-1.5 px-2 py-1 sm:px-2.5 text-xs text-text-secondary hover:text-text-primary transition-all"
+            aria-label="Share document"
+            className="touch-target btn-linear flex items-center gap-1.5 px-2 py-1 sm:px-2.5 text-xs text-text-secondary hover:text-text-primary transition-[background-color,border-color,color,box-shadow]"
             title="Share document"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">

@@ -32,6 +32,8 @@ function getAwarenessManager(): ReturnType<typeof createAwarenessManager> {
 }
 
 const SESSION_REVALIDATION_INTERVAL = 60_000;
+const DOCUMENT_UPDATES_PER_SECOND = 30;
+const DOCUMENT_UPDATE_BURST_SIZE = 60;
 const DocumentIdSchema = z.string().uuid();
 const trustedClientOrigin = new URL(config.clientUrl).origin;
 
@@ -50,6 +52,20 @@ function resolvePendingJoinWaiters(): void {
   if (pendingJoinCounts.size > 0) return;
   for (const resolve of pendingJoinWaiters) resolve();
   pendingJoinWaiters.clear();
+}
+
+function consumeDocumentUpdateToken(socket: TypeSyncSocket): boolean {
+  const now = Date.now();
+  const elapsedSeconds = (now - socket.data.documentUpdateLastRefill) / 1000;
+  socket.data.documentUpdateTokens = Math.min(
+    DOCUMENT_UPDATE_BURST_SIZE,
+    socket.data.documentUpdateTokens + elapsedSeconds * DOCUMENT_UPDATES_PER_SECOND
+  );
+  socket.data.documentUpdateLastRefill = now;
+
+  if (socket.data.documentUpdateTokens < 1) return false;
+  socket.data.documentUpdateTokens -= 1;
+  return true;
 }
 
 function isTrustedSocketOrigin(origin: string | undefined): boolean {
@@ -220,6 +236,8 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
   io.on("connection", (socket) => {
     const userId = socket.data.userId!;
     const presence = awarenessManager.initializeSocket(socket);
+    socket.data.documentUpdateTokens = DOCUMENT_UPDATE_BURST_SIZE;
+    socket.data.documentUpdateLastRefill = Date.now();
 
     // Initialize per-socket role map
     socketRoles.set(socket.id, new Map());
@@ -273,7 +291,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         const roomName = `doc:${parsedDocumentId}`;
 
         // Load before joining so a failed DB read cannot publish an empty state.
-        const loaded = await documentRuntime.loadForJoin(parsedDocumentId);
+        await documentRuntime.ensureLoaded(parsedDocumentId);
 
         if (!socket.connected || !isCurrentJoin(socket.id, parsedDocumentId, joinGeneration)) {
           respond({ success: false, error: "Document join was cancelled" });
@@ -293,19 +311,28 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
           return;
         }
 
+        const snapshot = documentRuntime.snapshotForJoin(parsedDocumentId);
         socket.join(roomName);
         socketRoles.get(socket.id)!.set(parsedDocumentId, currentAccess.role);
 
         respond({
           success: true,
-          state: loaded.state,
-          stateVector: loaded.stateVector,
+          state: snapshot.state,
+          stateVector: snapshot.stateVector,
           role: currentAccess.role as Role,
           presence,
         });
 
-        if (loaded.sizeStatus) {
-          socket.emit("doc:size-status", loaded.sizeStatus);
+        const awarenessSnapshot = awarenessManager.snapshot(parsedDocumentId);
+        if (awarenessSnapshot) {
+          socket.emit("awareness:update", {
+            documentId: parsedDocumentId,
+            update: awarenessSnapshot,
+          });
+        }
+
+        if (snapshot.sizeStatus) {
+          socket.emit("doc:size-status", snapshot.sizeStatus);
         }
       } catch (error) {
         console.error(`Failed to join document ${documentId}:`, error);
@@ -379,6 +406,11 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       if (role !== "owner" && role !== "editor") {
         socket.emit("doc:error", { documentId, message: "Unauthorized to edit this document" });
         respond({ success: false, code: "forbidden", error: "Unauthorized to edit this document" });
+        return;
+      }
+
+      if (!consumeDocumentUpdateToken(socket)) {
+        respond({ success: false, code: "rate-limited", error: "Too many document updates" });
         return;
       }
 

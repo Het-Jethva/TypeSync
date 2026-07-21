@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
@@ -58,7 +58,8 @@ export function Sidebar({
   const navigate = useNavigate();
   const { data: session } = useSession();
   const [search, setSearch] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ id: string; role: Role; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; title: string; role: Role; x: number; y: number } | null>(null);
+  const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -81,9 +82,43 @@ export function Sidebar({
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
-  const handleContextMenu = (e: React.MouseEvent, docId: string, role: Role) => {
+  const closeContextMenu = () => {
+    setContextMenu(null);
+    contextMenuTriggerRef.current?.focus();
+    contextMenuTriggerRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeContextMenu();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [contextMenu]);
+
+  const openContextMenu = (
+    e: React.MouseEvent,
+    doc: DocumentWithRole,
+    trigger?: HTMLElement
+  ) => {
     e.preventDefault();
-    setContextMenu({ id: docId, role, x: e.clientX, y: e.clientY });
+    const source = trigger ?? (e.currentTarget as HTMLElement);
+    const rect = source.getBoundingClientRect();
+    contextMenuTriggerRef.current = source;
+    setContextMenu({
+      id: doc.id,
+      title: doc.title,
+      role: doc.role,
+      x: e.clientX || rect.right,
+      y: e.clientY || rect.bottom,
+    });
+  };
+
+  const confirmDelete = (id: string, title: string) => {
+    if (!window.confirm(`Delete “${title}” permanently? This cannot be undone.`)) return;
+    onDeleteDocument(id);
+    closeContextMenu();
   };
 
   const handleSignOut = async () => {
@@ -113,7 +148,8 @@ export function Sidebar({
           {showCloseButton && onClose && (
             <button
               onClick={onClose}
-              className="w-7 h-7 rounded hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors shrink-0"
+              aria-label="Close sidebar"
+              className="touch-target w-7 h-7 rounded hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors shrink-0"
               title="Close sidebar"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -145,12 +181,13 @@ export function Sidebar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={hasMore ? "Search loaded documents…" : "Search…"}
-          className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-all"
+          className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
         />
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
           className="bg-bg-primary border border-border rounded px-2 py-1.5 text-[10px] text-text-secondary focus:outline-none focus:border-border-accent cursor-pointer shrink-0"
+          aria-label="Sort documents"
           title="Sort documents"
         >
           <option value="updated">Recent</option>
@@ -177,34 +214,50 @@ export function Sidebar({
               </motion.p>
             ) : (
               sortedAndFiltered.map((doc) => (
-                <motion.button
+                <motion.div
                   key={doc.id}
                   layout
-                  onClick={() => onSelectDocument(doc.id)}
-                  onContextMenu={(e) => handleContextMenu(e, doc.id, doc.role)}
-                  className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center gap-2.5 group border ${
+                  onContextMenu={(e) => openContextMenu(e, doc)}
+                  className={`w-full rounded text-xs transition-[background-color,border-color,color,box-shadow,opacity] flex items-center gap-1 group border ${
                     doc.id === activeDocId
                       ? "bg-bg-elevated border-border-strong text-text-primary font-medium shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
                       : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                   }`}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`w-3.5 h-3.5 shrink-0 mt-0.5 align-top transition-colors ${
-                    doc.id === activeDocId ? "text-accent" : "text-text-muted opacity-50 group-hover:text-text-primary group-hover:opacity-100"
-                  }`}>
-                    <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <p className={`truncate text-xs ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
-                    <p className="text-[9px] text-text-muted">
-                      {formatRelativeTime(doc.updatedAt)}
-                    </p>
-                  </div>
-                  {doc.role !== "owner" && (
-                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
-                      {doc.role}
-                    </span>
+                  <button
+                    type="button"
+                    onClick={() => onSelectDocument(doc.id)}
+                    className="touch-target flex-1 min-w-0 text-left px-3 py-2 rounded text-xs transition-colors flex items-center gap-2.5"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`w-3.5 h-3.5 shrink-0 mt-0.5 align-top transition-colors ${
+                      doc.id === activeDocId ? "text-accent" : "text-text-muted opacity-50 group-hover:text-text-primary group-hover:opacity-100"
+                    }`}>
+                      <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className={`truncate text-xs ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
+                      <p className="text-[9px] text-text-muted">
+                        {formatRelativeTime(doc.updatedAt)}
+                      </p>
+                    </div>
+                    {doc.role !== "owner" && (
+                      <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
+                        {doc.role}
+                      </span>
+                    )}
+                  </button>
+                  {doc.role === "owner" && (
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${doc.title}`}
+                      aria-expanded={contextMenu?.id === doc.id}
+                      onClick={(event) => openContextMenu(event, doc, event.currentTarget)}
+                      className="touch-target shrink-0 px-2 py-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover"
+                    >
+                      <span aria-hidden="true" className="text-base leading-none">⋯</span>
+                    </button>
                   )}
-                </motion.button>
+                </motion.div>
               ))
             )}
             {hasMore && (
@@ -225,22 +278,22 @@ export function Sidebar({
       <AnimatePresence>
         {contextMenu && (
           <>
-            <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)} />
+            <div className="fixed inset-0 z-50" onClick={closeContextMenu} />
             {contextMenu.role === "owner" && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.1 }}
+                role="group"
+                aria-label={`Actions for ${contextMenu.title}`}
                 className="fixed z-50 bg-bg-elevated border border-border-strong rounded shadow-md py-1 min-w-[160px]"
-                style={{ left: contextMenu.x, top: contextMenu.y }}
+                style={{ left: Math.min(contextMenu.x, window.innerWidth - 180), top: Math.min(contextMenu.y, window.innerHeight - 48) }}
               >
                 <button
-                  onClick={() => {
-                    onDeleteDocument(contextMenu.id);
-                    setContextMenu(null);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-error hover:bg-error/10 transition-colors font-medium"
+                  autoFocus
+                  onClick={() => confirmDelete(contextMenu.id, contextMenu.title)}
+                  className="touch-target w-full text-left px-3 py-1.5 text-xs text-error hover:bg-error/10 transition-colors font-medium"
                 >
                   Delete document
                 </button>
@@ -260,7 +313,8 @@ export function Sidebar({
         </button>
         <button
           onClick={toggleTheme}
-          className="w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer shrink-0"
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          className="touch-target w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer shrink-0"
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         >
           {theme === "dark" ? (

@@ -13,6 +13,16 @@ import type {
 
 const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit
@@ -26,10 +36,21 @@ async function request<T>(
     ...options,
   });
 
-  const data = await res.json();
+  let data: ApiResponse<T>;
+  try {
+    data = (await res.json()) as ApiResponse<T>;
+  } catch (error) {
+    if (!res.ok) {
+      throw new ApiError("Request failed", res.status);
+    }
+    throw error;
+  }
 
   if (!res.ok) {
-    throw new Error(data.error || "Request failed");
+    throw new ApiError(
+      typeof data.error === "string" ? data.error : "Request failed",
+      res.status
+    );
   }
 
   return data;

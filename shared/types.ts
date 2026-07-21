@@ -64,6 +64,7 @@ export interface ClientToServerEvents {
 
 export type DocumentUpdateErrorCode =
   | "server-draining"
+  | "rate-limited"
   | "session-expired"
   | "not-joined"
   | "forbidden"

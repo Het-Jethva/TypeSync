@@ -13,17 +13,17 @@
   --color-border-accent: rgba(194, 89, 63, 0.25);
 
   --color-text-primary: #1e1c19;
-  --color-text-secondary: #666055;
-  --color-text-muted: #948e82;
+  --color-text-secondary: #514c44;
+  --color-text-muted: #696257;
 
-  --color-accent: #c2593f;
-  --color-accent-hover: #a3442d;
-  --color-accent-light: rgba(194, 89, 63, 0.08);
-  --color-accent-glow: rgba(194, 89, 63, 0.15);
+  --color-accent: #a3442d;
+  --color-accent-hover: #8f3825;
+  --color-accent-light: rgba(163, 68, 45, 0.08);
+  --color-accent-glow: rgba(163, 68, 45, 0.15);
 
   --color-success: #2e624a;
   --color-error: #a83a32;
-  --color-warning: #c68a3c;
+  --color-warning: #895a16;
 
   --font-sans: "Instrument Sans", system-ui, -apple-system, sans-serif;
   --font-serif: "Lora", Georgia, serif;
@@ -48,16 +48,16 @@
   --color-border-accent: rgba(219, 114, 88, 0.35);
 
   --color-text-primary: #f2ede4;
-  --color-text-secondary: #aba395;
-  --color-text-muted: #787164;
+  --color-text-secondary: #c6bdaf;
+  --color-text-muted: #aaa294;
 
   --color-accent: #db7258;
-  --color-accent-hover: #c45b41;
+  --color-accent-hover: #e17b62;
   --color-accent-light: rgba(219, 114, 88, 0.12);
   --color-accent-glow: rgba(219, 114, 88, 0.25);
 
-  --color-success: #5c8b74;
-  --color-error: #c85a53;
+  --color-success: #67a087;
+  --color-error: #e17b72;
   --color-warning: #d99a4c;
 }
 
@@ -75,7 +75,7 @@
   background-color: var(--color-bg-elevated);
   color: var(--color-text-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
@@ -101,7 +101,7 @@
   background-color: var(--color-accent);
   color: #faf8f5;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
@@ -116,6 +116,22 @@
 
 .btn-linear-primary:active {
   transform: translateY(0.5px);
+}
+
+/* ─── Accessible control affordances ───────────────────── */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  button,
+  select,
+  input,
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* ─── Base ──────────────────────────────────────────────── */
@@ -403,6 +419,27 @@ html.no-transitions {
   animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) reveal;
   mix-blend-mode: normal;
   z-index: 9999;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
 }
 
 @keyframes reveal {

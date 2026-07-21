@@ -8,8 +8,8 @@ export function toggleThemeWithTransition(
   const nextTheme = currentTheme === "dark" ? "light" : "dark";
 
   const doc = document as any;
-  // Fallback if View Transitions API is not supported
-  if (!doc.startViewTransition) {
+  // Reduced-motion users receive the theme change without a radial reveal.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !doc.startViewTransition) {
     applyTheme(nextTheme, setThemeState);
     return;
   }

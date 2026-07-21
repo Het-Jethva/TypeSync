@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "../components/Sidebar";
 import { Editor } from "../components/Editor";
 import { DocumentHeader } from "../components/DocumentHeader";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import type { DocumentWithRole } from "@typesync/shared";
 
@@ -25,9 +25,15 @@ export default function DashboardPage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
+  const [routeDocument, setRouteDocument] = useState<DocumentWithRole | null>(null);
+  const [isRouteDocumentLoading, setIsRouteDocumentLoading] = useState(false);
+  const [routeDocumentError, setRouteDocumentError] = useState<Error | null>(null);
+  const [routeDocumentRequestNonce, setRouteDocumentRequestNonce] = useState(0);
   const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
   const documentsAppendRequestGenerationRef = useRef(0);
+  const routeDocumentRequestGenerationRef = useRef(0);
+  const documentIdRef = useRef(documentId);
   const bypassNextNavigationRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
@@ -82,8 +88,46 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    documentIdRef.current = documentId;
     setActiveCollaborators([]);
   }, [documentId]);
+
+  const routeDocumentIsInList = documents.some(
+    (document) => document.id === documentId
+  );
+
+  useEffect(() => {
+    const requestGeneration = ++routeDocumentRequestGenerationRef.current;
+    setRouteDocument(null);
+    setRouteDocumentError(null);
+
+    if (!documentId || routeDocumentIsInList) {
+      setIsRouteDocumentLoading(false);
+      return;
+    }
+
+    setIsRouteDocumentLoading(true);
+    void api.documents.get(documentId).then(
+      (response) => {
+        if (
+          requestGeneration !== routeDocumentRequestGenerationRef.current ||
+          documentIdRef.current !== documentId
+        ) return;
+        setRouteDocument(response.data ?? null);
+        setIsRouteDocumentLoading(false);
+      },
+      (error: unknown) => {
+        if (
+          requestGeneration !== routeDocumentRequestGenerationRef.current ||
+          documentIdRef.current !== documentId
+        ) return;
+        setRouteDocumentError(
+          error instanceof Error ? error : new Error("Failed to load document")
+        );
+        setIsRouteDocumentLoading(false);
+      }
+    );
+  }, [documentId, routeDocumentIsInList, routeDocumentRequestNonce]);
 
   const fetchDocuments = useCallback(async () => {
     const requestGeneration = ++documentsRequestGenerationRef.current;
@@ -171,12 +215,18 @@ export default function DashboardPage() {
           doc.id === payload.documentId ? { ...doc, role: payload.role } : doc
         )
       );
+      setRouteDocument((current) =>
+        current?.id === payload.documentId ? { ...current, role: payload.role } : current
+      );
       fetchDocuments();
     };
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
       setDocuments((current) => current.filter((doc) => doc.id !== payload.documentId));
       if (documentId === payload.documentId) {
+        routeDocumentRequestGenerationRef.current += 1;
+        setRouteDocument(null);
+        setIsRouteDocumentLoading(false);
         bypassNextNavigationRef.current = true;
         navigate("/dashboard");
       }
@@ -188,6 +238,11 @@ export default function DashboardPage() {
         current.map((doc) =>
           doc.id === payload.documentId ? { ...doc, title: payload.title, updatedAt: payload.updatedAt } : doc
         )
+      );
+      setRouteDocument((current) =>
+        current?.id === payload.documentId
+          ? { ...current, title: payload.title, updatedAt: payload.updatedAt }
+          : current
       );
       fetchDocuments();
     };
@@ -264,7 +319,12 @@ export default function DashboardPage() {
     }
   };
 
-  const currentDoc = documents.find((d) => d.id === documentId);
+  const currentDoc =
+    documents.find((document) => document.id === documentId) ??
+    (routeDocument?.id === documentId ? routeDocument : undefined);
+  const routeDocumentNotFound =
+    routeDocumentError instanceof ApiError &&
+    (routeDocumentError.status === 403 || routeDocumentError.status === 404);
 
   const renderDocumentsError = () => (
     <div className="h-full flex items-center justify-center bg-bg-secondary/20">
@@ -362,7 +422,8 @@ export default function DashboardPage() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setSidebarOpen((p) => !p)}
-            className="w-8 h-8 rounded-lg hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
+            aria-label="Toggle sidebar"
+            className="touch-target w-8 h-8 rounded-lg hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
             title="Toggle sidebar (Ctrl+\\)"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
@@ -383,7 +444,7 @@ export default function DashboardPage() {
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
           {documentId ? (
-            isLoading ? (
+            isLoading || isRouteDocumentLoading ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
@@ -392,6 +453,23 @@ export default function DashboardPage() {
               </div>
             ) : documentsError ? (
               renderDocumentsError()
+            ) : routeDocumentError && !routeDocumentNotFound ? (
+              <div className="h-full flex items-center justify-center bg-bg-secondary/20">
+                <div className="text-center max-w-sm px-6">
+                  <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">
+                    Couldn't load document
+                  </h3>
+                  <p className="text-xs text-text-secondary mb-5 leading-relaxed">
+                    {routeDocumentError.message}
+                  </p>
+                  <button
+                    onClick={() => setRouteDocumentRequestNonce((nonce) => nonce + 1)}
+                    className="btn-linear-primary text-xs px-4 py-2"
+                  >
+                    Try again
+                  </button>
+                </div>
+              </div>
             ) : currentDoc ? (
               <Editor
                 documentId={documentId}
@@ -487,9 +565,10 @@ export default function DashboardPage() {
               <span className="flex-1 leading-normal">{notif.message}</span>
               <button
                 onClick={() => setNotifications((prev) => prev.filter((n) => n.id !== notif.id))}
-                className="text-text-muted hover:text-text-primary transition-colors shrink-0 cursor-pointer"
+                aria-label="Dismiss notification"
+                className="touch-target text-text-muted hover:text-text-primary transition-colors shrink-0 cursor-pointer"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3 h-3" strokeWidth="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3 h-3" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

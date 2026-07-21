@@ -18,14 +18,16 @@ interface PersistenceState {
 interface DocumentSizeState {
   encodedBytes: number;
   pendingUpdateBytes: number;
+  warningEmitted: boolean;
 }
 
 export interface DocumentRuntime {
-  loadForJoin(documentId: string): Promise<{
+  ensureLoaded(documentId: string): Promise<void>;
+  snapshotForJoin(documentId: string): {
     state: Uint8Array;
     stateVector: Uint8Array;
     sizeStatus: DocumentSizeStatus | null;
-  }>;
+  };
   applyUpdate(documentId: string, update: Uint8Array): DocumentUpdateResult;
   evictIfEmpty(io: TypeSyncSocketServer, documentId: string): Promise<void>;
   discard(documentId: string): void;
@@ -63,7 +65,11 @@ function getOrCreateDoc(docId: string): Y.Doc {
 
 function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): number {
   const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
-  documentSizeStates.set(docId, { encodedBytes, pendingUpdateBytes: 0 });
+  documentSizeStates.set(docId, {
+    encodedBytes,
+    pendingUpdateBytes: 0,
+    warningEmitted: encodedBytes >= DOC_SIZE_WARNING_BYTES,
+  });
   return encodedBytes;
 }
 
@@ -99,17 +105,21 @@ function preflightDocumentUpdate(
 
   const projectedUpperBound =
     state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
-  if (projectedUpperBound < DOC_SIZE_WARNING_BYTES) {
+  const needsWarningCheckpoint =
+    !state.warningEmitted && projectedUpperBound >= DOC_SIZE_WARNING_BYTES;
+  const needsLimitCheckpoint = projectedUpperBound > MAX_DOC_STATE_BYTES;
+
+  if (!needsWarningCheckpoint && !needsLimitCheckpoint) {
     state.pendingUpdateBytes += update.byteLength;
     return { allowed: true, status: null };
   }
 
   const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
   const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
-  state.encodedBytes = currentSnapshot.byteLength;
-  state.pendingUpdateBytes = 0;
 
   if (candidateSnapshot.byteLength > MAX_DOC_STATE_BYTES) {
+    state.encodedBytes = currentSnapshot.byteLength;
+    state.pendingUpdateBytes = 0;
     return {
       allowed: false,
       status: {
@@ -123,9 +133,15 @@ function preflightDocumentUpdate(
   }
 
   state.encodedBytes = candidateSnapshot.byteLength;
+  state.pendingUpdateBytes = 0;
+  const crossedWarning =
+    !state.warningEmitted && candidateSnapshot.byteLength >= DOC_SIZE_WARNING_BYTES;
+  if (crossedWarning) state.warningEmitted = true;
   return {
     allowed: true,
-    status: sizeStatus(docId, candidateSnapshot.byteLength),
+    status: crossedWarning
+      ? sizeStatus(docId, candidateSnapshot.byteLength)
+      : null,
   };
 }
 
@@ -187,6 +203,7 @@ async function runPersistence(docId: string, ydoc: Y.Doc, state: PersistenceStat
       documentSizeStates.set(docId, {
         encodedBytes: snapshot.byteLength,
         pendingUpdateBytes: 0,
+        warningEmitted: snapshot.byteLength >= DOC_SIZE_WARNING_BYTES,
       });
       try {
         await saveDocToDB(docId, snapshot);
@@ -299,7 +316,7 @@ function discardRuntime(documentId: string): void {
 
 export function createDocumentRuntime(): DocumentRuntime {
   return {
-    async loadForJoin(documentId) {
+    async ensureLoaded(documentId) {
       const ydoc = getOrCreateDoc(documentId);
       try {
         await ensureDocLoaded(documentId, ydoc);
@@ -307,13 +324,18 @@ export function createDocumentRuntime(): DocumentRuntime {
         discardRuntime(documentId);
         throw error;
       }
+    },
+
+    snapshotForJoin(documentId) {
+      const ydoc = docs.get(documentId);
+      if (!ydoc || !loadedDocs.has(documentId)) {
+        throw new Error(`Document ${documentId} is not loaded`);
+      }
+      const state = Y.encodeStateAsUpdate(ydoc);
       return {
-        state: Y.encodeStateAsUpdate(ydoc),
+        state,
         stateVector: Y.encodeStateVector(ydoc),
-        sizeStatus: sizeStatus(
-          documentId,
-          getDocumentSizeState(documentId, ydoc).encodedBytes
-        ),
+        sizeStatus: sizeStatus(documentId, state.byteLength),
       };
     },
 
@@ -335,18 +357,34 @@ export function createDocumentRuntime(): DocumentRuntime {
       if (!ydoc) return { kind: "not-loaded" };
 
       try {
-        const preflight = preflightDocumentUpdate(documentId, ydoc, update);
-        if (!preflight.allowed) {
-          return { kind: "document-too-large", status: preflight.status };
-        }
-
-        Y.applyUpdate(ydoc, new Uint8Array(update));
-        scheduleSave(documentId, ydoc);
-        return { kind: "accepted", status: preflight.status };
+        // Decode the complete frame before touching the live document. Truncated
+        // or malformed wire data therefore cannot partially mutate the Y.Doc.
+        Y.decodeUpdate(update);
       } catch (error) {
+        return { kind: "invalid", error };
+      }
+
+      let preflight: { allowed: boolean; status: DocumentSizeStatus | null };
+      try {
+        preflight = preflightDocumentUpdate(documentId, ydoc, update);
+      } catch (error) {
+        return { kind: "invalid", error };
+      }
+      if (!preflight.allowed) {
+        return { kind: "document-too-large", status: preflight.status };
+      }
+
+      try {
+        Y.applyUpdate(ydoc, update);
+      } catch (error) {
+        // A fully decoded update should apply without a wire-format failure. If
+        // Yjs nevertheless throws after entering its transaction, re-check the
+        // live state because transactions do not provide rollback semantics.
         recordEncodedDocumentSize(documentId, ydoc);
         return { kind: "invalid", error };
       }
+      scheduleSave(documentId, ydoc);
+      return { kind: "accepted", status: preflight.status };
     },
 
     async evictIfEmpty(io, documentId) {

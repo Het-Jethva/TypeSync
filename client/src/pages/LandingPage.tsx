@@ -2,125 +2,9 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
-import { useState, useEffect, useRef } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Placeholder from "@tiptap/extension-placeholder";
+import { useState } from "react";
+import { LandingEditorDemo } from "../components/LandingEditorDemo";
 import { toggleThemeWithTransition } from "../lib/theme";
-
-// ─── Interactive Editor Sandbox ──────────────────────────
-function InteractiveSandbox() {
-  const cursorRef = useRef<HTMLDivElement>(null);
-  const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const SIMULATED_TYPING = " Collaborative writing is now seamless. You can edit this text right now, format it, or see how fast changes sync. Try typing here!";
-
-  // Helper to update the remote cursor position from the editor's current state.
-  // Must be called AFTER insertContentAt since ProseMirror flushes the DOM synchronously.
-  const updateCursorPosition = (ed: ReturnType<typeof useEditor>) => {
-    if (!ed || ed.isDestroyed || !cursorRef.current) return;
-    try {
-      // Read the end-of-text position from the *current* (post-insertion) document.
-      const endPos = ed.state.doc.content.size - 1;
-      // coordsAtPos forces a synchronous layout reflow, so the coordinates
-      // reflect the freshly inserted character.
-      const coords = ed.view.coordsAtPos(endPos);
-      const containerRect = ed.view.dom.getBoundingClientRect();
-      
-      cursorRef.current.style.top = `${coords.bottom - containerRect.top - 18}px`;
-      cursorRef.current.style.left = `${coords.left - containerRect.left}px`;
-      cursorRef.current.style.opacity = '1';
-    } catch {
-      // Ignore if editor is offscreen or not fully rendered
-    }
-  };
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({
-        placeholder: "Start typing...",
-      }),
-    ],
-    content: `<h2>Collaborative Document</h2><p>Welcome to TypeSync. This is a live interactive editor demonstration.</p>`,
-    editorProps: {
-      attributes: {
-        class: "prose prose-sm dark:prose-invert focus:outline-none min-h-[160px] text-xs leading-relaxed text-text-primary px-4 py-3 font-serif",
-      },
-    },
-  });
-
-  // Simulated typing effect — insert a character, read cursor coords synchronously,
-  // then advance to the next character.
-  useEffect(() => {
-    if (!editor || editor.isDestroyed || currentCharIndex >= SIMULATED_TYPING.length) return;
-
-    const timer = setTimeout(() => {
-      if (editor.isDestroyed) return;
-      const char = SIMULATED_TYPING[currentCharIndex];
-      const insertPos = editor.state.doc.content.size - 1;
-      editor.commands.insertContentAt(insertPos, char);
-
-      // ProseMirror updates the DOM synchronously after dispatch, so
-      // coordsAtPos will return accurate post-insertion coordinates now.
-      updateCursorPosition(editor);
-      setCurrentCharIndex((prev) => prev + 1);
-    }, 60 + Math.random() * 80);
-
-    return () => clearTimeout(timer);
-  }, [editor, currentCharIndex]);
-
-  const handleContainerClick = () => {
-    if (editor) {
-      editor.commands.focus();
-    }
-  };
-
-  return (
-    <div 
-      onClick={handleContainerClick}
-      className="relative border border-border-strong bg-bg-secondary/30 rounded-md overflow-hidden shadow-sm hover:border-border-accent transition-all cursor-text max-w-2xl mx-auto"
-    >
-      {/* Tab bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary/40 select-none">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="text-[10px] text-text-secondary font-medium ml-1.5">demo_document.md</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex -space-x-1">
-            <span className="w-4 h-4 rounded bg-bg-tertiary border border-border text-[8px] font-bold text-text-primary flex items-center justify-center">Y</span>
-            <span className="w-4 h-4 rounded bg-accent border border-border text-[8px] font-bold text-white flex items-center justify-center">S</span>
-          </div>
-          <span className="flex items-center gap-1 text-[10px] text-success font-medium">
-            <span className="w-1 h-1 rounded-full bg-success animate-pulse" />
-            Live
-          </span>
-        </div>
-      </div>
-
-      {/* Editor area */}
-      <div className="relative p-1 min-h-[180px] bg-bg-elevated">
-        <EditorContent editor={editor} />
-        
-        {/* Remote Collaborator Cursor */}
-        <div
-          ref={cursorRef}
-          className={`absolute pointer-events-none flex flex-col items-start z-10 transition-all duration-75 ${
-            currentCharIndex > 0 && currentCharIndex < SIMULATED_TYPING.length ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ top: 0, left: 0 }}
-        >
-          <div className="h-4 w-[1.5px] bg-accent animate-pulse" />
-          <div className="text-[8px] font-medium bg-accent text-white px-1 py-0.25 rounded-sm rounded-tl-none whitespace-nowrap shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-            Sarah
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Main Landing Page Component ─────────────────────────
 export default function LandingPage() {
@@ -155,7 +39,8 @@ export default function LandingPage() {
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              className="w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              className="touch-target w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             >
               {theme === "dark" ? (
@@ -185,7 +70,7 @@ export default function LandingPage() {
             {/* Mobile Hamburger toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="w-7 h-7 rounded flex sm:hidden items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer ml-0.5"
+              className="touch-target w-7 h-7 rounded flex sm:hidden items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer ml-0.5"
               title="Toggle Menu"
               aria-label="Toggle Menu"
             >
@@ -258,7 +143,7 @@ export default function LandingPage() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="mt-4"
           >
-            <InteractiveSandbox />
+            <LandingEditorDemo />
           </motion.div>
         </div>
       </section>

@@ -11,7 +11,15 @@ interface AwarenessBinding {
 
 interface SanitizedAwarenessUpdate {
   update: Uint8Array;
+  clientId: number;
+  clock: number;
+  state: Record<string, unknown> | null;
   removed: boolean;
+}
+
+interface StoredAwarenessEntry {
+  clock: number;
+  state: Record<string, unknown>;
 }
 
 interface AwarenessManager {
@@ -21,6 +29,7 @@ interface AwarenessManager {
     documentId: string,
     update: Uint8Array
   ): SanitizedAwarenessUpdate | null;
+  snapshot(documentId: string): Uint8Array | null;
   releaseBinding(socket: TypeSyncSocket, documentId: string): void;
   forgetSocket(socketId: string): void;
   forgetDocument(documentId: string): void;
@@ -28,6 +37,7 @@ interface AwarenessManager {
 
 const socketAwarenessBindings = new Map<string, Map<string, AwarenessBinding>>();
 const awarenessClientOwners = new Map<string, Map<number, string>>();
+const activeAwarenessEntries = new Map<string, Map<number, StoredAwarenessEntry>>();
 
 const MAX_AWARENESS_UPDATE_BYTES = 16 * 1024;
 const AWARENESS_UPDATES_PER_SECOND = 20;
@@ -100,17 +110,25 @@ function rejectAwarenessUpdate(socket: TypeSyncSocket, documentId: string): void
   }
 }
 
+function encodeAwarenessEntries(
+  entries: ReadonlyArray<readonly [number, number, Record<string, unknown> | null]>
+): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, entries.length);
+  for (const [clientId, clock, state] of entries) {
+    encoding.writeVarUint(encoder, clientId);
+    encoding.writeVarUint(encoder, clock);
+    encoding.writeVarString(encoder, JSON.stringify(state));
+  }
+  return encoding.toUint8Array(encoder);
+}
+
 function encodeAwarenessEntry(
   clientId: number,
   clock: number,
   state: Record<string, unknown> | null
 ): Uint8Array {
-  const encoder = encoding.createEncoder();
-  encoding.writeVarUint(encoder, 1);
-  encoding.writeVarUint(encoder, clientId);
-  encoding.writeVarUint(encoder, clock);
-  encoding.writeVarString(encoder, JSON.stringify(state));
-  return encoding.toUint8Array(encoder);
+  return encodeAwarenessEntries([[clientId, clock, state]]);
 }
 
 function forgetAwarenessBinding(socketId: string, documentId: string): void {
@@ -126,6 +144,10 @@ function forgetAwarenessBinding(socketId: string, documentId: string): void {
   if (owners?.get(binding.clientId) === socketId) {
     owners.delete(binding.clientId);
     if (owners.size === 0) awarenessClientOwners.delete(documentId);
+
+    const entries = activeAwarenessEntries.get(documentId);
+    entries?.delete(binding.clientId);
+    if (entries?.size === 0) activeAwarenessEntries.delete(documentId);
   }
 }
 
@@ -180,16 +202,26 @@ function sanitizeAwarenessUpdate(
   }
 
   if (rawState === null) {
-    const sanitized = { update: encodeAwarenessEntry(clientId, clock, null), removed: true };
+    const sanitized = {
+      update: encodeAwarenessEntry(clientId, clock, null),
+      clientId,
+      clock,
+      state: null,
+      removed: true,
+    };
     forgetAwarenessBinding(socket.id, documentId);
     return sanitized;
   }
 
+  const state = {
+    ...parsedState,
+    user: presenceIdentity(socket),
+  };
   return {
-    update: encodeAwarenessEntry(clientId, clock, {
-      ...parsedState,
-      user: presenceIdentity(socket),
-    }),
+    update: encodeAwarenessEntry(clientId, clock, state),
+    clientId,
+    clock,
+    state,
     removed: false,
   };
 }
@@ -217,12 +249,39 @@ export function createAwarenessManager(): AwarenessManager {
       try {
         const sanitized = sanitizeAwarenessUpdate(socket, documentId, update);
         if (!sanitized) return null;
+        if (sanitized.state) {
+          let entries = activeAwarenessEntries.get(documentId);
+          if (!entries) {
+            entries = new Map();
+            activeAwarenessEntries.set(documentId, entries);
+          }
+          entries.set(sanitized.clientId, {
+            clock: sanitized.clock,
+            state: sanitized.state,
+          });
+        } else {
+          const entries = activeAwarenessEntries.get(documentId);
+          entries?.delete(sanitized.clientId);
+          if (entries?.size === 0) activeAwarenessEntries.delete(documentId);
+        }
         socket.data.awarenessViolations = Math.max(0, socket.data.awarenessViolations - 1);
         return sanitized;
       } catch {
         rejectAwarenessUpdate(socket, documentId);
         return null;
       }
+    },
+
+    snapshot(documentId) {
+      const entries = activeAwarenessEntries.get(documentId);
+      if (!entries?.size) return null;
+      return encodeAwarenessEntries(
+        Array.from(entries, ([clientId, entry]) => [
+          clientId,
+          entry.clock,
+          entry.state,
+        ] as const)
+      );
     },
 
     releaseBinding(socket, documentId) {
@@ -239,18 +298,14 @@ export function createAwarenessManager(): AwarenessManager {
     forgetSocket(socketId) {
       const bindings = socketAwarenessBindings.get(socketId);
       if (!bindings) return;
-      for (const [documentId, binding] of bindings) {
-        const owners = awarenessClientOwners.get(documentId);
-        if (owners?.get(binding.clientId) === socketId) {
-          owners.delete(binding.clientId);
-          if (owners.size === 0) awarenessClientOwners.delete(documentId);
-        }
+      for (const documentId of Array.from(bindings.keys())) {
+        forgetAwarenessBinding(socketId, documentId);
       }
-      socketAwarenessBindings.delete(socketId);
     },
 
     forgetDocument(documentId) {
       awarenessClientOwners.delete(documentId);
+      activeAwarenessEntries.delete(documentId);
     },
   };
 }

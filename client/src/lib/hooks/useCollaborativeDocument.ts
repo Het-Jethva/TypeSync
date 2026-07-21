@@ -165,7 +165,10 @@ export function useCollaborativeDocument(
           }
 
           if (!result.success) {
-            if (result.code === "server-draining") {
+            if (
+              result.code === "server-draining" ||
+              result.code === "rate-limited"
+            ) {
               scheduleRetry();
               return;
             }
