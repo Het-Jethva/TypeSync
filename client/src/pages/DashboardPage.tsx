@@ -331,6 +331,12 @@ export default function DashboardPage() {
   const routeDocumentNotFound =
     routeDocumentError instanceof ApiError &&
     (routeDocumentError.status === 403 || routeDocumentError.status === 404);
+  const isFetchingRouteDoc =
+    isRouteDocumentLoading ||
+    (Boolean(documentId) &&
+      !routeDocumentIsInList &&
+      routeDocument?.id !== documentId &&
+      !routeDocumentError);
 
   const renderDocumentsError = () => (
     <div className="h-full flex items-center justify-center bg-bg-secondary/20">
@@ -460,7 +466,7 @@ export default function DashboardPage() {
                   navigate("/dashboard");
                 }}
               />
-            ) : isRouteDocumentLoading ? (
+            ) : isFetchingRouteDoc ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
