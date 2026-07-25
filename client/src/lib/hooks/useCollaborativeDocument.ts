@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
@@ -27,7 +27,16 @@ export function useCollaborativeDocument(
   const [documentSizeStatus, setDocumentSizeStatus] = useState<DocumentSizeStatus | null>(null);
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const ydoc = useMemo(() => new Y.Doc({ guid: documentId }), [documentId]);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const recover = useCallback(() => {
+    setReloadKey((prev) => prev + 1);
+  }, []);
+
+  const ydoc = useMemo(() => {
+    void reloadKey;
+    return new Y.Doc({ guid: documentId });
+  }, [documentId, reloadKey]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
   const resourceVersionsRef = useRef(new Map<Y.Doc, number>());
 
@@ -215,7 +224,10 @@ export function useCollaborativeDocument(
 
     function reconcilePendingUpdates(serverStateVector: Uint8Array) {
       cancelDeliveryAttempt();
-      deliveryBlocked = false;
+      if (deliveryBlocked) {
+        refreshPendingState();
+        return;
+      }
       retryAttempt = 0;
       setSyncError(null);
       pendingBatches = [];
@@ -230,10 +242,11 @@ export function useCollaborativeDocument(
 
     function joinDocument() {
       cancelDeliveryAttempt();
+      const generation = ++deliveryGeneration;
       joined = false;
       setIsConnected(false);
       socket.emit("doc:join", documentId, (result) => {
-        if (disposed) return;
+        if (disposed || generation !== deliveryGeneration) return;
         if (!result.success) {
           if (result.error !== "Document join was cancelled") {
             handleDocError({ documentId, message: result.error });
@@ -356,5 +369,6 @@ export function useCollaborativeDocument(
     documentSizeStatus,
     hasPendingUpdates,
     syncError,
+    recover,
   };
 }

@@ -52,11 +52,22 @@ export function Editor({
     documentSizeStatus,
     hasPendingUpdates,
     syncError,
+    recover,
   } = useCollaborativeDocument(documentId, onCollaboratorsChange, onAccessLost);
   const canEdit =
     (role === "owner" || role === "editor") &&
     documentSizeStatus?.level !== "limit" &&
     syncError === null;
+
+  const handleRecover = () => {
+    if (
+      window.confirm(
+        "Discard all unsaved changes and reload the latest document version from the server?"
+      )
+    ) {
+      recover();
+    }
+  };
 
   const editor = useEditor(
     {
@@ -172,7 +183,7 @@ export function Editor({
 
       <div className="flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
         <div className="w-full max-w-2xl bg-bg-elevated sm:border sm:border-border-strong sm:rounded-md sm:shadow-[0_2px_12px_rgba(0,0,0,0.01)] border-none rounded-none shadow-none sm:min-h-[700px] min-h-[calc(100vh-10rem)] h-fit">
-          <EditorContent editor={editor} />
+          <EditorContent key={ydoc.clientID} editor={editor} />
         </div>
       </div>
 
@@ -185,10 +196,10 @@ export function Editor({
       )}
 
       {/* Connection status bar */}
-      <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+      <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span
-            className={`w-1.5 h-1.5 rounded-full ${
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
               documentSizeStatus?.level === "limit" || syncError
                 ? "bg-error"
                 : documentSizeStatus?.level === "warning" || !isConnected || hasPendingUpdates
@@ -197,27 +208,36 @@ export function Editor({
             }`}
           />
           <span
-            className="text-[10px] text-text-muted font-medium"
+            className="text-[10px] text-text-muted font-medium truncate"
             title={syncError ?? undefined}
           >
-            {documentSizeStatus?.level === "limit"
-              ? documentSizeStatus.reason === "update"
-                ? "Edit exceeds size limit"
-                : "Document size limit reached"
-              : syncError
-                ? "Unable to save changes"
-              : documentSizeStatus?.level === "warning"
-                ? "Document nearing size limit"
-                : !isConnected
-                  ? hasPendingUpdates
-                    ? "Offline — changes pending"
-                    : "Connecting"
-                  : hasPendingUpdates
-                    ? "Saving…"
-                    : "Saved"}
+            {syncError
+              ? syncError
+              : documentSizeStatus?.level === "limit"
+                ? documentSizeStatus.reason === "update"
+                  ? "Edit exceeds size limit"
+                  : "Document size limit reached"
+                : documentSizeStatus?.level === "warning"
+                  ? "Document nearing size limit"
+                  : !isConnected
+                    ? hasPendingUpdates
+                      ? "Offline — changes pending"
+                      : "Connecting"
+                    : hasPendingUpdates
+                      ? "Saving…"
+                      : "Saved"}
           </span>
+          {syncError && (
+            <button
+              type="button"
+              onClick={handleRecover}
+              className="text-[10px] text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
+            >
+              Discard unsaved changes and reload
+            </button>
+          )}
         </div>
-        <span className="text-[10px] text-text-muted font-medium">
+        <span className="text-[10px] text-text-muted font-medium shrink-0">
           {editor?.storage.characterCount?.characters?.() ?? 0} characters
         </span>
       </div>
