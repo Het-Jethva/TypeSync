@@ -143,27 +143,41 @@ export async function flushAndCleanup(): Promise<{ succeeded: string[]; failed: 
   return documentRuntime.flushAll();
 }
 
-export function notifyPermissionChange(
+export async function notifyPermissionChange(
   io: TypeSyncSocketServer,
   documentId: string,
   targetUserId: string,
   role: "editor" | "viewer" | null
-): void {
+): Promise<void> {
   const roomName = `doc:${documentId}`;
 
   for (const [, socket] of io.sockets.sockets) {
-    if (socket.data.userId !== targetUserId || !socket.rooms.has(roomName)) {
+    if (socket.data.userId !== targetUserId) {
       continue;
     }
 
+    const inRoom = socket.rooms.has(roomName);
+
     if (role) {
-      socketRoles.get(socket.id)?.set(documentId, role);
+      if (inRoom) {
+        socketRoles.get(socket.id)?.set(documentId, role);
+      }
       socket.emit("doc:permission-updated", { documentId, role });
     } else {
-      getAwarenessManager().releaseBinding(socket, documentId);
-      socket.leave(roomName);
-      socketRoles.get(socket.id)?.delete(documentId);
+      if (inRoom) {
+        getAwarenessManager().releaseBinding(socket, documentId);
+        socket.leave(roomName);
+        socketRoles.get(socket.id)?.delete(documentId);
+      }
       socket.emit("doc:permission-revoked", { documentId });
+    }
+  }
+
+  if (role === null && !isDraining) {
+    try {
+      await evictIfNoPendingJoins(io, documentId);
+    } catch (error) {
+      console.error(`Failed to evict document ${documentId} after permission revocation:`, error);
     }
   }
 }

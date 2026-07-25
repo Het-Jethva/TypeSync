@@ -105,7 +105,7 @@ router.post(
     const docId = uuidParam(req.params.id);
     const { email, role } = AddCollaboratorSchema.parse(req.body);
     const collab = await DocumentService.addCollaborator(docId, email, role, req.user!.id);
-    notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
+    await notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
     res.status(201).json({ success: true, data: collab });
   })
 );
@@ -117,7 +117,7 @@ router.delete(
     const docId = uuidParam(req.params.id);
     const targetUserId = paramStr(req.params.userId);
     await DocumentService.removeCollaborator(docId, targetUserId, req.user!.id);
-    notifyPermissionChange(io, docId, targetUserId, null);
+    await notifyPermissionChange(io, docId, targetUserId, null);
     res.json({ success: true });
   })
 );
