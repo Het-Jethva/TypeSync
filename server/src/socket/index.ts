@@ -26,6 +26,10 @@ let isDraining = false;
 let activeAwarenessManager: ReturnType<typeof createAwarenessManager> | undefined;
 let activeIo: TypeSyncSocketServer | undefined;
 const documentRuntime = createDocumentRuntime({
+  roomOccupancyProvider(documentId) {
+    if (!activeIo) return 0;
+    return activeIo.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
+  },
   onDocumentSaved({ documentId, updatedAt }) {
     if (activeIo) {
       activeIo.to(`doc:${documentId}`).emit("doc:saved", {
@@ -65,11 +69,11 @@ function resolvePendingJoinWaiters(): void {
 }
 
 async function evictIfNoPendingJoins(
-  io: TypeSyncSocketServer,
+  _io: TypeSyncSocketServer,
   documentId: string
 ): Promise<void> {
   if ((pendingJoinCounts.get(documentId) ?? 0) > 0) return;
-  await documentRuntime.evictIfEmpty(io, documentId);
+  await documentRuntime.evictIfEmpty(documentId);
 }
 
 function consumeDocumentUpdateToken(socket: TypeSyncSocket): boolean {
@@ -397,7 +401,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
             pendingJoinCounts.set(parsedDocumentId, remaining);
           } else {
             pendingJoinCounts.delete(parsedDocumentId);
-            await documentRuntime.evictIfEmpty(io, parsedDocumentId);
+            await documentRuntime.evictIfEmpty(parsedDocumentId);
             resolvePendingJoinWaiters();
           }
         }
