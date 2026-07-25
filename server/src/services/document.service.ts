@@ -1,11 +1,9 @@
-import { eq, desc, and, lt, or } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 import { z } from "zod";
+import type { ListDocumentsQuery } from "@typesync/shared";
 import { db } from "../db/index.js";
 import { document, documentCollaborator, user } from "../db/schema.js";
 import { AppError } from "../middleware/error.js";
-import type { ListDocumentsQuery, Role } from "@typesync/shared";
-import { notifyPermissionChange, type TypeSyncSocketServer } from "../socket/index.js";
-
 
 const DocumentCursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -37,40 +35,12 @@ function decodeDocumentCursor(cursor: string): DocumentCursor {
 }
 
 export class DocumentService {
-  private static async getDocumentOrThrow(
-    docId: string,
-    userId?: string,
-    requiredRole?: 'owner' | 'editor' | 'any'
-  ): Promise<{ id: string; ownerId: string }> {
-    const [doc] = await db
-      .select({ id: document.id, ownerId: document.ownerId })
-      .from(document)
-      .where(eq(document.id, docId));
-    if (!doc) throw new AppError(404, "Document not found");
-
-    if (userId && requiredRole) {
-      if (requiredRole === 'owner') {
-        if (doc.ownerId !== userId) throw new AppError(403, "Only the owner can perform this action");
-      } else {
-        const access = await DocumentService.getDocumentAccess(docId, userId);
-        if (!access.hasAccess) throw new AppError(403, "Access denied");
-        if (requiredRole === 'editor' && access.role === 'viewer') {
-          throw new AppError(403, "Access denied");
-        }
-      }
-    }
-    return doc;
-  }
-
   static async createDocument(title: string, ownerId: string) {
-    const [doc] = await db
+    const [storedDocument] = await db
       .insert(document)
-      .values({
-        title: title || "Untitled",
-        ownerId,
-      })
+      .values({ title: title || "Untitled", ownerId })
       .returning();
-    return doc;
+    return storedDocument;
   }
 
   static async listUserDocuments(userId: string, pagination: ListDocumentsQuery) {
@@ -83,7 +53,7 @@ export class DocumentService {
       : undefined;
     const queryLimit = pagination.limit + 1;
 
-    const [ownedDocs, sharedDocs] = await Promise.all([
+    const [ownedDocuments, sharedDocuments] = await Promise.all([
       db
         .select({
           id: document.id,
@@ -113,11 +83,11 @@ export class DocumentService {
     ]);
 
     const combined = [
-      ...ownedDocs.map((doc) => ({ ...doc, role: "owner" as const })),
-      ...sharedDocs,
-    ].sort((a, b) => {
-      const updatedAtDifference = b.updatedAt.getTime() - a.updatedAt.getTime();
-      return updatedAtDifference || b.id.localeCompare(a.id);
+      ...ownedDocuments.map((storedDocument) => ({ ...storedDocument, role: "owner" as const })),
+      ...sharedDocuments,
+    ].sort((left, right) => {
+      const updatedAtDifference = right.updatedAt.getTime() - left.updatedAt.getTime();
+      return updatedAtDifference || right.id.localeCompare(left.id);
     });
     const items = combined.slice(0, pagination.limit);
     const lastItem = items.at(-1);
@@ -128,27 +98,8 @@ export class DocumentService {
     return { items, nextCursor };
   }
 
-  static async getDocumentAccess(docId: string, userId: string): Promise<{ hasAccess: boolean; role: string }> {
-    const [doc] = await db
-      .select({ ownerId: document.ownerId })
-      .from(document)
-      .where(eq(document.id, docId));
-
-    if (!doc) return { hasAccess: false, role: "" };
-    if (doc.ownerId === userId) return { hasAccess: true, role: "owner" };
-
-    const [collab] = await db
-      .select({ role: documentCollaborator.role })
-      .from(documentCollaborator)
-      .where(and(eq(documentCollaborator.documentId, docId), eq(documentCollaborator.userId, userId)));
-
-    if (collab) return { hasAccess: true, role: collab.role };
-
-    return { hasAccess: false, role: "" };
-  }
-
-  static async getDocument(docId: string, userId: string) {
-    const [doc] = await db
+  static async getDocument(documentId: string) {
+    const [storedDocument] = await db
       .select({
         id: document.id,
         title: document.title,
@@ -157,35 +108,12 @@ export class DocumentService {
         updatedAt: document.updatedAt,
       })
       .from(document)
-      .where(eq(document.id, docId));
-    if (!doc) throw new AppError(404, "Document not found");
-
-    let role: string;
-    if (doc.ownerId === userId) {
-      role = "owner";
-    } else {
-      const [collab] = await db
-        .select({ role: documentCollaborator.role })
-        .from(documentCollaborator)
-        .where(
-          and(
-            eq(documentCollaborator.documentId, docId),
-            eq(documentCollaborator.userId, userId)
-          )
-        );
-      if (!collab) throw new AppError(403, "Access denied");
-      role = collab.role;
-    }
-
-    return {
-      ...doc,
-      role: role as Role,
-    };
+      .where(eq(document.id, documentId));
+    if (!storedDocument) throw new AppError(404, "Document not found");
+    return storedDocument;
   }
 
-  static async listCollaborators(docId: string, userId: string) {
-    await this.getDocumentOrThrow(docId, userId, "owner");
-
+  static async listCollaborators(documentId: string) {
     const collaborators = await db
       .select({
         id: documentCollaborator.id,
@@ -199,111 +127,33 @@ export class DocumentService {
       })
       .from(documentCollaborator)
       .innerJoin(user, eq(documentCollaborator.userId, user.id))
-      .where(eq(documentCollaborator.documentId, docId));
+      .where(eq(documentCollaborator.documentId, documentId));
 
-    return collaborators.map((c) => ({
-      id: c.id,
-      documentId: c.documentId,
-      userId: c.userId,
-      role: c.role as Role,
-      invitedAt: c.invitedAt,
+    return collaborators.map((collaborator) => ({
+      id: collaborator.id,
+      documentId: collaborator.documentId,
+      userId: collaborator.userId,
+      role: collaborator.role,
+      invitedAt: collaborator.invitedAt,
       user: {
-        id: c.userId,
-        name: c.userName,
-        email: c.userEmail,
-        image: c.userImage,
+        id: collaborator.userId,
+        name: collaborator.userName,
+        email: collaborator.userEmail,
+        image: collaborator.userImage,
       },
     }));
   }
 
-  static async updateDocumentTitle(docId: string, title: string, userId: string) {
-    await this.getDocumentOrThrow(docId, userId, 'editor');
-
+  static async updateDocumentTitle(documentId: string, title: string) {
     const [updated] = await db
       .update(document)
       .set({ title, updatedAt: new Date() })
-      .where(eq(document.id, docId))
+      .where(eq(document.id, documentId))
       .returning();
-
     return updated;
   }
 
-  static async deleteDocument(docId: string, userId: string) {
-    await this.getDocumentOrThrow(docId, userId, 'owner');
-
-    await db.delete(document).where(eq(document.id, docId));
-  }
-
-  private static async addCollaborator(
-    docId: string,
-    email: string,
-    role: "editor" | "viewer",
-    userId: string
-  ) {
-    await this.getDocumentOrThrow(docId, userId, 'owner');
-
-    const [targetUser] = await db
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.email, email));
-    if (!targetUser) {
-      throw new AppError(404, "User not found. They need to sign up first.");
-    }
-
-    if (targetUser.id === userId) {
-      throw new AppError(400, "Cannot add yourself as a collaborator");
-    }
-
-    const [collab] = await db
-      .insert(documentCollaborator)
-      .values({
-        documentId: docId,
-        userId: targetUser.id,
-        role,
-      })
-      .onConflictDoUpdate({
-        target: [documentCollaborator.documentId, documentCollaborator.userId],
-        set: { role },
-      })
-      .returning();
-
-    return collab;
-  }
-
-  private static async removeCollaborator(docId: string, targetUserId: string, currentUserId: string) {
-    await this.getDocumentOrThrow(docId, currentUserId, 'owner');
-
-    await db
-      .delete(documentCollaborator)
-      .where(
-        and(
-          eq(documentCollaborator.documentId, docId),
-          eq(documentCollaborator.userId, targetUserId)
-        )
-      );
-  }
-
-  static async grantCollaboratorAccess(
-    io: TypeSyncSocketServer,
-    docId: string,
-    email: string,
-    role: "editor" | "viewer",
-    currentUserId: string
-  ) {
-    const collab = await this.addCollaborator(docId, email, role, currentUserId);
-    await notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
-    return collab;
-  }
-
-  static async revokeCollaboratorAccess(
-    io: TypeSyncSocketServer,
-    docId: string,
-    targetUserId: string,
-    currentUserId: string
-  ) {
-    await this.removeCollaborator(docId, targetUserId, currentUserId);
-    await notifyPermissionChange(io, docId, targetUserId, null);
+  static async deleteDocument(documentId: string): Promise<void> {
+    await db.delete(document).where(eq(document.id, documentId));
   }
 }
-
-

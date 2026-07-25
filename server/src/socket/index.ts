@@ -1,111 +1,23 @@
-import { Server as SocketIOServer } from "socket.io";
 import { Server as HttpServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
-import { DocumentService } from "../services/document.service.js";
-import { auth } from "../lib/auth.js";
-import { config } from "../config.js";
 import type {
   ClientToServerEvents,
   DocumentJoinResult,
   DocumentUpdateResult,
   ServerToClientEvents,
 } from "@typesync/shared";
-import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
+import { config } from "../config.js";
+import { auth } from "../lib/auth.js";
+import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
+import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
 
 export type { TypeSyncSocketServer } from "./types.js";
 
 const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
 const trustedClientOrigin = new URL(config.clientUrl).origin;
-
-let activeIo: TypeSyncSocketServer | undefined;
-const roomSession = new CollaborativeRoomSession({
-  getRoomOccupancy(documentId) {
-    if (!activeIo) return 0;
-    return activeIo.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
-  },
-  onDocumentSaved({ documentId, updatedAt }) {
-    if (activeIo) {
-      activeIo.to(`doc:${documentId}`).emit("doc:saved", {
-        documentId,
-        updatedAt: updatedAt.toISOString(),
-      });
-    }
-  },
-});
-
-export function beginSocketDrain(): void {
-  roomSession.beginDrain();
-}
-
-export function waitForSocketDrain(): Promise<void> {
-  return roomSession.waitForDrain();
-}
-
-export async function flushAndCleanup(): Promise<{ succeeded: string[]; failed: string[] }> {
-  return roomSession.flushAll();
-}
-
-export async function notifyPermissionChange(
-  io: TypeSyncSocketServer,
-  documentId: string,
-  targetUserId: string,
-  role: "editor" | "viewer" | null
-): Promise<void> {
-  const roomName = `doc:${documentId}`;
-
-  for (const [, socket] of io.sockets.sockets) {
-    if (socket.data.userId !== targetUserId) continue;
-
-    const inRoom = socket.rooms.has(roomName);
-
-    if (role) {
-      if (inRoom) {
-        roomSession.setRole(socket.id, documentId, role);
-      }
-      socket.emit("doc:permission-updated", { documentId, role });
-    } else {
-      if (inRoom) {
-        roomSession.releaseAwarenessBinding(socket, documentId);
-        socket.leave(roomName);
-        roomSession.clearRole(socket.id, documentId);
-      }
-      socket.emit("doc:permission-revoked", { documentId });
-    }
-  }
-
-  if (role === null) {
-    try {
-      await roomSession.evictIfEmpty(documentId);
-    } catch (error) {
-      console.error(`Failed to evict document ${documentId} after permission revocation:`, error);
-    }
-  }
-}
-
-export function handleDocumentDeleted(
-  io: TypeSyncSocketServer,
-  documentId: string
-): void {
-  const roomName = `doc:${documentId}`;
-
-  const roomSockets = io.sockets.adapter.rooms.get(roomName);
-  if (roomSockets) {
-    const socketIds = Array.from(roomSockets);
-    for (const socketId of socketIds) {
-      const socket = io.sockets.sockets.get(socketId);
-      if (socket) {
-        roomSession.releaseAwarenessBinding(socket, documentId);
-        roomSession.clearRole(socketId, documentId);
-        socket.emit("doc:permission-revoked", { documentId });
-        socket.leave(roomName);
-      }
-    }
-  }
-
-  roomSession.handleDocumentDeleted(documentId);
-}
 
 function originFromHeader(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -163,7 +75,11 @@ async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promi
   }
 }
 
-export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
+export function setupSocket(
+  httpServer: HttpServer,
+  roomSession: CollaborativeRoomSession,
+  accessAuthorizer: DocumentAccessAuthorizer
+): TypeSyncSocketServer {
   const io = new SocketIOServer<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -181,7 +97,6 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       );
     },
   });
-  activeIo = io;
 
   io.use(async (socket, next) => {
     try {
@@ -205,12 +120,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
   });
 
   io.on("connection", (socket) => {
-    const user = {
-      id: socket.data.userId!,
-      name: socket.data.userName!,
-      email: socket.data.userEmail!,
-    };
-    const presence = roomSession.initializeSocket(socket.id, user);
+    roomSession.initializeSocket(socket);
 
     const sessionValidationTimer = setInterval(() => {
       void ensureSocketSession(socket, true);
@@ -236,11 +146,9 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       }
 
       const result = await roomSession.joinSession({
-        socketId: socket.id,
-        user,
+        socket,
         documentId: docId,
-        checkAccess: () => DocumentService.getDocumentAccess(docId, user.id),
-        isStillConnected: () => socket.connected,
+        authorize: () => accessAuthorizer.authorizeSocketSession(docId, socket.data.userId),
       });
 
       if (!result.success) {
@@ -248,15 +156,12 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
-      const roomName = `doc:${docId}`;
-      socket.join(roomName);
-
       respond({
         success: true,
         state: result.state,
         stateVector: result.stateVector,
         role: result.role,
-        presence,
+        presence: result.presence,
       });
 
       if (result.awarenessSnapshot) {
@@ -274,12 +179,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
     socket.on("doc:leave", async (documentId: string) => {
       const parsed = DocumentIdSchema.safeParse(documentId);
       if (!parsed.success) return;
-      const docId = parsed.data;
-      const roomName = `doc:${docId}`;
-
-      roomSession.releaseAwarenessBinding(socket, docId);
-      socket.leave(roomName);
-      await roomSession.leaveSession(socket.id, docId);
+      await roomSession.leaveSession(socket, parsed.data);
     });
 
     socket.on("doc:update", async (
@@ -295,21 +195,13 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
       const docId = parsed.data;
-      const roomName = `doc:${docId}`;
 
       if (!(await ensureSocketSession(socket))) {
         respond({ success: false, code: "session-expired", error: "Session expired" });
         return;
       }
 
-      const inRoom = socket.rooms.has(roomName);
-      const result = roomSession.applyUpdate({
-        socketId: socket.id,
-        documentId: docId,
-        update,
-        inRoom,
-      });
-
+      const result = roomSession.applyUpdate({ socket, documentId: docId, update });
       if (!result.success) {
         if (result.code !== "server-draining" && result.code !== "rate-limited") {
           socket.emit("doc:error", { documentId: docId, message: result.error });
@@ -321,6 +213,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
         return;
       }
 
+      const roomName = `doc:${docId}`;
       if (result.sizeStatus) {
         io.to(roomName).emit("doc:size-status", result.sizeStatus);
       }
@@ -333,39 +226,24 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       const parsed = DocumentIdSchema.safeParse(documentId);
       if (!parsed.success) return;
       const docId = parsed.data;
-      const roomName = `doc:${docId}`;
 
       if (!(await ensureSocketSession(socket))) return;
 
-      const inRoom = socket.rooms.has(roomName);
-      const sanitized = roomSession.applyAwareness({
-        socket,
-        documentId: docId,
-        update,
-        inRoom,
-      });
-
+      const sanitized = roomSession.applyAwareness({ socket, documentId: docId, update });
       if (!sanitized) return;
 
-      socket.to(roomName).emit("awareness:update", {
+      socket.to(`doc:${docId}`).emit("awareness:update", {
         documentId: docId,
         update: sanitized.update,
       });
     });
 
     socket.on("disconnect", async () => {
-      const docIds = roomSession.handleDisconnect(socket.id);
-      for (const docId of docIds) {
-        roomSession.releaseAwarenessBinding(socket, docId);
-      }
       if (socket.data.sessionValidationTimer) {
         clearInterval(socket.data.sessionValidationTimer);
         socket.data.sessionValidationTimer = undefined;
       }
-
-      for (const docId of docIds) {
-        await roomSession.evictIfEmpty(docId);
-      }
+      await roomSession.handleDisconnect(socket);
     });
   });
 

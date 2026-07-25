@@ -61,6 +61,9 @@ export function useCollaborativeDocument(
       emitUpdate(docId, update, timeoutMs, callback) {
         socket.timeout(timeoutMs).emit("doc:update", docId, update, callback);
       },
+      emitAwareness(docId, update) {
+        socket.volatile.emit("awareness:update", docId, update);
+      },
       onAccessLost() {
         onAccessLostRef.current?.();
       },
@@ -135,7 +138,7 @@ export function useCollaborativeDocument(
           awareness,
           [awareness.clientID]
         );
-        socket.volatile.emit("awareness:update", documentId, awarenessUpdate);
+        syncManager.sendAwareness(awarenessUpdate);
       });
     }
 
@@ -164,13 +167,13 @@ export function useCollaborativeDocument(
     ydoc.on("update", updateHandler);
 
     const awarenessUpdateHandler = ({ added, updated, removed }: any, origin: any) => {
-      if (origin !== "remote" && syncState.isConnected && socket.connected) {
+      if (origin !== "remote") {
         const changedClients = added.concat(updated).concat(removed);
         const update = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
           changedClients
         );
-        socket.volatile.emit("awareness:update", documentId, update);
+        syncManager.sendAwareness(update);
       }
     };
     awareness.on("update", awarenessUpdateHandler);
@@ -192,9 +195,6 @@ export function useCollaborativeDocument(
     return () => {
       syncManager.destroy();
       unsubscribe();
-      if (syncState.isConnected && socket.connected) {
-        awareness.setLocalState(null);
-      }
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
       socket.off("doc:permission-revoked", handlePermissionRevoked);

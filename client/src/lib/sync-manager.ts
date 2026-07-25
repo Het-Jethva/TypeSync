@@ -21,6 +21,7 @@ export interface CollaborativeSyncManagerOptions {
     timeoutMs: number,
     callback: (error: any, result: any) => void
   ) => void;
+  emitAwareness: (documentId: string, update: Uint8Array) => void;
   onAccessLost?: () => void;
   onJoinRequired?: () => void;
 }
@@ -29,6 +30,7 @@ export class CollaborativeSyncManager {
   private documentId: string;
   private ydoc: Y.Doc;
   private emitUpdate: CollaborativeSyncManagerOptions["emitUpdate"];
+  private emitAwareness: CollaborativeSyncManagerOptions["emitAwareness"];
   private onAccessLost?: () => void;
   private onJoinRequired?: () => void;
 
@@ -55,6 +57,7 @@ export class CollaborativeSyncManager {
     this.documentId = options.documentId;
     this.ydoc = options.ydoc;
     this.emitUpdate = options.emitUpdate;
+    this.emitAwareness = options.emitAwareness;
     this.onAccessLost = options.onAccessLost;
     this.onJoinRequired = options.onJoinRequired;
   }
@@ -88,6 +91,11 @@ export class CollaborativeSyncManager {
   handleAccessLost(): void {
     this.setConnected(false);
     this.onAccessLost?.();
+  }
+
+  sendAwareness(update: Uint8Array): void {
+    if (this.disposed || !this.joined) return;
+    this.emitAwareness(this.documentId, update);
   }
 
   enqueueDocumentUpdate(update: Uint8Array): void {

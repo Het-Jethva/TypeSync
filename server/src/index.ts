@@ -5,12 +5,10 @@ import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
-import {
-  beginSocketDrain,
-  setupSocket,
-  flushAndCleanup,
-  waitForSocketDrain,
-} from "./socket/index.js";
+import { DocumentAccessAuthorizer } from "./services/document-access-authorizer.js";
+import { setupSocket } from "./socket/index.js";
+import { CollaborativeRoomSession } from "./socket/room-session.js";
+import type { TypeSyncSocketServer } from "./socket/types.js";
 import { errorHandler } from "./middleware/error.js";
 import { pool } from "./db/index.js";
 
@@ -48,11 +46,26 @@ app.get("/api/ready", async (_req, res) => {
   }
 });
 
+const socketServer = { current: undefined as TypeSyncSocketServer | undefined };
+const roomSession = new CollaborativeRoomSession({
+  getRoomOccupancy(documentId) {
+    return socketServer.current?.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
+  },
+  onDocumentSaved({ documentId, updatedAt }) {
+    socketServer.current?.to(`doc:${documentId}`).emit("doc:saved", {
+      documentId,
+      updatedAt: updatedAt.toISOString(),
+    });
+  },
+});
+const accessAuthorizer = new DocumentAccessAuthorizer(roomSession);
+
 // ─── Socket.IO ───────────────────────────────────────────
-const io = setupSocket(httpServer);
+const io = setupSocket(httpServer, roomSession, accessAuthorizer);
+socketServer.current = io;
 
 // ─── API Routes ──────────────────────────────────────────
-app.use("/api/documents", createDocumentRoutes(io));
+app.use("/api/documents", createDocumentRoutes(io, roomSession, accessAuthorizer));
 
 // ─── Error handler (must come after all routes) ──────────
 app.use(errorHandler);
@@ -77,10 +90,10 @@ async function shutdown(signal: string) {
   }, SHUTDOWN_TIMEOUT_MS);
   forcedExit.unref();
   try {
-    beginSocketDrain();
+    roomSession.beginDrain();
     await io.close();
-    await waitForSocketDrain();
-    const { failed } = await flushAndCleanup();
+    await roomSession.waitForDrain();
+    const { failed } = await roomSession.flushAll();
     if (failed.length > 0) {
       console.error(`Graceful shutdown: failed to save ${failed.length} document(s).`);
       exitCode = 1;
