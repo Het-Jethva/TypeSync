@@ -54,6 +54,14 @@ function resolvePendingJoinWaiters(): void {
   pendingJoinWaiters.clear();
 }
 
+async function evictIfNoPendingJoins(
+  io: TypeSyncSocketServer,
+  documentId: string
+): Promise<void> {
+  if ((pendingJoinCounts.get(documentId) ?? 0) > 0) return;
+  await documentRuntime.evictIfEmpty(io, documentId);
+}
+
 function consumeDocumentUpdateToken(socket: TypeSyncSocket): boolean {
   const now = Date.now();
   const elapsedSeconds = (now - socket.data.documentUpdateLastRefill) / 1000;
@@ -385,7 +393,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
 
       // Evict from memory if room is now empty
       if (!isDraining) {
-        await documentRuntime.evictIfEmpty(io, documentId);
+        await evictIfNoPendingJoins(io, documentId);
       }
     });
 
@@ -513,7 +521,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       // Evict any now-empty docs
       if (!isDraining) {
         for (const docId of docIds) {
-          await documentRuntime.evictIfEmpty(io, docId);
+          await evictIfNoPendingJoins(io, docId);
         }
       }
     });
