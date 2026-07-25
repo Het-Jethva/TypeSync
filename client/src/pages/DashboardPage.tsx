@@ -319,6 +319,12 @@ export default function DashboardPage() {
     }
   };
 
+  const handleRetryDocuments = useCallback(() => {
+    setDocumentsError(null);
+    setIsLoading(true);
+    void fetchDocuments();
+  }, [fetchDocuments]);
+
   const currentDoc =
     documents.find((document) => document.id === documentId) ??
     (routeDocument?.id === documentId ? routeDocument : undefined);
@@ -334,11 +340,7 @@ export default function DashboardPage() {
         </h3>
         <p className="text-xs text-text-secondary mb-5 leading-relaxed">{documentsError}</p>
         <button
-          onClick={() => {
-            setDocumentsError(null);
-            setIsLoading(true);
-            void fetchDocuments();
-          }}
+          onClick={handleRetryDocuments}
           className="btn-linear-primary text-xs px-4 py-2"
         >
           Try again
@@ -387,6 +389,8 @@ export default function DashboardPage() {
               documents={documents}
               activeDocId={documentId}
               isLoading={isLoading}
+              error={documentsError}
+              onRetry={handleRetryDocuments}
               hasMore={nextDocumentsCursor !== null}
               isLoadingMore={isLoadingMoreDocuments}
               onLoadMore={loadMoreDocuments}
@@ -444,15 +448,25 @@ export default function DashboardPage() {
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
           {documentId ? (
-            isLoading || isRouteDocumentLoading ? (
+            currentDoc ? (
+              <Editor
+                documentId={documentId}
+                role={currentDoc.role}
+                onCollaboratorsChange={setActiveCollaborators}
+                onPendingUpdatesChange={setHasPendingDocumentUpdates}
+                onAccessLost={() => {
+                  fetchDocuments();
+                  bypassNextNavigationRef.current = true;
+                  navigate("/dashboard");
+                }}
+              />
+            ) : isRouteDocumentLoading ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
                   <span className="text-xs text-text-secondary font-medium">Loading document...</span>
                 </div>
               </div>
-            ) : documentsError ? (
-              renderDocumentsError()
             ) : routeDocumentError && !routeDocumentNotFound ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="text-center max-w-sm px-6">
@@ -470,18 +484,6 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
-            ) : currentDoc ? (
-              <Editor
-                documentId={documentId}
-                role={currentDoc.role}
-                onCollaboratorsChange={setActiveCollaborators}
-                onPendingUpdatesChange={setHasPendingDocumentUpdates}
-                onAccessLost={() => {
-                  fetchDocuments();
-                  bypassNextNavigationRef.current = true;
-                  navigate("/dashboard");
-                }}
-              />
             ) : (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <motion.div

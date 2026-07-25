@@ -9,6 +9,8 @@ interface SidebarProps {
   documents: DocumentWithRole[];
   activeDocId?: string;
   isLoading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
@@ -45,6 +47,8 @@ export function Sidebar({
   documents,
   activeDocId,
   isLoading,
+  error,
+  onRetry,
   hasMore,
   isLoadingMore,
   onLoadMore,
@@ -201,6 +205,19 @@ export function Sidebar({
         {isLoading ? (
           <div className="p-4 flex justify-center">
             <div className="w-5 h-5 border-2 border-border-strong border-t-accent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="p-4 text-center">
+            <p className="text-xs text-error mb-3 leading-relaxed">{error}</p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="btn-linear-primary text-xs px-3 py-1.5"
+              >
+                Try again
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-0.5">
