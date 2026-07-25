@@ -104,8 +104,7 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const docId = uuidParam(req.params.id);
     const { email, role } = AddCollaboratorSchema.parse(req.body);
-    const collab = await DocumentService.addCollaborator(docId, email, role, req.user!.id);
-    await notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
+    const collab = await DocumentService.grantCollaboratorAccess(io, docId, email, role, req.user!.id);
     res.status(201).json({ success: true, data: collab });
   })
 );
@@ -116,11 +115,11 @@ router.delete(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const docId = uuidParam(req.params.id);
     const targetUserId = paramStr(req.params.userId);
-    await DocumentService.removeCollaborator(docId, targetUserId, req.user!.id);
-    await notifyPermissionChange(io, docId, targetUserId, null);
+    await DocumentService.revokeCollaboratorAccess(io, docId, targetUserId, req.user!.id);
     res.json({ success: true });
   })
 );
+
 
   return router;
 }

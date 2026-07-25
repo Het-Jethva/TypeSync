@@ -4,6 +4,8 @@ import { db } from "../db/index.js";
 import { document, documentCollaborator, user } from "../db/schema.js";
 import { AppError } from "../middleware/error.js";
 import type { ListDocumentsQuery, Role } from "@typesync/shared";
+import { notifyPermissionChange, type TypeSyncSocketServer } from "../socket/index.js";
+
 
 const DocumentCursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -232,7 +234,7 @@ export class DocumentService {
     await db.delete(document).where(eq(document.id, docId));
   }
 
-  static async addCollaborator(
+  private static async addCollaborator(
     docId: string,
     email: string,
     role: "editor" | "viewer",
@@ -268,7 +270,7 @@ export class DocumentService {
     return collab;
   }
 
-  static async removeCollaborator(docId: string, targetUserId: string, currentUserId: string) {
+  private static async removeCollaborator(docId: string, targetUserId: string, currentUserId: string) {
     await this.getDocumentOrThrow(docId, currentUserId, 'owner');
 
     await db
@@ -280,4 +282,28 @@ export class DocumentService {
         )
       );
   }
+
+  static async grantCollaboratorAccess(
+    io: TypeSyncSocketServer,
+    docId: string,
+    email: string,
+    role: "editor" | "viewer",
+    currentUserId: string
+  ) {
+    const collab = await this.addCollaborator(docId, email, role, currentUserId);
+    await notifyPermissionChange(io, docId, collab.userId, collab.role as "editor" | "viewer");
+    return collab;
+  }
+
+  static async revokeCollaboratorAccess(
+    io: TypeSyncSocketServer,
+    docId: string,
+    targetUserId: string,
+    currentUserId: string
+  ) {
+    await this.removeCollaborator(docId, targetUserId, currentUserId);
+    await notifyPermissionChange(io, docId, targetUserId, null);
+  }
 }
+
+

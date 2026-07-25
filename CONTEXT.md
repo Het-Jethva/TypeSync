@@ -12,4 +12,10 @@ An active in-memory session for a **Document** where real-time Yjs CRDT edits, t
 - **Rate-Limiting & Preflight**: Encapsulates token-bucket rate-limiting and document size validation, returning typed results (`accepted`, `rate-limited`, `update-too-large`, `invalid`).
 
 ### Document Access Authorizer
-The security module responsible for verifying whether a user has permission (`owner`, `editor`, `viewer`) to join a **Collaborative Room Session** or perform HTTP mutations on a **Document**, and broadcasting role revocation events when permissions change.
+The security module responsible for verifying whether a user has permission (`owner`, `editor`, `viewer`) to join a **Collaborative Room Session** or perform HTTP mutations on a **Document**, and atomically broadcasting role revocation events and room evictions when permissions change.
+- **Interface Surface**: `grantAccess`, `revokeAccess`, `authorizeSocketSession`.
+
+### Collaborative Sync Manager
+The client-side module responsible for buffering offline edits, merging pending Yjs updates, managing exponential backoff retries, and reconciling state-vector deltas upon reconnection.
+- **Interface Surface**: `enqueueUpdate`, `reconcileDelta`, `retryWithBackoff`, `subscribe`.
+

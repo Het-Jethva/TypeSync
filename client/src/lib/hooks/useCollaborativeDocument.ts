@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
-import type { DocumentSizeStatus, PresenceIdentity } from "@typesync/shared";
-
-const DOCUMENT_UPDATE_ACK_TIMEOUT_MS = 5_000;
-const MAX_MERGED_UPDATE_BYTES = 512 * 1024;
-const MAX_RETRY_DELAY_MS = 10_000;
+import type { PresenceIdentity } from "@typesync/shared";
+import { CollaborativeSyncManager, type SyncState } from "../sync-manager";
 
 function isPresenceIdentity(value: unknown): value is PresenceIdentity {
   if (!value || typeof value !== "object") return false;
@@ -23,10 +20,12 @@ export function useCollaborativeDocument(
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void,
   onAccessLost?: () => void
 ) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [documentSizeStatus, setDocumentSizeStatus] = useState<DocumentSizeStatus | null>(null);
-  const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<SyncState>({
+    isConnected: false,
+    documentSizeStatus: null,
+    hasPendingUpdates: false,
+    syncError: null,
+  });
   const [reloadKey, setReloadKey] = useState(0);
 
   const recover = useCallback(() => {
@@ -53,20 +52,24 @@ export function useCollaborativeDocument(
   useEffect(() => {
     const socket = getSocket();
     const resourceVersions = resourceVersionsRef.current;
-    let joined = false;
-    let disposed = false;
-    let nextBatchId = 1;
-    let activeBatchId: number | null = null;
-    let deliveryGeneration = 0;
-    let retryAttempt = 0;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let deliveryBlocked = false;
-    let pendingBatches: { id: number; update: Uint8Array }[] = [];
-    setDocumentSizeStatus(null);
-    setHasPendingUpdates(false);
-    setSyncError(null);
     const resourceVersion = (resourceVersions.get(ydoc) ?? 0) + 1;
     resourceVersions.set(ydoc, resourceVersion);
+
+    const syncManager = new CollaborativeSyncManager({
+      documentId,
+      ydoc,
+      emitUpdate(docId, update, timeoutMs, callback) {
+        socket.timeout(timeoutMs).emit("doc:update", docId, update, callback);
+      },
+      onAccessLost() {
+        onAccessLostRef.current?.();
+      },
+      onJoinRequired() {
+        joinDocument();
+      },
+    });
+
+    const unsubscribe = syncManager.subscribe(setSyncState);
 
     const handleUpdate = (payload: { documentId: string; update: Uint8Array }) => {
       if (payload.documentId !== documentId) return;
@@ -88,14 +91,13 @@ export function useCollaborativeDocument(
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
       if (payload.documentId === documentId) {
-        setIsConnected(false);
-        onAccessLostRef.current?.();
+        syncManager.handleAccessLost();
       }
     };
 
-    const handleDocumentSizeStatus = (payload: DocumentSizeStatus) => {
+    const handleDocumentSizeStatus = (payload: any) => {
       if (payload.documentId === documentId) {
-        setDocumentSizeStatus(payload);
+        syncManager.setDocumentSizeStatus(payload);
       }
     };
 
@@ -108,145 +110,14 @@ export function useCollaborativeDocument(
         message === "Failed to load document" ||
         message === "Session expired"
       ) {
-        setIsConnected(false);
-        onAccessLostRef.current?.();
+        syncManager.handleAccessLost();
       }
     };
 
-    function clearRetryTimer() {
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = undefined;
-    }
-
-    function cancelDeliveryAttempt() {
-      deliveryGeneration += 1;
-      activeBatchId = null;
-      clearRetryTimer();
-    }
-
-    function refreshPendingState() {
-      if (!disposed) setHasPendingUpdates(pendingBatches.length > 0);
-    }
-
-    function scheduleRetry() {
-      if (disposed || retryTimer || !joined || !socket.connected || deliveryBlocked) return;
-      const delay = Math.min(1_000 * 2 ** retryAttempt, MAX_RETRY_DELAY_MS);
-      retryAttempt += 1;
-      retryTimer = setTimeout(() => {
-        retryTimer = undefined;
-        flushPendingUpdates();
-      }, delay);
-    }
-
-    function flushPendingUpdates() {
-      if (
-        disposed ||
-        !joined ||
-        !socket.connected ||
-        deliveryBlocked ||
-        activeBatchId !== null ||
-        pendingBatches.length === 0
-      ) {
-        return;
-      }
-
-      const batch = pendingBatches[0];
-      activeBatchId = batch.id;
-      const generation = ++deliveryGeneration;
-
-      socket.timeout(DOCUMENT_UPDATE_ACK_TIMEOUT_MS).emit(
-        "doc:update",
-        documentId,
-        batch.update,
-        (error, result) => {
-          if (
-            disposed ||
-            generation !== deliveryGeneration ||
-            activeBatchId !== batch.id
-          ) {
-            return;
-          }
-
-          activeBatchId = null;
-          if (error) {
-            scheduleRetry();
-            return;
-          }
-
-          if (!result.success) {
-            if (
-              result.code === "server-draining" ||
-              result.code === "rate-limited"
-            ) {
-              scheduleRetry();
-              return;
-            }
-            if (
-              result.code === "not-joined" ||
-              result.code === "document-not-loaded"
-            ) {
-              joinDocument();
-              return;
-            }
-
-            deliveryBlocked = true;
-            setSyncError(result.error);
-            refreshPendingState();
-            return;
-          }
-
-          pendingBatches.shift();
-          retryAttempt = 0;
-          setSyncError(null);
-          refreshPendingState();
-          flushPendingUpdates();
-        }
-      );
-    }
-
-    function enqueueDocumentUpdate(update: Uint8Array) {
-      const mergeableIndex = activeBatchId === null ? 0 : 1;
-      const lastBatch = pendingBatches.at(-1);
-      if (lastBatch && pendingBatches.length > mergeableIndex) {
-        const merged = Y.mergeUpdates([lastBatch.update, update]);
-        if (merged.byteLength <= MAX_MERGED_UPDATE_BYTES) {
-          lastBatch.update = merged;
-          refreshPendingState();
-          flushPendingUpdates();
-          return;
-        }
-      }
-
-      pendingBatches.push({ id: nextBatchId++, update });
-      refreshPendingState();
-      flushPendingUpdates();
-    }
-
-    function reconcilePendingUpdates(serverStateVector: Uint8Array) {
-      cancelDeliveryAttempt();
-      if (deliveryBlocked) {
-        refreshPendingState();
-        return;
-      }
-      retryAttempt = 0;
-      setSyncError(null);
-      pendingBatches = [];
-
-      const localDelta = Y.encodeStateAsUpdate(ydoc, serverStateVector);
-      if (localDelta.byteLength > 2) {
-        pendingBatches.push({ id: nextBatchId++, update: localDelta });
-      }
-      refreshPendingState();
-      flushPendingUpdates();
-    }
-
     function joinDocument() {
-      cancelDeliveryAttempt();
-      const generation = ++deliveryGeneration;
-      joined = false;
-      setIsConnected(false);
+      syncManager.cancelDeliveryAttempt();
+      syncManager.setConnected(false);
       socket.emit("doc:join", documentId, (result) => {
-        if (disposed || generation !== deliveryGeneration) return;
         if (!result.success) {
           if (result.error !== "Document join was cancelled") {
             handleDocError({ documentId, message: result.error });
@@ -256,11 +127,9 @@ export function useCollaborativeDocument(
 
         Y.applyUpdate(ydoc, new Uint8Array(result.state), "remote");
         awareness.setLocalStateField("user", result.presence);
-        joined = true;
-        setIsConnected(true);
+        syncManager.setConnected(true);
 
-        // Reconcile edits made before the join completed or while offline.
-        reconcilePendingUpdates(new Uint8Array(result.stateVector));
+        syncManager.reconcilePendingUpdates(new Uint8Array(result.stateVector));
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
@@ -271,9 +140,8 @@ export function useCollaborativeDocument(
     }
 
     const handleDisconnect = () => {
-      cancelDeliveryAttempt();
-      joined = false;
-      setIsConnected(false);
+      syncManager.cancelDeliveryAttempt();
+      syncManager.setConnected(false);
     };
 
     socket.on("doc:update", handleUpdate);
@@ -284,25 +152,19 @@ export function useCollaborativeDocument(
     socket.on("connect", joinDocument);
     socket.on("disconnect", handleDisconnect);
 
-    // Join the document room if socket is already connected
     if (socket.connected) {
       joinDocument();
     }
 
-    // Listen for local changes and broadcast
     const updateHandler = (update: Uint8Array, origin: any) => {
       if (origin !== "remote") {
-        // Keep offline edits pending in memory so closing the page can be
-        // guarded. A successful rejoin reconciles this queue against the
-        // server state vector before delivery resumes.
-        enqueueDocumentUpdate(update);
+        syncManager.enqueueDocumentUpdate(update);
       }
     };
     ydoc.on("update", updateHandler);
 
-    // Listen for local awareness changes and broadcast
     const awarenessUpdateHandler = ({ added, updated, removed }: any, origin: any) => {
-      if (origin !== "remote" && joined && socket.connected) {
+      if (origin !== "remote" && syncState.isConnected && socket.connected) {
         const changedClients = added.concat(updated).concat(removed);
         const update = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
@@ -328,11 +190,9 @@ export function useCollaborativeDocument(
     awareness.on("change", handleAwarenessChange);
 
     return () => {
-      disposed = true;
-      cancelDeliveryAttempt();
-      if (joined && socket.connected) {
-        // Destroying Awareness emits a local-state removal. Forward that frame
-        // before detaching the handler and leaving the room.
+      syncManager.destroy();
+      unsubscribe();
+      if (syncState.isConnected && socket.connected) {
         awareness.setLocalState(null);
       }
       socket.off("doc:update", handleUpdate);
@@ -348,10 +208,7 @@ export function useCollaborativeDocument(
       if (socket.connected) {
         socket.emit("doc:leave", documentId);
       }
-      joined = false;
 
-      // StrictMode immediately replays effects with the same memoized Y.Doc.
-      // Defer irreversible cleanup and skip it when a newer setup owns it.
       queueMicrotask(() => {
         if (resourceVersions.get(ydoc) === resourceVersion) {
           resourceVersions.delete(ydoc);
@@ -365,10 +222,10 @@ export function useCollaborativeDocument(
   return {
     ydoc,
     awareness,
-    isConnected,
-    documentSizeStatus,
-    hasPendingUpdates,
-    syncError,
+    isConnected: syncState.isConnected,
+    documentSizeStatus: syncState.documentSizeStatus,
+    hasPendingUpdates: syncState.hasPendingUpdates,
+    syncError: syncState.syncError,
     recover,
   };
 }
