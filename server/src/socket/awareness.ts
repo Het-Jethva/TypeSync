@@ -59,21 +59,26 @@ const RelativePositionIdSchema = z.object({
   client: AwarenessClientIdSchema,
   clock: AwarenessClockSchema,
 });
-const RelativePositionSchema = z.object({
-  type: RelativePositionIdSchema.optional(),
-  tname: z.string().max(256).optional(),
-  item: RelativePositionIdSchema.optional(),
-  assoc: z.number().int().safe().optional(),
-});
-const AwarenessStateSchema = z.object({
-  cursor: z
-    .object({
-      anchor: RelativePositionSchema,
-      head: RelativePositionSchema,
-    })
-    .nullable()
-    .optional(),
-});
+const RelativePositionSchema = z
+  .object({
+    type: RelativePositionIdSchema.nullable().optional(),
+    tname: z.string().max(256).nullable().optional(),
+    item: RelativePositionIdSchema.nullable().optional(),
+    assoc: z.number().int().safe().nullable().optional(),
+  })
+  .passthrough();
+const AwarenessStateSchema = z
+  .object({
+    cursor: z
+      .object({
+        anchor: RelativePositionSchema,
+        head: RelativePositionSchema,
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
 
 function presenceIdentity(socket: TypeSyncSocket): PresenceIdentity {
   let hash = 0;

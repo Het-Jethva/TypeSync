@@ -68,13 +68,30 @@ function consumeDocumentUpdateToken(socket: TypeSyncSocket): boolean {
   return true;
 }
 
-function isTrustedSocketOrigin(origin: string | undefined): boolean {
-  if (!origin) return false;
+function originFromHeader(value: string | undefined): string | undefined {
+  if (!value) return undefined;
   try {
-    return new URL(origin).origin === trustedClientOrigin;
+    return new URL(value).origin;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/**
+ * Socket.IO's first handshake is a same-origin polling GET when the client is
+ * served through the Vite proxy (or any same-origin reverse proxy). Browsers
+ * often omit the Origin header on those requests while still sending Referer.
+ * In that case, validate Referer instead; every connection still requires
+ * session authentication.
+ */
+function isTrustedSocketOrigin(
+  origin: string | undefined,
+  referer: string | undefined
+): boolean {
+  if (origin !== undefined) {
+    return originFromHeader(origin) === trustedClientOrigin;
+  }
+  return originFromHeader(referer) === trustedClientOrigin;
 }
 
 async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promise<boolean> {
@@ -200,7 +217,10 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
       credentials: true,
     },
     allowRequest: (request, callback) => {
-      callback(null, isTrustedSocketOrigin(request.headers.origin));
+      callback(
+        null,
+        isTrustedSocketOrigin(request.headers.origin, request.headers.referer)
+      );
     },
   });
   const awarenessManager = createAwarenessManager();
