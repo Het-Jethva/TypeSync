@@ -9,6 +9,14 @@ import { ApiError, api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import type { DocumentWithRole } from "@typesync/shared";
 
+function isNewerOrEqual(newIso: string, currentIso: string): boolean {
+  const newTime = new Date(newIso).getTime();
+  const currentTime = new Date(currentIso).getTime();
+  if (isNaN(newTime)) return false;
+  if (isNaN(currentTime)) return true;
+  return newTime >= currentTime;
+}
+
 const PENDING_UPDATES_MESSAGE =
   "Some edits have not reached the server yet. Leave anyway? Those edits will be lost.";
 
@@ -235,26 +243,49 @@ export default function DashboardPage() {
 
     const handleTitleUpdated = (payload: { documentId: string; title: string; updatedAt: string }) => {
       setDocuments((current) =>
-        current.map((doc) =>
-          doc.id === payload.documentId ? { ...doc, title: payload.title, updatedAt: payload.updatedAt } : doc
-        )
+        current.map((doc) => {
+          if (doc.id !== payload.documentId) return doc;
+          const newUpdatedAt = isNewerOrEqual(payload.updatedAt, doc.updatedAt)
+            ? payload.updatedAt
+            : doc.updatedAt;
+          return { ...doc, title: payload.title, updatedAt: newUpdatedAt };
+        })
       );
-      setRouteDocument((current) =>
-        current?.id === payload.documentId
-          ? { ...current, title: payload.title, updatedAt: payload.updatedAt }
-          : current
-      );
+      setRouteDocument((current) => {
+        if (current?.id !== payload.documentId) return current;
+        const newUpdatedAt = isNewerOrEqual(payload.updatedAt, current.updatedAt)
+          ? payload.updatedAt
+          : current.updatedAt;
+        return { ...current, title: payload.title, updatedAt: newUpdatedAt };
+      });
       fetchDocuments();
+    };
+
+    const handleDocSaved = (payload: { documentId: string; updatedAt: string }) => {
+      setDocuments((current) =>
+        current.map((doc) => {
+          if (doc.id !== payload.documentId) return doc;
+          if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
+          return { ...doc, updatedAt: payload.updatedAt };
+        })
+      );
+      setRouteDocument((current) => {
+        if (current?.id !== payload.documentId) return current;
+        if (!isNewerOrEqual(payload.updatedAt, current.updatedAt)) return current;
+        return { ...current, updatedAt: payload.updatedAt };
+      });
     };
 
     socket.on("doc:permission-updated", handlePermissionUpdated);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
     socket.on("doc:title-updated", handleTitleUpdated);
+    socket.on("doc:saved", handleDocSaved);
 
     return () => {
       socket.off("doc:permission-updated", handlePermissionUpdated);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
       socket.off("doc:title-updated", handleTitleUpdated);
+      socket.off("doc:saved", handleDocSaved);
     };
   }, [documentId, fetchDocuments, navigate]);
 

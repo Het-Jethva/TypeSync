@@ -24,7 +24,17 @@ const pendingJoinCounts = new Map<string, number>();
 const pendingJoinWaiters = new Set<() => void>();
 let isDraining = false;
 let activeAwarenessManager: ReturnType<typeof createAwarenessManager> | undefined;
-const documentRuntime = createDocumentRuntime();
+let activeIo: TypeSyncSocketServer | undefined;
+const documentRuntime = createDocumentRuntime({
+  onDocumentSaved({ documentId, updatedAt }) {
+    if (activeIo) {
+      activeIo.to(`doc:${documentId}`).emit("doc:saved", {
+        documentId,
+        updatedAt: updatedAt.toISOString(),
+      });
+    }
+  },
+});
 
 function getAwarenessManager(): ReturnType<typeof createAwarenessManager> {
   if (!activeAwarenessManager) throw new Error("Awareness manager is not initialized");
@@ -247,6 +257,7 @@ export function setupSocket(httpServer: HttpServer): TypeSyncSocketServer {
   });
   const awarenessManager = createAwarenessManager();
   activeAwarenessManager = awarenessManager;
+  activeIo = io;
 
   // Auth middleware
   io.use(async (socket, next) => {

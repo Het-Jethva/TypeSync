@@ -161,14 +161,27 @@ async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
   }
 }
 
-async function saveDocToDB(docId: string, state: Uint8Array): Promise<void> {
-  await db
+export interface DocumentRuntimeOptions {
+  onDocumentSaved?: (payload: { documentId: string; updatedAt: Date }) => void;
+}
+
+let onDocumentSavedCallback: ((payload: { documentId: string; updatedAt: Date }) => void) | undefined;
+
+async function saveDocToDB(docId: string, state: Uint8Array): Promise<Date> {
+  const updatedAt = new Date();
+  const [updated] = await db
     .update(document)
     .set({
       yDocState: Buffer.from(state),
-      updatedAt: new Date(),
+      updatedAt,
     })
-    .where(eq(document.id, docId));
+    .where(eq(document.id, docId))
+    .returning({ id: document.id });
+
+  if (!updated) {
+    throw new Error(`Document ${docId} not found in database during save`);
+  }
+  return updatedAt;
 }
 
 function getPersistenceState(docId: string): PersistenceState {
@@ -206,7 +219,8 @@ async function runPersistence(docId: string, ydoc: Y.Doc, state: PersistenceStat
         warningEmitted: snapshot.byteLength >= DOC_SIZE_WARNING_BYTES,
       });
       try {
-        await saveDocToDB(docId, snapshot);
+        const updatedAt = await saveDocToDB(docId, snapshot);
+        onDocumentSavedCallback?.({ documentId: docId, updatedAt });
       } catch (error) {
         state.dirty = true;
         throw error;
@@ -314,7 +328,10 @@ function discardRuntime(documentId: string): void {
   documentSizeStates.delete(documentId);
 }
 
-export function createDocumentRuntime(): DocumentRuntime {
+export function createDocumentRuntime(
+  options: DocumentRuntimeOptions = {}
+): DocumentRuntime {
+  onDocumentSavedCallback = options.onDocumentSaved;
   return {
     async ensureLoaded(documentId) {
       const ydoc = getOrCreateDoc(documentId);
