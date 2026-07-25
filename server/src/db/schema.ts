@@ -81,8 +81,8 @@ export const document = pgTable("document", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   yDocState: bytea("y_doc_state"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 }, (table) => ([
   index("document_owner_id_idx").on(table.ownerId),
   index("document_owner_id_updated_at_idx").on(table.ownerId, table.updatedAt),
