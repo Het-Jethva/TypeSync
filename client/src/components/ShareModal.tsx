@@ -122,14 +122,16 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
     setSuccess("");
 
     if (!email.includes("@")) {
-      setError("Please enter a valid email");
+      setError("Enter a valid email address.");
       return;
     }
 
     setIsLoading(true);
     try {
       await api.documents.addCollaborator(documentId, { email, role });
-      setSuccess(`Invited ${email} as ${role}`);
+      setSuccess(
+        `${email} was added as ${role === "editor" ? "an editor" : "a viewer"}.`
+      );
       setEmail("");
       onUpdate();
       await fetchCollaborators();
@@ -199,6 +201,9 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
                 className="w-full bg-bg-secondary border border-border rounded px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
                 disabled={isLoading}
               />
+              <p className="mt-1.5 text-[10px] leading-relaxed text-text-muted">
+                The collaborator must already have a TypeSync account using this email.
+              </p>
             </div>
 
             <div>
@@ -244,7 +249,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
               disabled={isLoading}
               className="w-full btn-linear-primary text-xs"
             >
-              {isLoading ? "Inviting…" : "Send invite"}
+              {isLoading ? "Adding collaborator…" : "Add collaborator"}
             </button>
           </form>
 

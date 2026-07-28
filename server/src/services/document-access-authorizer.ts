@@ -107,7 +107,10 @@ export class DocumentAccessAuthorizer {
       .from(user)
       .where(eq(user.email, email));
     if (!targetUser) {
-      throw new AppError(404, "User not found. They need to sign up first.");
+      throw new AppError(
+        404,
+        "No TypeSync account exists for this email. Ask them to create an account, then try again."
+      );
     }
     if (targetUser.id === currentUserId) {
       throw new AppError(400, "Cannot add yourself as a collaborator");
