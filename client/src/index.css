@@ -473,6 +473,10 @@ html.no-transitions {
     scroll-behavior: auto !important;
   }
 
+  .collaboration-carets__overlay.is-ready {
+    transition-duration: 100ms !important;
+  }
+
   ::view-transition-group(root),
   ::view-transition-old(root),
   ::view-transition-new(root) {
