@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";

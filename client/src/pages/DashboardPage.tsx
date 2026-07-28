@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate, useBlocker } from "react-router-dom";
-import type { BlockerFunction } from "react-router-dom";
+import { useParams, useNavigate, useBlocker } from "react-router";
+import type { BlockerFunction } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "../components/Sidebar";
 import { Editor } from "../components/Editor";

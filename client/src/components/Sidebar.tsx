@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
 import type { DocumentWithRole, Role } from "@typesync/shared";

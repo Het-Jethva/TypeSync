@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
