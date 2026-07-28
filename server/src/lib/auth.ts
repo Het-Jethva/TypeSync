@@ -5,6 +5,7 @@ import * as schema from "../db/schema.js";
 import { config } from "../config.js";
 
 export const auth = betterAuth({
+  secret: config.betterAuthSecret,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {

@@ -13,6 +13,7 @@ import { errorHandler } from "./middleware/error.js";
 import { pool } from "./db/index.js";
 
 const app = express();
+app.disable("x-powered-by");
 const httpServer = createServer(app);
 
 pool.on("error", () => {

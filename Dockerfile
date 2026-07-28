@@ -36,4 +36,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
+USER node
+
 CMD ["sh", "-c", "npm run migrate -w server && npm run start -w server"]
