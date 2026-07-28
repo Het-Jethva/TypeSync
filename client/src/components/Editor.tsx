@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -22,66 +22,6 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
-const CARET_LABEL_VISIBLE_MS = 1500;
-
-function createCollaborationCaretRenderer() {
-  const carets = new Map<
-    string,
-    {
-      cursor: HTMLSpanElement;
-      label: HTMLSpanElement;
-      hideTimer: number | null;
-    }
-  >();
-
-  return {
-    render(user: Record<string, unknown>) {
-      const userId =
-        typeof user.userId === "string"
-          ? user.userId
-          : `${String(user.name)}-${String(user.color)}`;
-      const name = typeof user.name === "string" ? user.name : "Collaborator";
-      const color = typeof user.color === "string" ? user.color : "#5a6b7c";
-      let caret = carets.get(userId);
-
-      if (!caret) {
-        const cursor = document.createElement("span");
-        cursor.classList.add("collaboration-carets__caret");
-
-        const label = document.createElement("span");
-        label.classList.add("collaboration-carets__label");
-        cursor.append(label);
-
-        caret = { cursor, label, hideTimer: null };
-        carets.set(userId, caret);
-      }
-
-      caret.cursor.style.borderColor = color;
-      caret.label.style.backgroundColor = color;
-      if (caret.label.textContent !== name) {
-        caret.label.textContent = name;
-      }
-
-      caret.label.classList.remove("is-hidden");
-      if (caret.hideTimer !== null) {
-        window.clearTimeout(caret.hideTimer);
-      }
-      caret.hideTimer = window.setTimeout(() => {
-        caret?.label.classList.add("is-hidden");
-      }, CARET_LABEL_VISIBLE_MS);
-
-      return caret.cursor;
-    },
-    destroy() {
-      for (const caret of carets.values()) {
-        if (caret.hideTimer !== null) {
-          window.clearTimeout(caret.hideTimer);
-        }
-      }
-      carets.clear();
-    },
-  };
-}
 
 interface EditorProps {
   documentId: string;
@@ -105,10 +45,6 @@ export function Editor({
     isOpen: false,
     position: { top: 0, left: 0 },
   });
-  const collaborationCaretRenderer = useMemo(
-    () => createCollaborationCaretRenderer(),
-    []
-  );
   const {
     ydoc,
     awareness,
@@ -190,7 +126,14 @@ export function Editor({
             name: "Connecting…",
             color: "#5a6b7c",
           },
-          render: collaborationCaretRenderer.render,
+          render(user) {
+            const cursor = document.createElement("span");
+            cursor.classList.add("collaboration-carets__caret");
+            cursor.style.borderColor =
+              typeof user.color === "string" ? user.color : "#5a6b7c";
+            cursor.setAttribute("aria-hidden", "true");
+            return cursor;
+          },
         }),
       ],
       editorProps: {
@@ -246,17 +189,12 @@ export function Editor({
       },
       editable: canEdit,
     },
-    [documentId, ydoc, awareness, canEdit, collaborationCaretRenderer]
+    [documentId, ydoc, awareness, canEdit]
   );
 
   useEffect(() => {
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
-
-  useEffect(
-    () => () => collaborationCaretRenderer.destroy(),
-    [collaborationCaretRenderer]
-  );
 
   useEffect(() => {
     onPendingUpdatesChange?.(hasPendingUpdates);

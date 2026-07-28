@@ -385,28 +385,6 @@ body {
   word-break: normal;
 }
 
-.collaboration-carets__label {
-  position: absolute;
-  top: -1.5em;
-  left: -1px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px 4px 4px 0;
-  white-space: nowrap;
-  color: #fff;
-  user-select: none;
-  pointer-events: none;
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.collaboration-carets__label.is-hidden {
-  opacity: 0;
-  transform: translateY(2px);
-}
-
 /* Placeholder */
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
