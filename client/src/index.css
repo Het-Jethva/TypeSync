@@ -118,6 +118,21 @@
   transform: translateY(0.5px);
 }
 
+.btn-linear-primary:disabled {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn-linear-primary:disabled:hover,
+.btn-linear-primary:disabled:active {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-strong);
+  transform: none;
+}
+
 /* ─── Accessible control affordances ───────────────────── */
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid var(--color-accent);

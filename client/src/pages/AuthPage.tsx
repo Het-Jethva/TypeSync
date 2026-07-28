@@ -3,13 +3,17 @@ import { useNavigate, useParams, Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
+import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
+import { useBackendReadiness } from "../lib/backend-readiness-context";
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const { mode } = useParams();
   const { data: session } = useSession();
+  const { status: backendStatus } = useBackendReadiness();
 
   const isSignIn = mode !== "signup";
+  const isBackendReady = backendStatus === "ready";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,6 +39,10 @@ export default function AuthPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!isBackendReady) {
+      return;
+    }
 
     if (!email.includes("@") || !email.includes(".")) {
       setError("Please enter a valid email address");
@@ -108,6 +116,11 @@ export default function AuthPage() {
               </motion.div>
             </AnimatePresence>
           </div>
+
+          <BackendReadinessStatus
+            id="backend-readiness-status"
+            className="mb-4"
+          />
 
           {/* Error */}
           <AnimatePresence>
@@ -185,7 +198,8 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !isBackendReady}
+              aria-describedby="backend-readiness-status"
               className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2 text-xs"
             >
               {isLoading ? (
@@ -193,6 +207,12 @@ export default function AuthPage() {
                   <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                   <span>Processing...</span>
                 </span>
+              ) : !isBackendReady ? (
+                backendStatus === "unavailable" ? (
+                  "Server unavailable"
+                ) : (
+                  "Waiting for server…"
+                )
               ) : isSignIn ? (
                 "Sign in"
               ) : (

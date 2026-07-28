@@ -5,6 +5,7 @@ import { Logo } from "../components/Logo";
 import { useState } from "react";
 import { LandingEditorDemo } from "../components/LandingEditorDemo";
 import { toggleThemeWithTransition } from "../lib/theme";
+import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
 
 // ─── Main Landing Page Component ─────────────────────────
 export default function LandingPage() {
@@ -133,7 +134,7 @@ export default function LandingPage() {
               A real-time collaborative writing environment. A beautiful, distraction-free space designed for clarity and absolute focus.
             </p>
 
-
+            <BackendReadinessStatus className="mx-auto mb-8 max-w-lg" />
           </motion.div>
 
           {/* Interactive Mockup Container */}
