@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -22,6 +22,66 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
+const CARET_LABEL_VISIBLE_MS = 1500;
+
+function createCollaborationCaretRenderer() {
+  const carets = new Map<
+    string,
+    {
+      cursor: HTMLSpanElement;
+      label: HTMLSpanElement;
+      hideTimer: number | null;
+    }
+  >();
+
+  return {
+    render(user: Record<string, unknown>) {
+      const userId =
+        typeof user.userId === "string"
+          ? user.userId
+          : `${String(user.name)}-${String(user.color)}`;
+      const name = typeof user.name === "string" ? user.name : "Collaborator";
+      const color = typeof user.color === "string" ? user.color : "#5a6b7c";
+      let caret = carets.get(userId);
+
+      if (!caret) {
+        const cursor = document.createElement("span");
+        cursor.classList.add("collaboration-carets__caret");
+
+        const label = document.createElement("span");
+        label.classList.add("collaboration-carets__label");
+        cursor.append(label);
+
+        caret = { cursor, label, hideTimer: null };
+        carets.set(userId, caret);
+      }
+
+      caret.cursor.style.borderColor = color;
+      caret.label.style.backgroundColor = color;
+      if (caret.label.textContent !== name) {
+        caret.label.textContent = name;
+      }
+
+      caret.label.classList.remove("is-hidden");
+      if (caret.hideTimer !== null) {
+        window.clearTimeout(caret.hideTimer);
+      }
+      caret.hideTimer = window.setTimeout(() => {
+        caret?.label.classList.add("is-hidden");
+      }, CARET_LABEL_VISIBLE_MS);
+
+      return caret.cursor;
+    },
+    destroy() {
+      for (const caret of carets.values()) {
+        if (caret.hideTimer !== null) {
+          window.clearTimeout(caret.hideTimer);
+        }
+      }
+      carets.clear();
+    },
+  };
+}
 
 interface EditorProps {
   documentId: string;
@@ -45,6 +105,10 @@ export function Editor({
     isOpen: false,
     position: { top: 0, left: 0 },
   });
+  const collaborationCaretRenderer = useMemo(
+    () => createCollaborationCaretRenderer(),
+    []
+  );
   const {
     ydoc,
     awareness,
@@ -114,7 +178,7 @@ export function Editor({
           lowlight,
         }),
         Placeholder.configure({
-          placeholder: "Start writing...",
+          placeholder: "Start writing… Type / for commands",
         }),
         Collaboration.configure({
           document: ydoc,
@@ -126,45 +190,73 @@ export function Editor({
             name: "Connecting…",
             color: "#5a6b7c",
           },
+          render: collaborationCaretRenderer.render,
         }),
       ],
       editorProps: {
         attributes: {
           class: "tiptap",
         },
-        handleKeyDown(view, event) {
-          if (event.key === "/") {
-            const { selection } = view.state;
-            const textBefore = selection.$from.parent.textBetween(0, selection.$from.parentOffset);
-            if (textBefore.trim() === "") {
-              const coords = view.coordsAtPos(selection.from);
-              setSlashMenu({
-                isOpen: true,
-                position: {
-                  top: coords.bottom + 6,
-                  left: coords.left,
-                },
-              });
-            }
+        handleTextInput(view, from, to, text) {
+          const { selection } = view.state;
+          const isEmptyTextBlock =
+            text === "/" &&
+            from === to &&
+            selection.empty &&
+            selection.$from.parent.isTextblock &&
+            selection.$from.parent.content.size === 0;
+
+          if (isEmptyTextBlock) {
+            const coords = view.coordsAtPos(from);
+            setSlashMenu({
+              isOpen: true,
+              position: {
+                top: coords.bottom + 6,
+                left: coords.left,
+              },
+            });
           }
+
           return false;
         },
       },
+      onUpdate({ editor }) {
+        const { selection } = editor.state;
+        const slashIsStillActive =
+          selection.empty &&
+          selection.$from.parent.isTextblock &&
+          selection.$from.parent.textContent === "/" &&
+          selection.$from.parentOffset === 1;
+
+        if (!slashIsStillActive) {
+          setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+        }
+      },
       onSelectionUpdate({ editor }) {
         const { selection } = editor.state;
-        const charBefore = editor.state.doc.textBetween(Math.max(0, selection.from - 1), selection.from);
-        if (charBefore !== "/") {
+        const slashIsStillActive =
+          selection.empty &&
+          selection.$from.parent.isTextblock &&
+          selection.$from.parent.textContent === "/" &&
+          selection.$from.parentOffset === 1;
+
+        if (!slashIsStillActive) {
           setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
         }
       },
       editable: canEdit,
     },
-    [documentId, ydoc, awareness, canEdit]
+    [documentId, ydoc, awareness, canEdit, collaborationCaretRenderer]
   );
 
   useEffect(() => {
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
+
+  useEffect(
+    () => () => collaborationCaretRenderer.destroy(),
+    [collaborationCaretRenderer]
+  );
 
   useEffect(() => {
     onPendingUpdatesChange?.(hasPendingUpdates);
@@ -196,7 +288,7 @@ export function Editor({
       <EditorToolbar editor={editor} documentId={documentId} canEdit={canEdit} />
 
       <div className="flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
-        <div className="w-full max-w-2xl bg-bg-elevated sm:border sm:border-border-strong sm:rounded-md sm:shadow-[0_2px_12px_rgba(0,0,0,0.01)] border-none rounded-none shadow-none sm:min-h-[700px] min-h-[calc(100vh-10rem)] h-fit">
+        <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
           <EditorContent key={ydoc.clientID} editor={editor} />
         </div>
       </div>

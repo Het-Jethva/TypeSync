@@ -168,14 +168,28 @@ export function useCollaborativeDocument(
     };
     ydoc.on("update", updateHandler);
 
+    const pendingAwarenessClients = new Set<number>();
+    let awarenessFrame: number | null = null;
+
+    const flushAwarenessUpdate = () => {
+      awarenessFrame = null;
+      if (pendingAwarenessClients.size === 0) return;
+
+      const update = awarenessProtocol.encodeAwarenessUpdate(
+        awareness,
+        Array.from(pendingAwarenessClients)
+      );
+      pendingAwarenessClients.clear();
+      syncManager.sendAwareness(update);
+    };
+
     const awarenessUpdateHandler = ({ added, updated, removed }: any, origin: any) => {
       if (origin !== "remote") {
         const changedClients = added.concat(updated).concat(removed);
-        const update = awarenessProtocol.encodeAwarenessUpdate(
-          awareness,
-          changedClients
-        );
-        syncManager.sendAwareness(update);
+        for (const clientId of changedClients) {
+          pendingAwarenessClients.add(clientId);
+        }
+        awarenessFrame ??= window.requestAnimationFrame(flushAwarenessUpdate);
       }
     };
     awareness.on("update", awarenessUpdateHandler);
@@ -207,6 +221,9 @@ export function useCollaborativeDocument(
       ydoc.off("update", updateHandler);
       awareness.off("update", awarenessUpdateHandler);
       awareness.off("change", handleAwarenessChange);
+      if (awarenessFrame !== null) {
+        window.cancelAnimationFrame(awarenessFrame);
+      }
       if (socket.connected) {
         socket.emit("doc:leave", documentId);
       }

@@ -134,12 +134,15 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
+        e.stopPropagation();
         setSelectedIndex((prev) => (prev + 1) % SLASH_MENU_ITEMS.length);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        e.stopPropagation();
         setSelectedIndex((prev) => (prev - 1 + SLASH_MENU_ITEMS.length) % SLASH_MENU_ITEMS.length);
       } else if (e.key === "Enter") {
         e.preventDefault();
+        e.stopPropagation();
         
         // Remove the slash '/' typed before execution
         const { selection } = editor.state;
@@ -150,6 +153,7 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
         onClose();
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       } else if (e.key === " ") {
         onClose();
@@ -181,6 +185,8 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
   return (
     <div
       ref={menuRef}
+      role="menu"
+      aria-label="Insert block"
       className="fixed z-[9999] bg-bg-elevated border border-border-strong rounded-md shadow-lg py-1 w-60 max-h-64 overflow-y-auto"
       style={{
         top: `${adjustedPosition.top}px`,
@@ -190,6 +196,10 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
       {SLASH_MENU_ITEMS.map((item, idx) => (
         <button
           key={item.title}
+          type="button"
+          role="menuitem"
+          onMouseDown={(event) => event.preventDefault()}
+          onMouseEnter={() => setSelectedIndex(idx)}
           onClick={() => {
             const { selection } = editor.state;
             editor.chain().focus().deleteRange({ from: selection.from - 1, to: selection.from }).run();
