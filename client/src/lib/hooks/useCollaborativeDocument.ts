@@ -24,7 +24,9 @@ export function useCollaborativeDocument(
     isConnected: false,
     documentSizeStatus: null,
     hasPendingUpdates: false,
+    syncStatus: "offline",
     syncError: null,
+    isSyncBlocked: false,
   });
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -225,7 +227,9 @@ export function useCollaborativeDocument(
     isConnected: syncState.isConnected,
     documentSizeStatus: syncState.documentSizeStatus,
     hasPendingUpdates: syncState.hasPendingUpdates,
+    syncStatus: syncState.syncStatus,
     syncError: syncState.syncError,
+    isSyncBlocked: syncState.isSyncBlocked,
     recover,
   };
 }

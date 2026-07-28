@@ -5,11 +5,15 @@ const DOCUMENT_UPDATE_ACK_TIMEOUT_MS = 5_000;
 const MAX_MERGED_UPDATE_BYTES = 512 * 1024;
 const MAX_RETRY_DELAY_MS = 10_000;
 
+export type SyncStatus = "offline" | "syncing" | "synced" | "failed";
+
 export interface SyncState {
   isConnected: boolean;
   documentSizeStatus: DocumentSizeStatus | null;
   hasPendingUpdates: boolean;
+  syncStatus: SyncStatus;
   syncError: string | null;
+  isSyncBlocked: boolean;
 }
 
 export interface CollaborativeSyncManagerOptions {
@@ -38,7 +42,9 @@ export class CollaborativeSyncManager {
     isConnected: false,
     documentSizeStatus: null,
     hasPendingUpdates: false,
+    syncStatus: "offline",
     syncError: null,
+    isSyncBlocked: false,
   };
 
   private listeners = new Set<(state: SyncState) => void>();
@@ -81,7 +87,17 @@ export class CollaborativeSyncManager {
 
   setConnected(connected: boolean): void {
     this.joined = connected;
-    this.updateState({ isConnected: connected });
+    this.updateState({
+      isConnected: connected,
+      syncStatus: this.deliveryBlocked
+        ? "failed"
+        : connected
+          ? this.pendingBatches.length > 0
+            ? "syncing"
+            : "synced"
+          : "offline",
+      syncError: connected || this.deliveryBlocked ? this.state.syncError : null,
+    });
   }
 
   setDocumentSizeStatus(status: DocumentSizeStatus | null): void {
@@ -123,7 +139,7 @@ export class CollaborativeSyncManager {
       return;
     }
     this.retryAttempt = 0;
-    this.updateState({ syncError: null });
+    this.updateState({ syncError: null, isSyncBlocked: false });
     this.pendingBatches = [];
 
     const localDelta = Y.encodeStateAsUpdate(this.ydoc, serverStateVector);
@@ -149,6 +165,7 @@ export class CollaborativeSyncManager {
     const batch = this.pendingBatches[0];
     this.activeBatchId = batch.id;
     const generation = ++this.deliveryGeneration;
+    this.updateState({ syncStatus: "syncing", syncError: null });
 
     this.emitUpdate(
       this.documentId,
@@ -165,7 +182,10 @@ export class CollaborativeSyncManager {
 
         this.activeBatchId = null;
         if (error) {
-          this.scheduleRetry(socketConnected);
+          this.scheduleRetry(
+            socketConnected,
+            "The server did not acknowledge these changes. Retrying…"
+          );
           return;
         }
 
@@ -174,7 +194,7 @@ export class CollaborativeSyncManager {
             result.code === "server-draining" ||
             result.code === "rate-limited"
           ) {
-            this.scheduleRetry(socketConnected);
+            this.scheduleRetry(socketConnected, `${result.error}. Retrying…`);
             return;
           }
           if (
@@ -186,14 +206,18 @@ export class CollaborativeSyncManager {
           }
 
           this.deliveryBlocked = true;
-          this.updateState({ syncError: result.error });
+          this.updateState({
+            syncStatus: "failed",
+            syncError: result.error,
+            isSyncBlocked: true,
+          });
           this.refreshPendingState();
           return;
         }
 
         this.pendingBatches.shift();
         this.retryAttempt = 0;
-        this.updateState({ syncError: null });
+        this.updateState({ syncError: null, isSyncBlocked: false });
         this.refreshPendingState();
         this.flushPendingUpdates(socketConnected);
       }
@@ -211,8 +235,13 @@ export class CollaborativeSyncManager {
     this.retryTimer = undefined;
   }
 
-  private scheduleRetry(socketConnected: boolean): void {
+  private scheduleRetry(socketConnected: boolean, message: string): void {
     if (this.disposed || this.retryTimer || !this.joined || !socketConnected || this.deliveryBlocked) return;
+    this.updateState({
+      syncStatus: "failed",
+      syncError: message,
+      isSyncBlocked: false,
+    });
     const delay = Math.min(1_000 * 2 ** this.retryAttempt, MAX_RETRY_DELAY_MS);
     this.retryAttempt += 1;
     this.retryTimer = setTimeout(() => {
@@ -223,7 +252,17 @@ export class CollaborativeSyncManager {
 
   private refreshPendingState(): void {
     if (!this.disposed) {
-      this.updateState({ hasPendingUpdates: this.pendingBatches.length > 0 });
+      const hasPendingUpdates = this.pendingBatches.length > 0;
+      this.updateState({
+        hasPendingUpdates,
+        syncStatus: this.deliveryBlocked || this.state.syncError
+          ? "failed"
+          : !this.joined
+            ? "offline"
+            : hasPendingUpdates
+              ? "syncing"
+              : "synced",
+      });
     }
   }
 

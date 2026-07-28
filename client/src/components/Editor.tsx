@@ -48,26 +48,40 @@ export function Editor({
   const {
     ydoc,
     awareness,
-    isConnected,
     documentSizeStatus,
     hasPendingUpdates,
+    syncStatus,
     syncError,
+    isSyncBlocked,
     recover,
   } = useCollaborativeDocument(documentId, onCollaboratorsChange, onAccessLost);
   const canEdit =
     (role === "owner" || role === "editor") &&
     documentSizeStatus?.level !== "limit" &&
-    syncError === null;
+    !isSyncBlocked;
 
   const handleRecover = () => {
     if (
       window.confirm(
-        "Discard all unsaved changes and reload the latest document version from the server?"
+        "Discard all pending changes and reload the latest document version from the server?"
       )
     ) {
       recover();
     }
   };
+
+  const syncStatusText =
+    syncStatus === "failed"
+      ? isSyncBlocked
+        ? `Sync blocked — ${syncError ?? "changes pending"}`
+        : "Sync failed — retrying"
+      : syncStatus === "offline"
+        ? hasPendingUpdates
+          ? "Offline — changes pending"
+          : "Offline"
+        : syncStatus === "syncing"
+          ? "Syncing…"
+          : "Synced";
 
   const editor = useEditor(
     {
@@ -200,10 +214,12 @@ export function Editor({
         <div className="flex items-center gap-1.5 min-w-0">
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              documentSizeStatus?.level === "limit" || syncError
+              documentSizeStatus?.level === "limit" || syncStatus === "failed"
                 ? "bg-error"
-                : documentSizeStatus?.level === "warning" || !isConnected || hasPendingUpdates
-                  ? "bg-warning animate-pulse"
+                : documentSizeStatus?.level === "warning" || syncStatus === "offline"
+                  ? "bg-warning"
+                  : syncStatus === "syncing"
+                    ? "bg-warning animate-pulse"
                   : "bg-success"
             }`}
           />
@@ -211,29 +227,23 @@ export function Editor({
             className="text-[10px] text-text-muted font-medium truncate"
             title={syncError ?? undefined}
           >
-            {syncError
-              ? syncError
+            {syncStatus === "failed"
+              ? syncStatusText
               : documentSizeStatus?.level === "limit"
                 ? documentSizeStatus.reason === "update"
                   ? "Edit exceeds size limit"
                   : "Document size limit reached"
                 : documentSizeStatus?.level === "warning"
                   ? "Document nearing size limit"
-                  : !isConnected
-                    ? hasPendingUpdates
-                      ? "Offline — changes pending"
-                      : "Connecting"
-                    : hasPendingUpdates
-                      ? "Saving…"
-                      : "Saved"}
+                  : syncStatusText}
           </span>
-          {syncError && (
+          {isSyncBlocked && (
             <button
               type="button"
               onClick={handleRecover}
               className="text-[10px] text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
             >
-              Discard unsaved changes and reload
+              Discard pending changes and reload
             </button>
           )}
         </div>
