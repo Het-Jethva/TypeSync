@@ -579,6 +579,9 @@ export default function DashboardPage() {
           {notifications.map((notif) => (
             <motion.div
               key={notif.id}
+              role={notif.type === "error" ? "alert" : "status"}
+              aria-live={notif.type === "error" ? "assertive" : "polite"}
+              aria-atomic="true"
               initial={{ opacity: 0, y: 12, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}

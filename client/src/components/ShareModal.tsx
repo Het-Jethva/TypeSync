@@ -260,8 +260,18 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
             </h3>
             
             {isFetching ? (
-              <div className="flex justify-center py-2">
-                <div className="w-4 h-4 border-2 border-border-strong border-t-accent rounded-full animate-spin" />
+              <div
+                className="flex items-center justify-center gap-2 py-2"
+                role="status"
+                aria-live="polite"
+              >
+                <div
+                  className="w-4 h-4 border-2 border-border-strong border-t-accent rounded-full animate-spin"
+                  aria-hidden="true"
+                />
+                <span className="text-xs font-medium text-text-muted">
+                  Loading collaborators…
+                </span>
               </div>
             ) : collaborators.length === 0 ? (
               <p className="text-xs text-text-muted">Only you have access to this document.</p>

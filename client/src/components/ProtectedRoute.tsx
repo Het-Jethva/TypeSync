@@ -10,8 +10,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (isPending) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-primary"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"
+          aria-hidden="true"
+        />
+        <span className="text-xs font-medium text-text-secondary">
+          Checking your session…
+        </span>
       </div>
     );
   }

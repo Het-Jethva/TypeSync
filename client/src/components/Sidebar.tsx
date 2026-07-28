@@ -203,8 +203,18 @@ export function Sidebar({
       {/* Document list */}
       <div className="flex-1 overflow-y-auto px-2">
         {isLoading ? (
-          <div className="p-4 flex justify-center">
-            <div className="w-5 h-5 border-2 border-border-strong border-t-accent rounded-full animate-spin" />
+          <div
+            className="p-4 flex items-center justify-center gap-2"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="w-5 h-5 border-2 border-border-strong border-t-accent rounded-full animate-spin"
+              aria-hidden="true"
+            />
+            <span className="text-xs font-medium text-text-muted">
+              Loading documents…
+            </span>
           </div>
         ) : error ? (
           <div className="p-4 text-center">

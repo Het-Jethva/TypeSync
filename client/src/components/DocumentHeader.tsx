@@ -74,14 +74,21 @@ export function DocumentHeader({
             autoFocus
             className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
           />
-        ) : (
+        ) : canEdit ? (
           <button
-            onClick={() => canEdit && setIsEditing(true)}
+            onClick={() => setIsEditing(true)}
             className="text-xs font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 max-w-[100px] sm:max-w-[300px]"
-            title={canEdit ? "Click to rename" : document.title}
+            title="Click to rename"
           >
             {document.title}
           </button>
+        ) : (
+          <span
+            className="text-xs font-semibold text-text-primary truncate px-1 max-w-[100px] sm:max-w-[300px]"
+            title={document.title}
+          >
+            {document.title}
+          </span>
         )}
 
         {/* Save status */}
