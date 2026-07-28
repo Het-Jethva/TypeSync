@@ -374,15 +374,52 @@ body {
   cursor: pointer;
 }
 
-/* Collaboration cursor */
-.collaboration-carets__caret {
+/* Collaboration cursor position marker */
+.collaboration-carets__marker {
   position: relative;
-  border-left: 2px solid;
+  border-left: 2px solid transparent;
   border-right: none;
   margin-left: -1px;
   margin-right: -1px;
   pointer-events: none;
   word-break: normal;
+}
+
+/* Persistent overlay allows remote carets to animate between text positions. */
+.collaboration-carets__overlay {
+  --collaboration-caret-color: var(--color-accent);
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  display: block;
+  width: 0;
+  min-height: 20px;
+  border-left: 2px solid var(--collaboration-caret-color);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.collaboration-carets__overlay.is-ready {
+  transition:
+    transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.collaboration-carets__overlay-label {
+  position: absolute;
+  top: -1.5em;
+  left: -2px;
+  padding: 1px 6px;
+  border-radius: 4px 4px 4px 0;
+  background: var(--collaboration-caret-color);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  user-select: none;
 }
 
 /* Placeholder */

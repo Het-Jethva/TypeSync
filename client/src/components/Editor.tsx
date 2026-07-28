@@ -18,6 +18,10 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { motion } from "motion/react";
 import { common, createLowlight } from "lowlight";
 import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
+import {
+  mountSmoothCollaborationCarets,
+  renderCollaborationCaretMarker,
+} from "../lib/smooth-collaboration-carets";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import type { Role } from "@typesync/shared";
@@ -126,14 +130,7 @@ export function Editor({
             name: "Connecting…",
             color: "#5a6b7c",
           },
-          render(user) {
-            const cursor = document.createElement("span");
-            cursor.classList.add("collaboration-carets__caret");
-            cursor.style.borderColor =
-              typeof user.color === "string" ? user.color : "#5a6b7c";
-            cursor.setAttribute("aria-hidden", "true");
-            return cursor;
-          },
+          render: renderCollaborationCaretMarker,
         }),
       ],
       editorProps: {
@@ -197,6 +194,20 @@ export function Editor({
   }, [editor, canEdit]);
 
   useEffect(() => {
+    if (!editor) return;
+    const overlayContainer = editor.view.dom.closest<HTMLElement>(
+      ".editor-scroll-area"
+    );
+    if (!overlayContainer) return;
+
+    return mountSmoothCollaborationCarets(
+      editor.view.dom,
+      overlayContainer,
+      awareness
+    );
+  }, [editor, awareness]);
+
+  useEffect(() => {
     onPendingUpdatesChange?.(hasPendingUpdates);
   }, [hasPendingUpdates, onPendingUpdatesChange]);
 
@@ -225,7 +236,7 @@ export function Editor({
     >
       <EditorToolbar editor={editor} documentId={documentId} canEdit={canEdit} />
 
-      <div className="flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
+      <div className="editor-scroll-area relative flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
         <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
           <EditorContent key={ydoc.clientID} editor={editor} />
         </div>
