@@ -7,6 +7,7 @@ import { Editor } from "../components/Editor";
 import { DocumentHeader } from "../components/DocumentHeader";
 import { ApiError, api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
+import { useConfirm } from "../lib/confirm-context";
 import type { DocumentWithRole } from "@typesync/shared";
 
 function isNewerOrEqual(newIso: string, currentIso: string): boolean {
@@ -17,12 +18,18 @@ function isNewerOrEqual(newIso: string, currentIso: string): boolean {
   return newTime >= currentTime;
 }
 
-const PENDING_UPDATES_MESSAGE =
-  "Some edits have not reached the server yet. Leave anyway? Those edits will be lost.";
+const PENDING_UPDATES_CONFIRM = {
+  title: "Leave with unsynced edits?",
+  message:
+    "Some edits have not reached the server yet. If you leave now, those edits will be lost.",
+  confirmLabel: "Leave anyway",
+  tone: "danger",
+} as const;
 
 export default function DashboardPage() {
   const { id: documentId } = useParams();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [documents, setDocuments] = useState<DocumentWithRole[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,10 +64,10 @@ export default function DashboardPage() {
     }, 5000);
   }, []);
 
-  const confirmLeavingWithPendingUpdates = useCallback(() => {
+  const confirmLeavingWithPendingUpdates = useCallback(async () => {
     if (!hasPendingDocumentUpdates) return true;
-    return window.confirm(PENDING_UPDATES_MESSAGE);
-  }, [hasPendingDocumentUpdates]);
+    return confirm(PENDING_UPDATES_CONFIRM);
+  }, [confirm, hasPendingDocumentUpdates]);
 
   const shouldBlockNavigation: BlockerFunction = useCallback(
     ({ currentLocation, nextLocation }) => {
@@ -77,14 +84,23 @@ export default function DashboardPage() {
   );
   const navigationBlocker = useBlocker(shouldBlockNavigation);
 
+  // The prompt is asynchronous now, so the effect can re-run while it is still
+  // open. The ref keeps one blocked navigation to one question.
+  const blockerPromptOpenRef = useRef(false);
   useEffect(() => {
     if (navigationBlocker.state !== "blocked") return;
-    if (window.confirm(PENDING_UPDATES_MESSAGE)) {
-      navigationBlocker.proceed();
-    } else {
-      navigationBlocker.reset();
-    }
-  }, [navigationBlocker]);
+    if (blockerPromptOpenRef.current) return;
+
+    blockerPromptOpenRef.current = true;
+    void confirm(PENDING_UPDATES_CONFIRM).then((accepted) => {
+      blockerPromptOpenRef.current = false;
+      if (accepted) {
+        navigationBlocker.proceed();
+      } else {
+        navigationBlocker.reset();
+      }
+    });
+  }, [confirm, navigationBlocker]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -323,7 +339,7 @@ export default function DashboardPage() {
   const handleCreateDocument = async () => {
     if (isCreatingDocument) return;
     const confirmedPendingUpdates = hasPendingDocumentUpdates;
-    if (!confirmLeavingWithPendingUpdates()) return;
+    if (!(await confirmLeavingWithPendingUpdates())) return;
 
     setIsCreatingDocument(true);
     try {
@@ -349,7 +365,7 @@ export default function DashboardPage() {
 
   const handleDeleteDocument = async (docId: string) => {
     const confirmedPendingUpdates = documentId === docId && hasPendingDocumentUpdates;
-    if (documentId === docId && !confirmLeavingWithPendingUpdates()) return;
+    if (documentId === docId && !(await confirmLeavingWithPendingUpdates())) return;
     if (deletingDocumentIds.has(docId)) return;
 
     const removedDocument = documents.find((document) => document.id === docId);
@@ -506,8 +522,8 @@ export default function DashboardPage() {
                   setSidebarOpen(false);
                 }
               }}
-              onBeforeSignOut={() => {
-                const canLeave = confirmLeavingWithPendingUpdates();
+              onBeforeSignOut={async () => {
+                const canLeave = await confirmLeavingWithPendingUpdates();
                 if (canLeave && hasPendingDocumentUpdates) {
                   bypassNextNavigationRef.current = true;
                 }

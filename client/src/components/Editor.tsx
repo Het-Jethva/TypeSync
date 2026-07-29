@@ -24,6 +24,7 @@ import {
 } from "../lib/smooth-collaboration-carets";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
+import { useConfirm } from "../lib/confirm-context";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
 
@@ -42,6 +43,7 @@ export function Editor({
   onAccessLost,
   onPendingUpdatesChange,
 }: EditorProps) {
+  const confirm = useConfirm();
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
     position: { top: number; left: number };
@@ -64,14 +66,15 @@ export function Editor({
     documentSizeStatus?.level !== "limit" &&
     !isSyncBlocked;
 
-  const handleRecover = () => {
-    if (
-      window.confirm(
-        "Discard all pending changes and reload the latest document version from the server?"
-      )
-    ) {
-      recover();
-    }
+  const handleRecover = async () => {
+    const accepted = await confirm({
+      title: "Discard pending changes",
+      message:
+        "Edits that have not reached the server will be lost, and the latest version will be reloaded from the server.",
+      confirmLabel: "Discard and reload",
+      tone: "danger",
+    });
+    if (accepted) recover();
   };
 
   const syncStatusText =
@@ -310,7 +313,7 @@ export function Editor({
           {isSyncBlocked && (
             <button
               type="button"
-              onClick={handleRecover}
+              onClick={() => void handleRecover()}
               className="text-micro text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
             >
               Discard pending changes and reload

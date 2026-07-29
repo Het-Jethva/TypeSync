@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
 import type { DocumentWithRole, Role } from "@typesync/shared";
 import { toggleThemeWithTransition } from "../lib/theme";
+import { useConfirm } from "../lib/confirm-context";
 
 interface SidebarProps {
   documents: DocumentWithRole[];
@@ -18,7 +19,7 @@ interface SidebarProps {
   onCreateDocument: () => void;
   onDeleteDocument: (id: string) => void;
   onSelectDocument: (id: string) => void;
-  onBeforeSignOut?: () => boolean;
+  onBeforeSignOut?: () => Promise<boolean>;
   onClose?: () => void;
   showCloseButton?: boolean;
 }
@@ -62,6 +63,7 @@ export function Sidebar({
   showCloseButton,
 }: SidebarProps) {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { data: session } = useSession();
   const [search, setSearch] = useState("");
   const [contextMenu, setContextMenu] = useState<{ id: string; title: string; role: Role; x: number; y: number } | null>(null);
@@ -121,14 +123,21 @@ export function Sidebar({
     });
   };
 
-  const confirmDelete = (id: string, title: string) => {
-    if (!window.confirm(`Delete “${title}” permanently? This cannot be undone.`)) return;
-    onDeleteDocument(id);
+  const confirmDelete = async (id: string, title: string) => {
+    // Dismissed first so focus lands back on the trigger before the dialog
+    // captures it, and returns there once the dialog closes.
     closeContextMenu();
+    const accepted = await confirm({
+      title: "Delete document",
+      message: `“${title}” will be deleted permanently. This cannot be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (accepted) onDeleteDocument(id);
   };
 
   const handleSignOut = async () => {
-    if (onBeforeSignOut && !onBeforeSignOut()) return;
+    if (onBeforeSignOut && !(await onBeforeSignOut())) return;
     await signOut();
     navigate("/");
   };
@@ -347,7 +356,7 @@ export function Sidebar({
               >
                 <button
                   autoFocus
-                  onClick={() => confirmDelete(contextMenu.id, contextMenu.title)}
+                  onClick={() => void confirmDelete(contextMenu.id, contextMenu.title)}
                   className="touch-target w-full text-left px-3 py-1.5 text-ui text-error hover:bg-error/10 transition-colors font-medium"
                 >
                   Delete document

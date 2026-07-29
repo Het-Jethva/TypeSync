@@ -131,16 +131,12 @@ export function DocumentHeader({
         )}
       </div>
 
-      {/* Share modal */}
-      <AnimatePresence>
-        {shareOpen && (
-          <ShareModal
-            documentId={document.id}
-            onClose={() => setShareOpen(false)}
-            onUpdate={onDocumentUpdate}
-          />
-        )}
-      </AnimatePresence>
+      <ShareModal
+        documentId={document.id}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        onUpdate={onDocumentUpdate}
+      />
     </>
   );
 }
