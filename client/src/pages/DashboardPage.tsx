@@ -10,6 +10,7 @@ import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import { useConfirm } from "../lib/confirm-context";
 import type { DocumentWithRole } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
+import type { DocumentStatus } from "../lib/document-status";
 
 function isNewerOrEqual(newIso: string, currentIso: string): boolean {
   const newTime = new Date(newIso).getTime();
@@ -41,7 +42,8 @@ export default function DashboardPage() {
   const [activeEditor, setActiveEditor] = useState<TiptapEditor | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
-  const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
+  const [documentStatus, setDocumentStatus] = useState<DocumentStatus | null>(null);
+  const hasPendingDocumentUpdates = documentStatus?.hasPendingUpdates ?? false;
   const [routeDocument, setRouteDocument] = useState<DocumentWithRole | null>(null);
   const [isRouteDocumentLoading, setIsRouteDocumentLoading] = useState(false);
   const [routeDocumentError, setRouteDocumentError] = useState<Error | null>(null);
@@ -559,6 +561,7 @@ export default function DashboardPage() {
             <DocumentHeader
               document={currentDoc}
               editor={activeEditor}
+              status={documentStatus}
               onRename={(title) => handleRenameDocument(currentDoc.id, title)}
               onDocumentUpdate={fetchDocuments}
               activeCollaborators={activeCollaborators}
@@ -575,7 +578,7 @@ export default function DashboardPage() {
                 role={currentDoc.role}
                 onCollaboratorsChange={setActiveCollaborators}
                 onEditorChange={setActiveEditor}
-                onPendingUpdatesChange={setHasPendingDocumentUpdates}
+                onStatusChange={setDocumentStatus}
                 onAccessLost={() => {
                   fetchDocuments();
                   bypassNextNavigationRef.current = true;

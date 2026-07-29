@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence } from "motion/react";
 
 import { ShareModal } from "./ShareModal";
 import { CollaboratorPresence } from "./CollaboratorPresence";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
+import { DocumentStatusPill } from "./DocumentStatusPill";
 import { exportDocument } from "../lib/export-document";
+import type { DocumentStatus } from "../lib/document-status";
 import type { DocumentWithRole } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 
 interface DocumentHeaderProps {
   document: DocumentWithRole;
   editor: TiptapEditor | null;
+  status: DocumentStatus | null;
   onRename: (title: string) => Promise<void>;
   onDocumentUpdate: () => void;
   activeCollaborators: { name: string; color: string }[];
@@ -19,6 +22,7 @@ interface DocumentHeaderProps {
 export function DocumentHeader({
   document,
   editor,
+  status,
   onRename,
   onDocumentUpdate,
   activeCollaborators,
@@ -28,7 +32,7 @@ export function DocumentHeader({
   const [title, setTitle] = useState(document.title);
   const [shareOpen, setShareOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const documentMenuItems: DropdownMenuItem[] = [
     {
@@ -64,13 +68,13 @@ export function DocumentHeader({
       return;
     }
 
-    setSaveStatus("saving");
+    setIsRenaming(true);
     try {
       await onRename(trimmedTitle);
     } catch {
       setTitle(document.title);
     } finally {
-      setSaveStatus("saved");
+      setIsRenaming(false);
     }
   };
 
@@ -118,25 +122,7 @@ export function DocumentHeader({
           </span>
         )}
 
-        {/* Save status */}
-        <AnimatePresence>
-          {saveStatus === "saving" && (
-            <motion.span
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              role="status"
-              aria-live="polite"
-              className="flex items-center gap-1.5 text-meta font-medium text-text-secondary shrink-0"
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-full border-[1.5px] border-current border-t-transparent animate-spin"
-                aria-hidden="true"
-              />
-              Saving…
-            </motion.span>
-          )}
-        </AnimatePresence>
+        <DocumentStatusPill status={status} isRenaming={isRenaming} />
       </div>
 
       {/* Right section */}

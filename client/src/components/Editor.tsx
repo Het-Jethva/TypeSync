@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -25,6 +25,7 @@ import {
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import { useConfirm } from "../lib/confirm-context";
+import type { DocumentStatus } from "../lib/document-status";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
 
@@ -33,7 +34,8 @@ interface EditorProps {
   role: Role;
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
   onAccessLost?: () => void;
-  onPendingUpdatesChange?: (hasPendingUpdates: boolean) => void;
+  /** Publishes sync, size and pending state so the header can report it. */
+  onStatusChange?: (status: DocumentStatus | null) => void;
   /** Publishes the live instance so document-level actions can reach it. */
   onEditorChange?: (editor: TiptapEditor | null) => void;
 }
@@ -43,7 +45,7 @@ export function Editor({
   role,
   onCollaboratorsChange,
   onAccessLost,
-  onPendingUpdatesChange,
+  onStatusChange,
   onEditorChange,
 }: EditorProps) {
   const confirm = useConfirm();
@@ -69,29 +71,19 @@ export function Editor({
     documentSizeStatus?.level !== "limit" &&
     !isSyncBlocked;
 
-  const handleRecover = async () => {
-    const accepted = await confirm({
+  // The guarded form is what gets published, so no caller can discard unsynced
+  // edits without asking first.
+  const confirmAndRecover = useCallback(() => {
+    void confirm({
       title: "Discard pending changes",
       message:
         "Edits that have not reached the server will be lost, and the latest version will be reloaded from the server.",
       confirmLabel: "Discard and reload",
       tone: "danger",
+    }).then((accepted) => {
+      if (accepted) recover();
     });
-    if (accepted) recover();
-  };
-
-  const syncStatusText =
-    syncStatus === "failed"
-      ? isSyncBlocked
-        ? `Sync blocked — ${syncError ?? "changes pending"}`
-        : "Sync failed — retrying"
-      : syncStatus === "offline"
-        ? hasPendingUpdates
-          ? "Offline — changes pending"
-          : "Offline"
-        : syncStatus === "syncing"
-          ? "Syncing…"
-          : "Synced";
+  }, [confirm, recover]);
 
   const editor = useEditor(
     {
@@ -204,6 +196,9 @@ export function Editor({
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
 
+  const characterCount = editor?.storage.characterCount?.characters?.() ?? 0;
+  const wordCount = editor?.storage.characterCount?.words?.() ?? 0;
+
   useEffect(() => {
     if (!editor) return;
 
@@ -248,12 +243,27 @@ export function Editor({
   }, [editor, onEditorChange]);
 
   useEffect(() => {
-    onPendingUpdatesChange?.(hasPendingUpdates);
-  }, [hasPendingUpdates, onPendingUpdatesChange]);
+    onStatusChange?.({
+      syncStatus,
+      hasPendingUpdates,
+      documentSizeStatus,
+      syncError,
+      isSyncBlocked,
+      recover: confirmAndRecover,
+    });
+  }, [
+    confirmAndRecover,
+    documentSizeStatus,
+    hasPendingUpdates,
+    isSyncBlocked,
+    onStatusChange,
+    syncError,
+    syncStatus,
+  ]);
 
   useEffect(() => {
-    return () => onPendingUpdatesChange?.(false);
-  }, [onPendingUpdatesChange]);
+    return () => onStatusChange?.(null);
+  }, [onStatusChange]);
 
   useEffect(() => {
     if (!hasPendingUpdates) return;
@@ -290,46 +300,14 @@ export function Editor({
         />
       )}
 
-      {/* Connection status bar */}
-      <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              documentSizeStatus?.level === "limit" || syncStatus === "failed"
-                ? "bg-error"
-                : documentSizeStatus?.level === "warning" || syncStatus === "offline"
-                  ? "bg-warning"
-                  : syncStatus === "syncing"
-                    ? "bg-warning animate-pulse"
-                  : "bg-success"
-            }`}
-          />
-          <span
-            className="text-micro text-text-muted font-medium truncate"
-            title={syncError ?? undefined}
-          >
-            {syncStatus === "failed"
-              ? syncStatusText
-              : documentSizeStatus?.level === "limit"
-                ? documentSizeStatus.reason === "update"
-                  ? "Edit exceeds size limit"
-                  : "Document size limit reached"
-                : documentSizeStatus?.level === "warning"
-                  ? "Document nearing size limit"
-                  : syncStatusText}
-          </span>
-          {isSyncBlocked && (
-            <button
-              type="button"
-              onClick={() => void handleRecover()}
-              className="text-micro text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
-            >
-              Discard pending changes and reload
-            </button>
-          )}
-        </div>
-        <span className="text-micro text-text-muted font-medium shrink-0">
-          {editor?.storage.characterCount?.characters?.() ?? 0} characters
+      {/* Document measures. Sync state is reported in the header. */}
+      <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-end gap-3">
+        <span className="text-micro text-text-muted font-medium">
+          {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
+        </span>
+        <span className="text-micro text-text-muted font-medium">
+          {characterCount.toLocaleString()}{" "}
+          {characterCount === 1 ? "character" : "characters"}
         </span>
       </div>
     </motion.div>
