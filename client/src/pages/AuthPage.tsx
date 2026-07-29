@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, useParams, Link } from "react-router";
+import { useNavigate, useParams, Link, Navigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
@@ -9,7 +9,7 @@ import { useBackendReadiness } from "../lib/backend-readiness-context";
 export default function AuthPage() {
   const navigate = useNavigate();
   const { mode } = useParams();
-  const { data: session } = useSession();
+  const { data: session, isPending: isSessionPending, refetch } = useSession();
   const { status: backendStatus } = useBackendReadiness();
 
   const isSignIn = mode !== "signup";
@@ -20,13 +20,6 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  // Redirect if already logged in
-  useEffect(() => {
-    if (session) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [session, navigate]);
 
   // Clear errors on mode change
   useEffect(() => {
@@ -61,25 +54,55 @@ export default function AuthPage() {
 
     try {
       if (isSignIn) {
-        const result = await signIn.email({ email, password });
+        const result = await signIn.email(
+          { email, password },
+          { disableSignal: true },
+        );
         if (result.error) {
           setError(result.error.message || "Invalid credentials");
           return;
         }
       } else {
-        const result = await signUp.email({ name, email, password });
+        const result = await signUp.email(
+          { name, email, password },
+          { disableSignal: true },
+        );
         if (result.error) {
           setError(result.error.message || "Sign up failed");
           return;
         }
       }
-      navigate("/dashboard");
+
+      await refetch();
+      navigate("/dashboard", { replace: true });
     } catch (err: any) {
       setError(err.message || "Authentication failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (isSessionPending) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-primary"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"
+          aria-hidden="true"
+        />
+        <span className="text-xs font-medium text-text-secondary">
+          Checking your session…
+        </span>
+      </div>
+    );
+  }
+
+  if (session) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4 py-12">
