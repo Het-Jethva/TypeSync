@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { AnimatePresence } from "motion/react";
 import { ToolbarUrlPopover } from "./ToolbarUrlPopover";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
+import { AnchoredPortal } from "./AnchoredPortal";
 
 interface EditorToolbarProps {
   editor: TiptapEditor | null;
@@ -52,6 +53,9 @@ function Divider() {
 export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
   const [openPopover, setOpenPopover] = useState<"link" | "image" | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const linkAnchorRef = useRef<HTMLDivElement>(null);
+  const imageAnchorRef = useRef<HTMLDivElement>(null);
+  const overflowAnchorRef = useRef<HTMLDivElement>(null);
 
   if (!editor) return null;
 
@@ -95,7 +99,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
   ];
 
   return (
-    <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40">
+    <div className="scroll-row flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40">
       {/* History */}
       <ToolbarButton
         onClick={() => editor.chain().focus().undo().run()}
@@ -221,7 +225,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       <Divider />
 
       {/* Link */}
-      <div className="relative">
+      <div ref={linkAnchorRef}>
         <ToolbarButton
           isActive={editor.isActive("link")}
           onClick={() => setOpenPopover((current) => (current === "link" ? null : "link"))}
@@ -235,6 +239,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
         </ToolbarButton>
         <AnimatePresence>
           {openPopover === "link" && (
+            <AnchoredPortal anchorRef={linkAnchorRef}>
             <ToolbarUrlPopover
               label={editor.isActive("link") ? "Edit link" : "Link address"}
               placeholder="example.com/page"
@@ -257,12 +262,13 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
               }
               onClose={closePopover}
             />
+            </AnchoredPortal>
           )}
         </AnimatePresence>
       </div>
 
       {/* Image */}
-      <div className="relative">
+      <div ref={imageAnchorRef}>
         <ToolbarButton
           onClick={() => setOpenPopover((current) => (current === "image" ? null : "image"))}
           title="Insert image"
@@ -276,13 +282,15 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
         </ToolbarButton>
         <AnimatePresence>
           {openPopover === "image" && (
-            <ToolbarUrlPopover
-              label="Image address"
-              placeholder="example.com/photo.jpg"
-              submitLabel="Insert image"
-              onSubmit={(url) => editor.chain().focus().setImage({ src: url }).run()}
-              onClose={closePopover}
-            />
+            <AnchoredPortal anchorRef={imageAnchorRef}>
+              <ToolbarUrlPopover
+                label="Image address"
+                placeholder="example.com/photo.jpg"
+                submitLabel="Insert image"
+                onSubmit={(url) => editor.chain().focus().setImage({ src: url }).run()}
+                onClose={closePopover}
+              />
+            </AnchoredPortal>
           )}
         </AnimatePresence>
       </div>
@@ -290,7 +298,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       <Divider />
 
       {/* Overflow */}
-      <div className="relative">
+      <div ref={overflowAnchorRef}>
         <ToolbarButton
           onClick={() => setOverflowOpen((current) => !current)}
           title="More blocks"
@@ -304,12 +312,13 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
         </ToolbarButton>
         <AnimatePresence>
           {overflowOpen && (
-            <DropdownMenu
-              label="More blocks"
-              items={overflowItems}
-              onClose={() => setOverflowOpen(false)}
-              className="absolute top-full left-0 mt-1.5"
-            />
+            <AnchoredPortal anchorRef={overflowAnchorRef} align="right">
+              <DropdownMenu
+                label="More blocks"
+                items={overflowItems}
+                onClose={() => setOverflowOpen(false)}
+              />
+            </AnchoredPortal>
           )}
         </AnimatePresence>
       </div>

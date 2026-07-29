@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence } from "motion/react";
 
 import { ShareModal } from "./ShareModal";
 import { CollaboratorPresence } from "./CollaboratorPresence";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
 import { DocumentStatusPill } from "./DocumentStatusPill";
+import { AnchoredPortal } from "./AnchoredPortal";
 import { exportDocument } from "../lib/export-document";
 import type { DocumentStatus } from "../lib/document-status";
 import type { DocumentWithRole } from "@typesync/shared";
@@ -14,6 +15,8 @@ interface DocumentHeaderProps {
   document: DocumentWithRole;
   editor: TiptapEditor | null;
   status: DocumentStatus | null;
+  /** Narrow viewport, where secondary actions fold into the menu. */
+  isCompact: boolean;
   onRename: (title: string) => Promise<void>;
   onDocumentUpdate: () => void;
   activeCollaborators: { name: string; color: string }[];
@@ -23,6 +26,7 @@ export function DocumentHeader({
   document,
   editor,
   status,
+  isCompact,
   onRename,
   onDocumentUpdate,
   activeCollaborators,
@@ -33,8 +37,22 @@ export function DocumentHeader({
   const [shareOpen, setShareOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
+  const menuAnchorRef = useRef<HTMLDivElement>(null);
+
+  const isOwner = document.role === "owner";
 
   const documentMenuItems: DropdownMenuItem[] = [
+    // Share is a primary action, so it keeps its own button where there is
+    // room and folds into this menu where there is not.
+    ...(isOwner && isCompact
+      ? [
+          {
+            id: "share",
+            label: "Share",
+            onSelect: () => setShareOpen(true),
+          },
+        ]
+      : []),
     {
       id: "export-html",
       label: "Download as HTML",
@@ -103,19 +121,19 @@ export function DocumentHeader({
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-ui font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
+            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-ui font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light flex-1 min-w-0 sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
           />
         ) : canEdit ? (
           <button
             onClick={() => setIsEditing(true)}
-            className="text-ui font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 max-w-[100px] sm:max-w-[300px]"
+            className="text-ui font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 min-w-0 sm:max-w-[300px] text-left"
             title="Click to rename"
           >
             {document.title}
           </button>
         ) : (
           <span
-            className="text-ui font-semibold text-text-primary truncate px-1 max-w-[100px] sm:max-w-[300px]"
+            className="text-ui font-semibold text-text-primary truncate px-1 min-w-0 sm:max-w-[300px]"
             title={document.title}
           >
             {document.title}
@@ -129,7 +147,7 @@ export function DocumentHeader({
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <CollaboratorPresence collaborators={activeCollaborators} />
 
-        {document.role === "owner" && (
+        {isOwner && !isCompact && (
           <button
             onClick={() => setShareOpen(true)}
             aria-label="Share document"
@@ -143,7 +161,7 @@ export function DocumentHeader({
           </button>
         )}
 
-        <div className="relative">
+        <div ref={menuAnchorRef}>
           <button
             onClick={() => setMenuOpen((current) => !current)}
             aria-label="Document actions"
@@ -160,12 +178,13 @@ export function DocumentHeader({
           </button>
           <AnimatePresence>
             {menuOpen && (
-              <DropdownMenu
-                label="Document actions"
-                items={documentMenuItems}
-                onClose={() => setMenuOpen(false)}
-                className="absolute top-full right-0 mt-1.5"
-              />
+              <AnchoredPortal anchorRef={menuAnchorRef} align="right">
+                <DropdownMenu
+                  label="Document actions"
+                  items={documentMenuItems}
+                  onClose={() => setMenuOpen(false)}
+                />
+              </AnchoredPortal>
             )}
           </AnimatePresence>
         </div>

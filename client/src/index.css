@@ -183,14 +183,36 @@
   outline-offset: 2px;
 }
 
+/* Applied to things that are genuinely tapped, rather than to every button on
+   the page — a blanket rule forced icon buttons in dense rows to 44px wide and
+   pushed the toolbar onto three lines. */
 @media (pointer: coarse) {
-  button,
-  select,
-  input,
   .touch-target {
     min-width: 44px;
     min-height: 44px;
   }
+
+  select,
+  input,
+  textarea {
+    min-height: 44px;
+  }
+}
+
+/* Horizontal strips that must stay one line on narrow screens. */
+.scroll-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-row > * {
+  flex-shrink: 0;
 }
 
 /* ─── Base ──────────────────────────────────────────────── */

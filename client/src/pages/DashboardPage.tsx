@@ -636,6 +636,7 @@ export default function DashboardPage() {
               document={currentDoc}
               editor={activeEditor}
               status={documentStatus}
+              isCompact={isMobile}
               onRename={(title) => handleRenameDocument(currentDoc.id, title)}
               onDocumentUpdate={fetchDocuments}
               activeCollaborators={activeCollaborators}
