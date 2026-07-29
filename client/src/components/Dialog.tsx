@@ -8,7 +8,6 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "motion/react";
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -31,8 +30,8 @@ interface DialogProps {
 
 /**
  * Modal dialog: portalled, focus-trapped, escape-dismissable, and restores
- * focus to whatever opened it. Owns its own enter and exit animation, so
- * callers render it unconditionally and drive it with `open`.
+ * focus to whatever opened it. Callers render it unconditionally and drive it
+ * with `open`; it animates in and disappears immediately on close.
  */
 export function Dialog({
   open,
@@ -102,77 +101,73 @@ export function Dialog({
     }
   };
 
+  if (!open) return null;
+
+  // Deliberately not driven by AnimatePresence. Inside the portal it animated
+  // out but never unmounted, leaving an invisible surface over the middle of
+  // the page that still took clicks; outside the portal it never mounted at
+  // all, because a portal is not an animatable child. Mounting is plain
+  // conditional rendering, so it cannot fail in either direction, and the
+  // entrance is a CSS animation that skips itself under reduced motion.
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            onClick={requestClose}
-            aria-hidden="true"
-          />
+    <div className="fixed inset-0 z-50">
+      <div
+        className="dialog-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={requestClose}
+        aria-hidden="true"
+      />
 
-          <motion.div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            aria-describedby={describedById}
-            aria-busy={busy}
-            tabIndex={-1}
-            onKeyDown={handleKeyDown}
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] ${maxWidthClassName} outline-none`}
-          >
-            <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
-              <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4">
-                <h2
-                  id={titleId}
-                  className="text-title font-semibold text-text-primary tracking-tight"
-                >
-                  {title}
-                </h2>
-                <button
-                  type="button"
-                  onClick={requestClose}
-                  aria-label={`Close ${title.toLowerCase()}`}
-                  className="touch-target w-7 h-7 rounded hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors shrink-0"
-                >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    className="w-4 h-4"
-                  >
-                    <path
-                      d="M18 6L6 18M6 6l12 12"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={describedById}
+        aria-busy={busy}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] ${maxWidthClassName} outline-none`}
+      >
+        <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
+          <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4">
+            <h2
+              id={titleId}
+              className="text-title font-semibold text-text-primary tracking-tight"
+            >
+              {title}
+            </h2>
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label={`Close ${title.toLowerCase()}`}
+              className="touch-target w-7 h-7 rounded hover:bg-bg-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors shrink-0"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  d="M18 6L6 18M6 6l12 12"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
 
-              <div className="px-6 pb-6">{children}</div>
+          <div className="px-6 pb-6">{children}</div>
 
-              {footer && (
-                <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
-                  {footer}
-                </div>
-              )}
+          {footer && (
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+              {footer}
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
+          )}
+        </div>
+      </div>
+    </div>,
     document.body,
   );
 }

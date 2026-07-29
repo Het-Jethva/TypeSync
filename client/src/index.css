@@ -177,6 +177,36 @@
   transform: translateY(0.5px);
 }
 
+/* ─── Dialog ────────────────────────────────────────────── */
+/* The panel is centred by transform, so its entrance animates the same
+   transform rather than fighting a utility class for it. */
+.dialog-panel {
+  transform: translate(-50%, -50%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-backdrop {
+    animation: dialog-backdrop-in 150ms ease-out;
+  }
+
+  .dialog-panel {
+    animation: dialog-panel-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-panel-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.97);
+  }
+}
+
 /* ─── Accessible control affordances ───────────────────── */
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid var(--color-accent);
@@ -350,6 +380,19 @@ body {
   margin: 0.4em 0;
 }
 
+/* List items wrap their text in a paragraph, which would otherwise carry the
+   full paragraph margin and open a gap above the first line. Task items nest
+   theirs one level deeper inside a wrapper, so this is a descendant match
+   rather than a child one. Inner spacing is kept, so an item with several
+   paragraphs still reads as several. */
+.tiptap li p:first-child {
+  margin-top: 0;
+}
+
+.tiptap li p:last-child {
+  margin-bottom: 0;
+}
+
 .tiptap code {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border-strong);
@@ -429,14 +472,26 @@ body {
   gap: 0.5rem;
 }
 
-.tiptap ul[data-type="taskList"] li label {
-  margin-top: 0.25em;
+/* The box is centred against the first line of text by matching the editor's
+   line height, so it stays aligned at any font size. */
+.tiptap ul[data-type="taskList"] li > label {
+  display: flex;
+  align-items: center;
+  height: 1.8em;
+  margin: 0;
+  user-select: none;
+}
+
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .tiptap ul[data-type="taskList"] li input[type="checkbox"] {
   accent-color: var(--color-accent);
   width: 1rem;
   height: 1rem;
+  margin: 0;
   cursor: pointer;
 }
 
