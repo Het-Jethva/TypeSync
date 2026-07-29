@@ -195,16 +195,40 @@ export function Editor({
 
   useEffect(() => {
     if (!editor) return;
-    const overlayContainer = editor.view.dom.closest<HTMLElement>(
-      ".editor-scroll-area"
-    );
-    if (!overlayContainer) return;
 
-    return mountSmoothCollaborationCarets(
-      editor.view.dom,
-      overlayContainer,
-      awareness
-    );
+    let detach: (() => void) | undefined;
+    let frame: number | null = null;
+
+    // `editor.view` throws while the editor has no view — either it has not been
+    // mounted yet or it was already destroyed. Wait for the view instead.
+    const attach = () => {
+      frame = null;
+      if (detach || editor.isDestroyed) return;
+
+      const editorElement = editor.view.dom;
+      const overlayContainer = editorElement.closest<HTMLElement>(
+        ".editor-scroll-area"
+      );
+      if (!overlayContainer) {
+        frame = window.requestAnimationFrame(attach);
+        return;
+      }
+
+      detach = mountSmoothCollaborationCarets(
+        editorElement,
+        overlayContainer,
+        awareness
+      );
+    };
+
+    attach();
+    editor.on("mount", attach);
+
+    return () => {
+      editor.off("mount", attach);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      detach?.();
+    };
   }, [editor, awareness]);
 
   useEffect(() => {
