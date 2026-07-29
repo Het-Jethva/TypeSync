@@ -65,12 +65,17 @@ export default function createDocumentRoutes(
     asyncHandler(async (req: AuthenticatedRequest, res) => {
       const documentId = uuidParam(req.params.id);
       const { title } = UpdateDocumentSchema.parse(req.body);
+
+      // Authorize before the no-op shortcut below. Behind it, a caller with no
+      // access to this document receives a success response for it, and the
+      // check stops covering any field later added to UpdateDocumentSchema.
+      await accessAuthorizer.requireDocumentRole(documentId, req.user!.id, "editor");
+
       if (title === undefined) {
         res.json({ success: true });
         return;
       }
 
-      await accessAuthorizer.requireDocumentRole(documentId, req.user!.id, "editor");
       const updated = await DocumentService.updateDocumentTitle(documentId, title);
       io.to(`doc:${documentId}`).emit("doc:title-updated", {
         documentId,
