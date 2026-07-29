@@ -10,10 +10,17 @@ import { setupSocket } from "./socket/index.js";
 import { CollaborativeRoomSession } from "./socket/room-session.js";
 import type { TypeSyncSocketServer } from "./socket/types.js";
 import { errorHandler } from "./middleware/error.js";
+import { createRateLimit } from "./middleware/rate-limit.js";
 import { pool } from "./db/index.js";
 
 const app = express();
 app.disable("x-powered-by");
+// Render terminates TLS at its edge proxy. Without this every request reports
+// the proxy's address, so per-client rate limiting would put the whole world in
+// one bucket. One hop only — the edge is the sole proxy in front of this app.
+if (config.isProduction) {
+  app.set("trust proxy", 1);
+}
 const httpServer = createServer(app);
 
 pool.on("error", () => {
@@ -41,7 +48,12 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.get("/api/ready", async (_req, res) => {
+// The frontend probes readiness every 2.5s for up to 45s during a cold start,
+// so a burst of 20 covers a full wake-up cycle before the sustained rate bites.
+const readinessRateLimit = createRateLimit({ requestsPerMinute: 60, burst: 20 });
+const documentsRateLimit = createRateLimit({ requestsPerMinute: 120, burst: 40 });
+
+app.get("/api/ready", readinessRateLimit, async (_req, res) => {
   try {
     await pool.query("select 1");
     res.json({ status: "ready", timestamp: new Date().toISOString() });
@@ -70,7 +82,11 @@ const io = setupSocket(httpServer, roomSession, accessAuthorizer);
 socketServer.current = io;
 
 // ─── API Routes ──────────────────────────────────────────
-app.use("/api/documents", createDocumentRoutes(io, roomSession, accessAuthorizer));
+app.use(
+  "/api/documents",
+  documentsRateLimit,
+  createDocumentRoutes(io, roomSession, accessAuthorizer)
+);
 
 // ─── Error handler (must come after all routes) ──────────
 app.use(errorHandler);
