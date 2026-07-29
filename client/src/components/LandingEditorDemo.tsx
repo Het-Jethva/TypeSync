@@ -1,107 +1,85 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import Placeholder from "@tiptap/extension-placeholder";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Collaboration from "@tiptap/extension-collaboration";
+import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import { common, createLowlight } from "lowlight";
+import * as Y from "yjs";
+import { EditorToolbar } from "./EditorToolbar";
 
-const SIMULATED_TYPING =
-  " Collaborative writing is now seamless. You can edit this text right now, format it, or see how fast changes sync. Try typing here!";
+const lowlight = createLowlight(common);
 
+const DEMO_CONTENT = `
+  <h2>Weekend plans</h2>
+  <p>This is the real editor. Type in it, format it, break it — nothing here is
+  saved, and nothing you write leaves your browser.</p>
+  <ul data-type="taskList">
+    <li data-type="taskItem" data-checked="true"><p>Pick a place to stay</p></li>
+    <li data-type="taskItem" data-checked="false"><p>Work out who is driving</p></li>
+  </ul>
+  <blockquote><p>Bring the good coffee this time.</p></blockquote>
+`;
+
+/**
+ * The editor from the app, running on its own. The document lives in memory
+ * and there is nobody else in it, so no account and no server are needed to
+ * try it.
+ */
 export function LandingEditorDemo() {
-  const demoRef = useRef<HTMLDivElement>(null);
-  const paragraphRef = useRef<HTMLParagraphElement>(null);
-  const cursorRef = useRef<HTMLSpanElement>(null);
-  const hasInteractedRef = useRef(false);
-  const currentCharIndexRef = useRef(0);
+  const ydoc = useMemo(() => new Y.Doc(), []);
 
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        undoRedo: false,
+        codeBlock: false,
+        link: { openOnClick: false, autolink: true },
+      }),
+      Underline,
+      // The toolbar is shared with the app, so the demo carries every
+      // extension it can drive. Anything missing would be a button that
+      // silently does nothing.
+      Image.configure({ inline: false, allowBase64: false }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      CodeBlockLowlight.configure({ lowlight }),
+      Placeholder.configure({ placeholder: "Start writing…" }),
+      Collaboration.configure({ document: ydoc }),
+    ],
+    editorProps: { attributes: { class: "tiptap" } },
+  });
+
+  // Seeded once. The emptiness check matters because development mounts
+  // effects twice, which would otherwise insert the content twice.
+  //
+  // The document is deliberately not destroyed on unmount: it is held by a memo
+  // that a remount does not re-run, so tearing it down would leave the editor
+  // bound to a dead document. It holds no connection and nothing outside this
+  // component refers to it.
   useEffect(() => {
-    const paragraph = paragraphRef.current;
-    const cursor = cursorRef.current;
-    if (!paragraph || !cursor) return;
-
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return;
-
-    const timer = window.setInterval(() => {
-      if (hasInteractedRef.current) {
-        window.clearInterval(timer);
-        return;
-      }
-
-      const index = currentCharIndexRef.current;
-      if (index >= SIMULATED_TYPING.length) {
-        window.clearInterval(timer);
-        return;
-      }
-
-      paragraph.insertBefore(
-        document.createTextNode(SIMULATED_TYPING[index]),
-        cursor
-      );
-      currentCharIndexRef.current += 1;
-      cursor.style.opacity = "1";
-    }, 90);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const handleInput = () => {
-    hasInteractedRef.current = true;
-    if (cursorRef.current) cursorRef.current.style.opacity = "0";
-  };
+    if (!editor || editor.isDestroyed) return;
+    if (ydoc.getXmlFragment("default").length > 0) return;
+    editor.commands.setContent(DEMO_CONTENT);
+  }, [editor, ydoc]);
 
   return (
-    <div
-      className="relative border border-border-strong bg-bg-secondary/30 rounded-md overflow-hidden shadow-sm hover:border-border-accent transition-[border-color] cursor-text max-w-2xl mx-auto"
-      onClick={() => demoRef.current?.focus()}
-    >
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary/40 select-none">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="text-micro text-text-secondary font-medium ml-1.5">
-            demo_document.md
-          </span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex -space-x-1" aria-hidden="true">
-            <span className="w-4 h-4 rounded bg-bg-tertiary border border-border text-micro font-bold text-text-primary flex items-center justify-center">
-              Y
-            </span>
-            <span className="w-4 h-4 rounded bg-accent border border-border text-micro font-bold text-white flex items-center justify-center">
-              S
-            </span>
-          </div>
-          <span className="flex items-center gap-1 text-micro text-success font-medium">
-            <span className="w-1 h-1 rounded-full bg-success animate-pulse" aria-hidden="true" />
-            Live
-          </span>
-        </div>
-      </div>
-
-      <div className="relative p-1 min-h-[180px] bg-bg-elevated">
-        <div
-          ref={demoRef}
-          role="textbox"
-          aria-label="Interactive collaborative writing demo"
-          aria-multiline="true"
-          contentEditable
-          suppressContentEditableWarning
-          onInput={handleInput}
-          className="prose prose-sm dark:prose-invert focus:outline-none focus-visible:ring-2 focus-visible:ring-accent min-h-[160px] text-ui leading-relaxed text-text-primary px-4 py-3 font-serif"
-        >
-          <h2>Collaborative Document</h2>
-          <p ref={paragraphRef}>
-            Welcome to TypeSync. This is a live interactive editor demonstration.
-            <span
-              ref={cursorRef}
-              aria-hidden="true"
-              className="inline-flex align-baseline ml-0.5 items-start opacity-0 transition-opacity duration-75"
-            >
-              <span className="h-4 w-[1.5px] bg-accent" />
-              <span className="-mt-4 ml-0.5 text-micro font-medium bg-accent text-white px-1 py-0.25 rounded-sm rounded-tl-none whitespace-nowrap">
-                Sarah
-              </span>
-            </span>
-          </p>
-        </div>
+    <div className="overflow-hidden rounded-md border border-border-strong bg-bg-elevated text-left shadow-sm">
+      <EditorToolbar editor={editor} canEdit />
+      <div className="max-h-[380px] overflow-y-auto">
+        <EditorContent editor={editor} />
       </div>
     </div>
   );

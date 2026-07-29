@@ -8,26 +8,23 @@ const statusContent: Record<
   { title: string; description: string; color: string }
 > = {
   waking: {
-    title: "Starting the server",
-    description:
-      "TypeSync is waking up. This can take up to a minute on the free service.",
+    title: "Getting things ready",
+    description: "This takes up to a minute the first time.",
     color: "bg-accent",
   },
   ready: {
-    title: "Server ready",
-    description: "You can sign in or create an account.",
+    title: "Ready",
+    description: "Sign in or create an account to start writing.",
     color: "bg-success",
   },
   delayed: {
-    title: "Still waking up",
-    description:
-      "The server is taking longer than usual. We’re retrying automatically.",
+    title: "Almost there",
+    description: "This is taking a little longer than usual. Still trying.",
     color: "bg-warning",
   },
   unavailable: {
-    title: "Server unavailable",
-    description:
-      "We couldn’t reach the server. Check your connection, then try again.",
+    title: "Can’t connect",
+    description: "Check your connection, then try again.",
     color: "bg-error",
   },
 };
