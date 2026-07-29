@@ -186,7 +186,12 @@ export function Editor({
       },
       editable: canEdit,
     },
-    [documentId, ydoc, awareness, canEdit]
+    // `canEdit` is deliberately absent: a dependency change destroys and
+    // recreates the editor, which drops selection, focus and scroll position.
+    // It flips on role change, on the document size limit, and on sync being
+    // blocked — the last of which is the worst moment to move the caret. The
+    // effect below applies it to the live instance instead.
+    [documentId, ydoc, awareness]
   );
 
   useEffect(() => {
