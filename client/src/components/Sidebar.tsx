@@ -291,7 +291,9 @@ export function Sidebar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search documents…"
           aria-label="Search documents"
-          className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+          // `min-w-0` because an input carries an intrinsic width that flex-1
+          // will not shrink past, which pushed the sort control off the edge.
+          className="flex-1 min-w-0 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
         />
         <select
           value={sortBy}

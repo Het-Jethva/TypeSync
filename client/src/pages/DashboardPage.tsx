@@ -789,7 +789,9 @@ export default function DashboardPage() {
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               )}
-              <span className="flex-1 leading-normal">{notif.message}</span>
+              {/* Errors now stay until dismissed, so a long server message
+                  must wrap rather than push the dismiss button out of reach. */}
+              <span className="flex-1 min-w-0 break-words leading-normal">{notif.message}</span>
               <button
                 onClick={() => setNotifications((prev) => prev.filter((n) => n.id !== notif.id))}
                 aria-label="Dismiss notification"
