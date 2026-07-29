@@ -1,4 +1,7 @@
+import { useState } from "react";
 import type { Editor as TiptapEditor } from "@tiptap/react";
+import { AnimatePresence } from "motion/react";
+import { ToolbarUrlPopover } from "./ToolbarUrlPopover";
 
 interface EditorToolbarProps {
   editor: TiptapEditor | null;
@@ -46,17 +49,15 @@ function Divider() {
   return <div className="w-px h-4 bg-border mx-1" />;
 }
 
-function parseExternalImageUrl(value: string): string | null {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
 export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProps) {
+  const [openPopover, setOpenPopover] = useState<"link" | "image" | null>(null);
+
   if (!editor) return null;
+
+  const closePopover = () => {
+    setOpenPopover(null);
+    editor.chain().focus().run();
+  };
 
   const downloadExport = (format: "html" | "txt" | "json") => {
     const title = `typesync-${documentId}`;
@@ -230,46 +231,71 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
       </ToolbarButton>
 
       {/* Link */}
-      <ToolbarButton
-        isActive={editor.isActive("link")}
-        onClick={() => {
-          const url = window.prompt("Enter URL:");
-          if (url) {
-            editor.chain().focus().setLink({ href: url }).run();
-          }
-        }}
-        title="Insert link"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </ToolbarButton>
+      <div className="relative">
+        <ToolbarButton
+          isActive={editor.isActive("link")}
+          onClick={() => setOpenPopover((current) => (current === "link" ? null : "link"))}
+          title={editor.isActive("link") ? "Edit link" : "Insert link"}
+          disabled={!canEdit}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </ToolbarButton>
+        <AnimatePresence>
+          {openPopover === "link" && (
+            <ToolbarUrlPopover
+              label={editor.isActive("link") ? "Edit link" : "Link address"}
+              placeholder="example.com/page"
+              initialValue={editor.getAttributes("link").href ?? ""}
+              submitLabel={editor.isActive("link") ? "Update" : "Add link"}
+              removeLabel="Remove link"
+              onRemove={
+                editor.isActive("link")
+                  ? () =>
+                      editor.chain().focus().extendMarkRange("link").unsetLink().run()
+                  : undefined
+              }
+              onSubmit={(url) =>
+                editor
+                  .chain()
+                  .focus()
+                  .extendMarkRange("link")
+                  .setLink({ href: url })
+                  .run()
+              }
+              onClose={closePopover}
+            />
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Image */}
-      <ToolbarButton
-        onClick={() => {
-          const value = window.prompt("Enter image URL:");
-          if (!value) return;
-
-          const imageUrl = parseExternalImageUrl(value);
-          if (!imageUrl) {
-            window.alert("Images must use an http:// or https:// URL.");
-            return;
-          }
-
-          editor.chain().focus().setImage({ src: imageUrl }).run();
-        }}
-        title="Insert image"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
-          <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" />
-          <path d="M21 15l-5-5L5 21" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </ToolbarButton>
+      <div className="relative">
+        <ToolbarButton
+          onClick={() => setOpenPopover((current) => (current === "image" ? null : "image"))}
+          title="Insert image"
+          disabled={!canEdit}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+            <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
+            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" />
+            <path d="M21 15l-5-5L5 21" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </ToolbarButton>
+        <AnimatePresence>
+          {openPopover === "image" && (
+            <ToolbarUrlPopover
+              label="Image address"
+              placeholder="example.com/photo.jpg"
+              submitLabel="Insert image"
+              onSubmit={(url) => editor.chain().focus().setImage({ src: url }).run()}
+              onClose={closePopover}
+            />
+          )}
+        </AnimatePresence>
+      </div>
 
       <Divider />
 
