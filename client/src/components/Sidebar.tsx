@@ -6,6 +6,7 @@ import type { DocumentWithRole, Role } from "@typesync/shared";
 import { toggleThemeWithTransition } from "../lib/theme";
 import { useConfirm } from "../lib/confirm-context";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
+import { Select } from "./Select";
 
 type SortBy = "updated" | "alphabetical" | "created";
 
@@ -295,12 +296,13 @@ export function Sidebar({
           // will not shrink past, which pushed the sort control off the edge.
           className="flex-1 min-w-0 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
         />
-        <select
+        <Select
           value={sortBy}
           onChange={(e) => {
             if (isSortBy(e.target.value)) setSortBy(e.target.value);
           }}
-          className="bg-bg-primary border border-border rounded px-2 py-1.5 text-micro text-text-secondary focus:outline-none focus:border-border-accent cursor-pointer shrink-0"
+          className="text-micro text-text-secondary"
+          wrapperClassName="shrink-0"
           aria-label="Sort documents"
           title="Sort documents"
         >
@@ -309,7 +311,7 @@ export function Sidebar({
               {option.label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Document list */}

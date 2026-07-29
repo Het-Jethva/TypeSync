@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { Dialog } from "./Dialog";
+import { Select } from "./Select";
 import { api } from "../lib/api";
 import type { DocumentCollaboratorWithUser } from "@typesync/shared";
 
@@ -258,7 +259,7 @@ export function ShareModal({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <select
+                  <Select
                     value={collab.role}
                     onChange={(e) =>
                       handleUpdateRole(
@@ -268,11 +269,12 @@ export function ShareModal({
                     }
                     aria-label={`Role for ${collab.user.name}`}
                     name={`role-${collab.user.id}`}
-                    className="bg-bg-secondary border border-border rounded px-1.5 py-0.5 text-micro text-text-primary focus:outline-none focus:border-border-accent"
+                    className="bg-bg-secondary py-0.5 text-micro"
+                    wrapperClassName="shrink-0"
                   >
                     <option value="editor">Editor</option>
                     <option value="viewer">Viewer</option>
-                  </select>
+                  </Select>
 
                   <button
                     type="button"
