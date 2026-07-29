@@ -8,6 +8,7 @@ import { DocumentStatusPill } from "./DocumentStatusPill";
 import { AnchoredPortal } from "./AnchoredPortal";
 import { exportDocument } from "../lib/export-document";
 import type { DocumentStatus } from "../lib/document-status";
+import type { ActiveCollaborator } from "../lib/presence";
 import type { DocumentWithRole } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 
@@ -19,7 +20,7 @@ interface DocumentHeaderProps {
   isCompact: boolean;
   onRename: (title: string) => Promise<void>;
   onDocumentUpdate: () => void;
-  activeCollaborators: { name: string; color: string }[];
+  activeCollaborators: ActiveCollaborator[];
 }
 
 export function DocumentHeader({

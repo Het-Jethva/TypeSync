@@ -26,13 +26,14 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import { useConfirm } from "../lib/confirm-context";
 import type { DocumentStatus } from "../lib/document-status";
+import type { ActiveCollaborator } from "../lib/presence";
 import type { Role } from "@typesync/shared";
 const lowlight = createLowlight(common);
 
 interface EditorProps {
   documentId: string;
   role: Role;
-  onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
+  onCollaboratorsChange?: (collaborators: ActiveCollaborator[]) => void;
   onAccessLost?: () => void;
   /** Publishes sync, size and pending state so the header can report it. */
   onStatusChange?: (status: DocumentStatus | null) => void;

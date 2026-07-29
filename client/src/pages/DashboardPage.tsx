@@ -12,6 +12,7 @@ import { useSession } from "../lib/auth-client";
 import type { DocumentWithRole } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import type { DocumentStatus } from "../lib/document-status";
+import type { ActiveCollaborator } from "../lib/presence";
 
 function isNewerOrEqual(newIso: string, currentIso: string): boolean {
   const newTime = new Date(newIso).getTime();
@@ -40,7 +41,7 @@ export default function DashboardPage() {
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [nextDocumentsCursor, setNextDocumentsCursor] = useState<string | null>(null);
   const [isLoadingMoreDocuments, setIsLoadingMoreDocuments] = useState(false);
-  const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
+  const [activeCollaborators, setActiveCollaborators] = useState<ActiveCollaborator[]>([]);
   const [activeEditor, setActiveEditor] = useState<TiptapEditor | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
@@ -64,9 +65,12 @@ export default function DashboardPage() {
   const documentsRef = useRef(documents);
   const bypassNextNavigationRef = useRef(false);
 
+  // Confirmations can expire on their own; failures cannot. An error that
+  // disappears after five seconds is an error the reader may never have seen.
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
     const id = Math.random().toString(36).substring(2, 9);
     setNotifications((prev) => [...prev, { id, message, type }]);
+    if (type === "error") return;
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 5000);
@@ -714,7 +718,7 @@ export default function DashboardPage() {
                     </svg>
                   </div>
                   <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">Document not found</h3>
-                  <p className="text-ui text-text-secondary mb-5 leading-relaxed">This manuscript does not exist, or you do not have permission to access it.</p>
+                  <p className="text-ui text-text-secondary mb-5 leading-relaxed">This document does not exist, or you do not have access to it.</p>
                   <button
                     onClick={() => navigate("/dashboard")}
                     className="btn-linear-primary text-ui px-4 py-2"
@@ -739,8 +743,8 @@ export default function DashboardPage() {
                     <path d="M14 6v6h6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
-                <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">No document active</h3>
-                <p className="text-ui text-text-secondary mb-5 leading-relaxed">Select a manuscript from your library or initialize a new draft to begin writing.</p>
+                <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">No document open</h3>
+                <p className="text-ui text-text-secondary mb-5 leading-relaxed">Pick a document from the sidebar, or create a new one to start writing.</p>
                 <button
                   onClick={handleCreateDocument}
                   disabled={isCreatingDocument}

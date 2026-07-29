@@ -1,7 +1,7 @@
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import { z } from "zod";
-import type { PresenceIdentity } from "@typesync/shared";
+import type { PresenceIdentity, Role } from "@typesync/shared";
 import type { TypeSyncSocket } from "./types.js";
 
 interface AwarenessBinding {
@@ -27,7 +27,8 @@ interface AwarenessManager {
   consumeUpdate(
     socket: TypeSyncSocket,
     documentId: string,
-    update: Uint8Array
+    update: Uint8Array,
+    role: Role | null
   ): SanitizedAwarenessUpdate | null;
   snapshot(documentId: string): Uint8Array | null;
   releaseBinding(socket: TypeSyncSocket, documentId: string): void;
@@ -80,7 +81,10 @@ const AwarenessStateSchema = z
   })
   .passthrough();
 
-function presenceIdentity(socket: TypeSyncSocket): PresenceIdentity {
+function presenceIdentity(
+  socket: TypeSyncSocket,
+  role: Role | null
+): PresenceIdentity {
   let hash = 0;
   for (const char of socket.data.userId) {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -90,6 +94,7 @@ function presenceIdentity(socket: TypeSyncSocket): PresenceIdentity {
     userId: socket.data.userId,
     name: socket.data.userName,
     color: PRESENCE_COLORS[hash % PRESENCE_COLORS.length],
+    role,
   };
 }
 
@@ -159,7 +164,8 @@ function forgetAwarenessBinding(socketId: string, documentId: string): void {
 function sanitizeAwarenessUpdate(
   socket: TypeSyncSocket,
   documentId: string,
-  update: Uint8Array
+  update: Uint8Array,
+  role: Role | null
 ): SanitizedAwarenessUpdate | null {
   const decoder = decoding.createDecoder(update);
   const entryCount = decoding.readVarUint(decoder);
@@ -220,7 +226,7 @@ function sanitizeAwarenessUpdate(
 
   const state = {
     ...parsedState,
-    user: presenceIdentity(socket),
+    user: presenceIdentity(socket, role),
   };
   return {
     update: encodeAwarenessEntry(clientId, clock, state),
@@ -238,10 +244,11 @@ export function createAwarenessManager(): AwarenessManager {
       socket.data.awarenessLastRefill = Date.now();
       socket.data.awarenessViolations = 0;
       socketAwarenessBindings.set(socket.id, new Map());
-      return presenceIdentity(socket);
+      // No room has been joined yet, so there is no role to report.
+      return presenceIdentity(socket, null);
     },
 
-    consumeUpdate(socket, documentId, update) {
+    consumeUpdate(socket, documentId, update, role) {
       if (!consumeAwarenessToken(socket)) {
         rejectAwarenessUpdate(socket, documentId);
         return null;
@@ -252,7 +259,7 @@ export function createAwarenessManager(): AwarenessManager {
       }
 
       try {
-        const sanitized = sanitizeAwarenessUpdate(socket, documentId, update);
+        const sanitized = sanitizeAwarenessUpdate(socket, documentId, update, role);
         if (!sanitized) return null;
         if (sanitized.state) {
           let entries = activeAwarenessEntries.get(documentId);

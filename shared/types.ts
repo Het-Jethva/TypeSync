@@ -45,6 +45,12 @@ export interface PresenceIdentity {
   userId: string;
   name: string;
   color: string;
+  /**
+   * Role in the room this frame belongs to. Null before any room is joined.
+   * Volatile like the rest of presence: a role change reaches other people on
+   * the next frame that person sends.
+   */
+  role: Role | null;
 }
 
 // ─── Socket Events ───────────────────────────────────────

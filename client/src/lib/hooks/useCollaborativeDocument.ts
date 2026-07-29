@@ -4,6 +4,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
 import type { PresenceIdentity } from "@typesync/shared";
 import { CollaborativeSyncManager, type SyncState } from "../sync-manager";
+import type { ActiveCollaborator } from "../presence";
 
 function isPresenceIdentity(value: unknown): value is PresenceIdentity {
   if (!value || typeof value !== "object") return false;
@@ -17,7 +18,7 @@ function isPresenceIdentity(value: unknown): value is PresenceIdentity {
 
 export function useCollaborativeDocument(
   documentId: string,
-  onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void,
+  onCollaboratorsChange?: (collaborators: ActiveCollaborator[]) => void,
   onAccessLost?: () => void
 ) {
   const [syncState, setSyncState] = useState<SyncState>({
@@ -197,12 +198,17 @@ export function useCollaborativeDocument(
     const handleAwarenessChange = () => {
       const states = awareness.getStates();
       const seenUserIds = new Set<string>();
-      const activeUsers: { name: string; color: string }[] = [];
+      const activeUsers: ActiveCollaborator[] = [];
       for (const state of states.values()) {
         const user = (state as { user?: unknown }).user;
         if (!isPresenceIdentity(user) || seenUserIds.has(user.userId)) continue;
         seenUserIds.add(user.userId);
-        activeUsers.push({ name: user.name, color: user.color });
+        activeUsers.push({
+          userId: user.userId,
+          name: user.name,
+          color: user.color,
+          role: user.role ?? null,
+        });
       }
       onCollaboratorsChangeRef.current?.(activeUsers);
     };

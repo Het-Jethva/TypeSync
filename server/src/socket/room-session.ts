@@ -274,7 +274,12 @@ export class CollaborativeRoomSession {
   }) {
     const { socket, documentId, update } = params;
     if (this.isDraining || !socket.rooms.has(`doc:${documentId}`)) return null;
-    return this.awarenessManager.consumeUpdate(socket, documentId, update);
+    return this.awarenessManager.consumeUpdate(
+      socket,
+      documentId,
+      update,
+      this.getRole(socket.id, documentId) ?? null
+    );
   }
 
   private releaseAwarenessBinding(socket: TypeSyncSocket, documentId: string): void {
