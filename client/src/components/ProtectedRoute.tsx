@@ -1,12 +1,25 @@
+import { useEffect } from "react";
 import { Navigate } from "react-router";
 import { useSession } from "../lib/auth-client";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  /**
+   * Starts loading the guarded route's chunk alongside the session check.
+   * Without it `lazy` cannot begin the download until `isPending` clears, so
+   * the chunk queues behind a full round trip to the backend for no reason.
+   */
+  prefetch?: () => Promise<unknown>;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, prefetch }: ProtectedRouteProps) {
   const { data: session, isPending } = useSession();
+
+  useEffect(() => {
+    // A failure here is not actionable: `lazy` retries the import when it
+    // renders, and surfaces the error through the router's error boundary.
+    void prefetch?.().catch(() => {});
+  }, [prefetch]);
 
   if (isPending) {
     return (

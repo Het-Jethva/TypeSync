@@ -9,6 +9,7 @@ interface SidebarProps {
   documents: DocumentWithRole[];
   activeDocId?: string;
   isLoading: boolean;
+  isCreating?: boolean;
   error?: string | null;
   onRetry?: () => void;
   hasMore: boolean;
@@ -47,6 +48,7 @@ export function Sidebar({
   documents,
   activeDocId,
   isLoading,
+  isCreating = false,
   error,
   onRetry,
   hasMore,
@@ -169,12 +171,23 @@ export function Sidebar({
       <div className="p-3">
         <button
           onClick={onCreateDocument}
-          className="w-full flex items-center justify-center gap-2 btn-linear-primary"
+          disabled={isCreating}
+          aria-busy={isCreating}
+          className="w-full flex items-center justify-center gap-2 btn-linear-primary disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">
-            <path d="M12 5v14M5 12h14" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-          <span className="text-xs">New document</span>
+          {isCreating ? (
+            <span
+              className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin"
+              aria-hidden="true"
+            />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">
+              <path d="M12 5v14M5 12h14" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          )}
+          <span className="text-xs">
+            {isCreating ? "Creating…" : "New document"}
+          </span>
         </button>
       </div>
 
@@ -203,18 +216,33 @@ export function Sidebar({
       {/* Document list */}
       <div className="flex-1 overflow-y-auto px-2">
         {isLoading ? (
+          // Skeleton rows rather than a spinner: they occupy the shape the list
+          // is about to take, so the wait reads as content arriving instead of
+          // the app being stuck.
           <div
-            className="p-4 flex items-center justify-center gap-2"
+            className="space-y-0.5 pt-1"
             role="status"
             aria-live="polite"
+            aria-label="Loading documents"
           >
-            <div
-              className="w-5 h-5 border-2 border-border-strong border-t-accent rounded-full animate-spin"
-              aria-hidden="true"
-            />
-            <span className="text-xs font-medium text-text-muted">
-              Loading documents…
-            </span>
+            {[0, 1, 2, 3, 4].map((row) => (
+              <div
+                key={row}
+                aria-hidden="true"
+                className="flex items-center gap-2.5 px-3 py-2 rounded"
+                style={{ opacity: 1 - row * 0.15 }}
+              >
+                <div className="w-3.5 h-3.5 rounded-sm bg-bg-tertiary animate-pulse shrink-0" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div
+                    className="h-2.5 rounded bg-bg-tertiary animate-pulse"
+                    style={{ width: `${72 - row * 9}%` }}
+                  />
+                  <div className="h-1.5 w-10 rounded bg-bg-tertiary animate-pulse" />
+                </div>
+              </div>
+            ))}
+            <span className="sr-only">Loading documents…</span>
           </div>
         ) : error ? (
           <div className="p-4 text-center">

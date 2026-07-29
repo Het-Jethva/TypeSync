@@ -25,6 +25,10 @@ app.use(
   cors({
     origin: config.clientUrl,
     credentials: true,
+    // Writes still preflight. Without this the browser default is 5 seconds,
+    // so nearly every mutation pays a second cross-origin round trip.
+    // 7200 is the ceiling Chromium honours.
+    maxAge: 7200,
   })
 );
 app.use(express.json());

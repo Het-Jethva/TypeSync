@@ -37,11 +37,16 @@ export default function DashboardPage() {
   const [isRouteDocumentLoading, setIsRouteDocumentLoading] = useState(false);
   const [routeDocumentError, setRouteDocumentError] = useState<Error | null>(null);
   const [routeDocumentRequestNonce, setRouteDocumentRequestNonce] = useState(0);
+  const [isCreatingDocument, setIsCreatingDocument] = useState(false);
+  const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
   const documentsAppendRequestGenerationRef = useRef(0);
   const routeDocumentRequestGenerationRef = useRef(0);
   const documentIdRef = useRef(documentId);
+  const documentsRef = useRef(documents);
   const bypassNextNavigationRef = useRef(false);
 
   const addNotification = useCallback((message: string, type: "error" | "success" = "error") => {
@@ -99,6 +104,12 @@ export default function DashboardPage() {
     documentIdRef.current = documentId;
     setActiveCollaborators([]);
   }, [documentId]);
+
+  // Mirrors the list for socket handlers, which must distinguish a role change
+  // on a document already listed from a first-time grant that is not.
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
 
   const routeDocumentIsInList = documents.some(
     (document) => document.id === documentId
@@ -218,6 +229,13 @@ export default function DashboardPage() {
     const socket = getSocket();
 
     const handlePermissionUpdated = (payload: { documentId: string; role: "editor" | "viewer" | "owner" }) => {
+      // The server sends this to every socket of the granted user, including
+      // ones that have never opened the document. A role change on a document
+      // we already list is a local patch; a first-time grant is not in the list
+      // at all, so that case — and only that case — needs the list refetched.
+      const isKnownDocument = documentsRef.current.some(
+        (doc) => doc.id === payload.documentId
+      );
       setDocuments((current) =>
         current.map((doc) =>
           doc.id === payload.documentId ? { ...doc, role: payload.role } : doc
@@ -226,7 +244,7 @@ export default function DashboardPage() {
       setRouteDocument((current) =>
         current?.id === payload.documentId ? { ...current, role: payload.role } : current
       );
-      fetchDocuments();
+      if (!isKnownDocument) fetchDocuments();
     };
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
@@ -238,7 +256,6 @@ export default function DashboardPage() {
         bypassNextNavigationRef.current = true;
         navigate("/dashboard");
       }
-      fetchDocuments();
     };
 
     const handleTitleUpdated = (payload: { documentId: string; title: string; updatedAt: string }) => {
@@ -258,7 +275,6 @@ export default function DashboardPage() {
           : current.updatedAt;
         return { ...current, title: payload.title, updatedAt: newUpdatedAt };
       });
-      fetchDocuments();
     };
 
     const handleDocSaved = (payload: { documentId: string; updatedAt: string }) => {
@@ -301,49 +317,97 @@ export default function DashboardPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Mutations resolve the UI from the response they already have instead of
+  // refetching the whole list. A list refetch is a second cross-origin round
+  // trip that the user waits through before anything on screen moves.
   const handleCreateDocument = async () => {
+    if (isCreatingDocument) return;
     const confirmedPendingUpdates = hasPendingDocumentUpdates;
     if (!confirmLeavingWithPendingUpdates()) return;
 
+    setIsCreatingDocument(true);
     try {
       const res = await api.documents.create({ title: "Untitled" });
       if (res.data) {
-        await fetchDocuments();
+        const created: DocumentWithRole = { ...res.data, role: "owner" };
+        setDocuments((current) =>
+          current.some((document) => document.id === created.id)
+            ? current
+            : [created, ...current]
+        );
         if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
-        navigate(`/document/${res.data.id}`);
+        navigate(`/document/${created.id}`);
       }
     } catch (err) {
       console.error("Failed to create document:", err);
       const msg = err instanceof Error ? err.message : "Failed to create document";
       addNotification(`Failed to create document: ${msg}`, "error");
+    } finally {
+      setIsCreatingDocument(false);
     }
   };
 
   const handleDeleteDocument = async (docId: string) => {
     const confirmedPendingUpdates = documentId === docId && hasPendingDocumentUpdates;
     if (documentId === docId && !confirmLeavingWithPendingUpdates()) return;
+    if (deletingDocumentIds.has(docId)) return;
+
+    const removedDocument = documents.find((document) => document.id === docId);
+    const removedIndex = documents.findIndex((document) => document.id === docId);
+
+    setDeletingDocumentIds((current) => new Set(current).add(docId));
+    setDocuments((current) => current.filter((document) => document.id !== docId));
+    if (documentId === docId) {
+      if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
+      navigate("/dashboard");
+    }
 
     try {
       await api.documents.delete(docId);
-      await fetchDocuments();
-      if (documentId === docId) {
-        if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
-        navigate("/dashboard");
-      }
       addNotification("Document deleted successfully", "success");
     } catch (err) {
       console.error("Failed to delete document:", err);
       const msg = err instanceof Error ? err.message : "Failed to delete document";
       addNotification(`Failed to delete document: ${msg}`, "error");
+      if (removedDocument) {
+        setDocuments((current) => {
+          if (current.some((document) => document.id === docId)) return current;
+          const restored = [...current];
+          restored.splice(Math.max(removedIndex, 0), 0, removedDocument);
+          return restored;
+        });
+      }
+    } finally {
+      setDeletingDocumentIds((current) => {
+        const next = new Set(current);
+        next.delete(docId);
+        return next;
+      });
     }
   };
 
+  const applyDocumentTitle = useCallback((docId: string, title: string) => {
+    setDocuments((current) =>
+      current.map((document) =>
+        document.id === docId ? { ...document, title } : document
+      )
+    );
+    setRouteDocument((current) =>
+      current?.id === docId ? { ...current, title } : current
+    );
+  }, []);
+
   const handleRenameDocument = async (docId: string, title: string) => {
+    const previousTitle =
+      documents.find((document) => document.id === docId)?.title ??
+      (routeDocument?.id === docId ? routeDocument.title : undefined);
+
+    applyDocumentTitle(docId, title);
     try {
       await api.documents.update(docId, { title });
-      await fetchDocuments();
     } catch (err) {
       console.error("Failed to rename document:", err);
+      if (previousTitle !== undefined) applyDocumentTitle(docId, previousTitle);
       const msg = err instanceof Error ? err.message : "Failed to rename document";
       addNotification(`Failed to rename document: ${msg}`, "error");
       throw err;
@@ -426,6 +490,7 @@ export default function DashboardPage() {
               documents={documents}
               activeDocId={documentId}
               isLoading={isLoading}
+              isCreating={isCreatingDocument}
               error={documentsError}
               onRetry={handleRetryDocuments}
               hasMore={nextDocumentsCursor !== null}
@@ -563,9 +628,10 @@ export default function DashboardPage() {
                 <p className="text-xs text-text-secondary mb-5 leading-relaxed">Select a manuscript from your library or initialize a new draft to begin writing.</p>
                 <button
                   onClick={handleCreateDocument}
-                  className="btn-linear-primary text-xs px-4 py-2"
+                  disabled={isCreatingDocument}
+                  className="btn-linear-primary text-xs px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Create document
+                  {isCreatingDocument ? "Creating…" : "Create document"}
                 </button>
               </motion.div>
             </div>

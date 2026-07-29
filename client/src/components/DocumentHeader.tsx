@@ -92,16 +92,23 @@ export function DocumentHeader({
         )}
 
         {/* Save status */}
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={saveStatus}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="text-[10px] text-text-muted shrink-0 hidden xs:inline-block"
-          >
-            {saveStatus === "saving" ? "Saving..." : ""}
-          </motion.span>
+        <AnimatePresence>
+          {saveStatus === "saving" && (
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary shrink-0"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full border-[1.5px] border-current border-t-transparent animate-spin"
+                aria-hidden="true"
+              />
+              Saving…
+            </motion.span>
+          )}
         </AnimatePresence>
       </div>
 

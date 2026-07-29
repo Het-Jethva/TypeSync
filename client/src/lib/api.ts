@@ -27,13 +27,20 @@ async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
+  const { headers: overrides, ...rest } = options ?? {};
+  const headers = new Headers(overrides);
+
+  // A JSON content type only means something when there is a body, and it is
+  // not a CORS-safelisted header: setting it on reads turns every GET into a
+  // preflighted request, doubling the round trips against the backend origin.
+  if (rest.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    ...options,
+    ...rest,
+    headers,
   });
 
   let data: ApiResponse<T>;

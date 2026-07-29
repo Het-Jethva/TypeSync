@@ -5,7 +5,12 @@ import { BackendReadinessProvider } from "./lib/backend-readiness";
 
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
-const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+
+// Named so it can be handed to ProtectedRoute as a prefetch. Dynamic imports
+// are cached by specifier, so calling it early and letting `lazy` call it again
+// resolves to the same module promise rather than a second download.
+const importDashboardPage = () => import("./pages/DashboardPage");
+const DashboardPage = lazy(importDashboardPage);
 
 function LoadingFallback() {
   return (
@@ -39,7 +44,7 @@ export default function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute prefetch={importDashboardPage}>
                 <DashboardPage />
               </ProtectedRoute>
             }
@@ -47,7 +52,7 @@ export default function App() {
           <Route
             path="/document/:id"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute prefetch={importDashboardPage}>
                 <DashboardPage />
               </ProtectedRoute>
             }

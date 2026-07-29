@@ -11,6 +11,10 @@ export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> 
     socket = io(import.meta.env.VITE_API_URL || undefined, {
       withCredentials: true,
       autoConnect: false,
+      // Try WebSocket first so the connection skips the long-polling handshake
+      // and its upgrade round trips. Polling stays as a fallback for networks
+      // that block WebSocket outright.
+      transports: ["websocket", "polling"],
     });
   }
   return socket;
