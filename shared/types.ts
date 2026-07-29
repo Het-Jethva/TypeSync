@@ -117,6 +117,8 @@ export interface DocumentSizeStatus {
 export const ListDocumentsQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** Case-insensitive substring match on the title. */
+  q: z.string().trim().min(1).max(200).optional(),
 });
 export type ListDocumentsQuery = z.infer<typeof ListDocumentsQuerySchema>;
 

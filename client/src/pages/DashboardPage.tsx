@@ -43,6 +43,8 @@ export default function DashboardPage() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [documentStatus, setDocumentStatus] = useState<DocumentStatus | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const hasPendingDocumentUpdates = documentStatus?.hasPendingUpdates ?? false;
   const [routeDocument, setRouteDocument] = useState<DocumentWithRole | null>(null);
   const [isRouteDocumentLoading, setIsRouteDocumentLoading] = useState(false);
@@ -125,6 +127,16 @@ export default function DashboardPage() {
     setActiveCollaborators([]);
   }, [documentId]);
 
+  // Search runs on the server, so it is debounced rather than issuing a
+  // request per keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(searchQuery.trim()),
+      250
+    );
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
   // Mirrors the list for socket handlers, which must distinguish a role change
   // on a document already listed from a first-time grant that is not.
   useEffect(() => {
@@ -175,7 +187,9 @@ export default function DashboardPage() {
     setIsLoadingMoreDocuments(false);
 
     try {
-      const res = await api.documents.list();
+      const res = await api.documents.list(
+        debouncedSearch ? { q: debouncedSearch } : {}
+      );
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
       if (res.data) {
         setDocuments(res.data.items);
@@ -197,7 +211,7 @@ export default function DashboardPage() {
         setIsLoading(false);
       }
     }
-  }, [addNotification]);
+  }, [addNotification, debouncedSearch]);
 
   const loadMoreDocuments = useCallback(async () => {
     if (!nextDocumentsCursor || isLoadingMoreDocuments) return;
@@ -207,7 +221,10 @@ export default function DashboardPage() {
     setIsLoadingMoreDocuments(true);
 
     try {
-      const res = await api.documents.list({ cursor: nextDocumentsCursor });
+      const res = await api.documents.list({
+        cursor: nextDocumentsCursor,
+        ...(debouncedSearch ? { q: debouncedSearch } : {}),
+      });
       if (
         refreshGeneration !== documentsRequestGenerationRef.current ||
         appendGeneration !== documentsAppendRequestGenerationRef.current
@@ -237,12 +254,17 @@ export default function DashboardPage() {
         setIsLoadingMoreDocuments(false);
       }
     }
-  }, [addNotification, isLoadingMoreDocuments, nextDocumentsCursor]);
+  }, [addNotification, debouncedSearch, isLoadingMoreDocuments, nextDocumentsCursor]);
 
+  // The socket outlives any individual query, so its lifecycle is kept apart
+  // from fetching. Tying the two together reconnected it on every keystroke.
   useEffect(() => {
-    fetchDocuments();
     connectSocket();
     return () => disconnectSocket();
+  }, []);
+
+  useEffect(() => {
+    void fetchDocuments();
   }, [fetchDocuments]);
 
   useEffect(() => {
@@ -516,6 +538,8 @@ export default function DashboardPage() {
               hasMore={nextDocumentsCursor !== null}
               isLoadingMore={isLoadingMoreDocuments}
               onLoadMore={loadMoreDocuments}
+              search={searchQuery}
+              onSearchChange={setSearchQuery}
               onCreateDocument={handleCreateDocument}
               onDeleteDocument={handleDeleteDocument}
               onSelectDocument={(id) => {

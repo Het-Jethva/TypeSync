@@ -19,6 +19,8 @@ interface SidebarProps {
   onCreateDocument: () => void;
   onDeleteDocument: (id: string) => void;
   onSelectDocument: (id: string) => void;
+  search: string;
+  onSearchChange: (query: string) => void;
   onBeforeSignOut?: () => Promise<boolean>;
   onClose?: () => void;
   showCloseButton?: boolean;
@@ -58,6 +60,8 @@ export function Sidebar({
   onCreateDocument,
   onDeleteDocument,
   onSelectDocument,
+  search,
+  onSearchChange,
   onBeforeSignOut,
   onClose,
   showCloseButton,
@@ -65,7 +69,6 @@ export function Sidebar({
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { data: session } = useSession();
-  const [search, setSearch] = useState("");
   const [contextMenu, setContextMenu] = useState<{ id: string; title: string; role: Role; x: number; y: number } | null>(null);
   const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -78,17 +81,16 @@ export function Sidebar({
     toggleThemeWithTransition(theme, setTheme, e);
   };
 
-  const sortedAndFiltered = documents
-    .filter((d) => d.title.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      if (sortBy === "alphabetical") {
-        return a.title.localeCompare(b.title);
-      }
-      if (sortBy === "created") {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
+  // Filtering is the server's job now; ordering stays local to the loaded page.
+  const sortedDocuments = [...documents].sort((a, b) => {
+    if (sortBy === "alphabetical") {
+      return a.title.localeCompare(b.title);
+    }
+    if (sortBy === "created") {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
 
   const closeContextMenu = () => {
     setContextMenu(null);
@@ -205,8 +207,9 @@ export function Sidebar({
         <input
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={hasMore ? "Search loaded documents…" : "Search…"}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search documents…"
+          aria-label="Search documents"
           className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
         />
         <select
@@ -268,7 +271,7 @@ export function Sidebar({
           </div>
         ) : (
           <div className="space-y-0.5">
-            {sortedAndFiltered.length === 0 ? (
+            {sortedDocuments.length === 0 ? (
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -277,7 +280,7 @@ export function Sidebar({
                 {search ? "No documents found" : "No documents yet"}
               </motion.p>
             ) : (
-              sortedAndFiltered.map((doc) => (
+              sortedDocuments.map((doc) => (
                 <motion.div
                   key={doc.id}
                   layout

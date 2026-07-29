@@ -69,6 +69,7 @@ export const api = {
       const params = new URLSearchParams();
       if (pagination.cursor) params.set("cursor", pagination.cursor);
       if (pagination.limit !== undefined) params.set("limit", String(pagination.limit));
+      if (pagination.q) params.set("q", pagination.q);
       const query = params.size > 0 ? `?${params.toString()}` : "";
       return request<DocumentListPage>(`/documents${query}`);
     },

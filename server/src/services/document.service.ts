@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import type { ListDocumentsQuery } from "@typesync/shared";
 import { db } from "../db/index.js";
@@ -51,6 +51,11 @@ export class DocumentService {
           and(eq(document.updatedAt, cursor.updatedAt), lt(document.id, cursor.id))
         )
       : undefined;
+    // Escaped so a title containing % or _ matches literally rather than
+    // turning into a wildcard.
+    const titleFilter = pagination.q
+      ? ilike(document.title, `%${pagination.q.replace(/[\\%_]/g, "\\$&")}%`)
+      : undefined;
     const queryLimit = pagination.limit + 1;
 
     const [ownedDocuments, sharedDocuments] = await Promise.all([
@@ -63,7 +68,7 @@ export class DocumentService {
           updatedAt: document.updatedAt,
         })
         .from(document)
-        .where(and(eq(document.ownerId, userId), cursorFilter))
+        .where(and(eq(document.ownerId, userId), cursorFilter, titleFilter))
         .orderBy(desc(document.updatedAt), desc(document.id))
         .limit(queryLimit),
       db
@@ -77,7 +82,7 @@ export class DocumentService {
         })
         .from(documentCollaborator)
         .innerJoin(document, eq(documentCollaborator.documentId, document.id))
-        .where(and(eq(documentCollaborator.userId, userId), cursorFilter))
+        .where(and(eq(documentCollaborator.userId, userId), cursorFilter, titleFilter))
         .orderBy(desc(document.updatedAt), desc(document.id))
         .limit(queryLimit),
     ]);

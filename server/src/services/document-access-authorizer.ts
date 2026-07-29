@@ -136,7 +136,23 @@ export class DocumentAccessAuthorizer {
     targetUserId: string,
     currentUserId: string
   ): Promise<void> {
-    await this.requireDocumentRole(documentId, currentUserId, "owner");
+    const access = await this.lookupAccess(documentId, currentUserId);
+    if (!access.document) throw new AppError(404, "Document not found");
+    if (!access.role) throw new AppError(403, "Access denied");
+
+    // Ownership lives on the document, not in the collaborator table, so
+    // revoking the owner deletes nothing yet still ejects their live sockets,
+    // leaving the runtime contradicting the database.
+    if (targetUserId === access.document.ownerId) {
+      throw new AppError(400, "Cannot revoke the document owner");
+    }
+
+    // Collaborators may give up their own access. Without this, a document
+    // shared with someone stays in their list forever, because only the owner
+    // could ever remove them.
+    if (targetUserId !== currentUserId && access.role !== "owner") {
+      throw new AppError(403, "Only the owner can perform this action");
+    }
 
     await this.serializeAccessChange(documentId, targetUserId, async () => {
       await db
