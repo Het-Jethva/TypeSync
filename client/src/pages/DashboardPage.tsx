@@ -8,6 +8,7 @@ import { DocumentHeader } from "../components/DocumentHeader";
 import { ApiError, api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import { useConfirm } from "../lib/confirm-context";
+import { useSession } from "../lib/auth-client";
 import type { DocumentWithRole } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import type { DocumentStatus } from "../lib/document-status";
@@ -32,6 +33,7 @@ export default function DashboardPage() {
   const { id: documentId } = useParams();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const { data: session } = useSession();
   const [documents, setDocuments] = useState<DocumentWithRole[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [isLoading, setIsLoading] = useState(true);
@@ -456,6 +458,47 @@ export default function DashboardPage() {
     }
   };
 
+  const handleLeaveDocument = async (docId: string) => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const removedDocument = documents.find((document) => document.id === docId);
+    const removedIndex = documents.findIndex((document) => document.id === docId);
+
+    setDocuments((current) => current.filter((document) => document.id !== docId));
+    if (documentId === docId) {
+      bypassNextNavigationRef.current = true;
+      navigate("/dashboard");
+    }
+
+    try {
+      await api.documents.removeCollaborator(docId, userId);
+      addNotification("You left the document", "success");
+    } catch (err) {
+      console.error("Failed to leave document:", err);
+      const msg = err instanceof Error ? err.message : "Failed to leave document";
+      addNotification(`Failed to leave document: ${msg}`, "error");
+      if (removedDocument) {
+        setDocuments((current) => {
+          if (current.some((document) => document.id === docId)) return current;
+          const restored = [...current];
+          restored.splice(Math.max(removedIndex, 0), 0, removedDocument);
+          return restored;
+        });
+      }
+    }
+  };
+
+  const handleCopyLink = async (docId: string) => {
+    const link = `${window.location.origin}/document/${docId}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      addNotification("Link copied to clipboard", "success");
+    } catch {
+      addNotification("Could not copy the link", "error");
+    }
+  };
+
   const handleRetryDocuments = useCallback(() => {
     setDocumentsError(null);
     setIsLoading(true);
@@ -542,6 +585,13 @@ export default function DashboardPage() {
               onSearchChange={setSearchQuery}
               onCreateDocument={handleCreateDocument}
               onDeleteDocument={handleDeleteDocument}
+              onLeaveDocument={(id) => void handleLeaveDocument(id)}
+              // Rejects so the header can revert its own input; the sidebar has
+              // no local copy to restore and the failure is already reported.
+              onRenameDocument={(id, title) => {
+                void handleRenameDocument(id, title).catch(() => {});
+              }}
+              onCopyLink={(id) => void handleCopyLink(id)}
               onSelectDocument={(id) => {
                 if (id !== documentId) {
                   navigate(`/document/${id}`);
@@ -610,11 +660,28 @@ export default function DashboardPage() {
                 }}
               />
             ) : isFetchingRouteDoc ? (
-              <div className="h-full flex items-center justify-center bg-bg-secondary/20">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
-                  <span className="text-ui text-text-secondary font-medium">Loading document...</span>
+              // Skeletons rather than a spinner, matching the sidebar: they take
+              // the shape the page is about to have, so the wait reads as
+              // content arriving.
+              <div
+                className="h-full overflow-hidden bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading document"
+              >
+                <div className="w-full max-w-2xl bg-bg-elevated px-8 py-10" aria-hidden="true">
+                  <div className="h-6 w-1/2 rounded bg-bg-tertiary animate-pulse" />
+                  <div className="mt-8 space-y-3">
+                    {[92, 100, 84, 96, 70].map((width, row) => (
+                      <div
+                        key={row}
+                        className="h-3 rounded bg-bg-tertiary animate-pulse"
+                        style={{ width: `${width}%` }}
+                      />
+                    ))}
+                  </div>
                 </div>
+                <span className="sr-only">Loading document…</span>
               </div>
             ) : routeDocumentError && !routeDocumentNotFound ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
