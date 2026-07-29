@@ -9,6 +9,7 @@ import { ApiError, api } from "../lib/api";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import { useConfirm } from "../lib/confirm-context";
 import type { DocumentWithRole } from "@typesync/shared";
+import type { Editor as TiptapEditor } from "@tiptap/react";
 
 function isNewerOrEqual(newIso: string, currentIso: string): boolean {
   const newTime = new Date(newIso).getTime();
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   const [nextDocumentsCursor, setNextDocumentsCursor] = useState<string | null>(null);
   const [isLoadingMoreDocuments, setIsLoadingMoreDocuments] = useState(false);
   const [activeCollaborators, setActiveCollaborators] = useState<{ name: string; color: string }[]>([]);
+  const [activeEditor, setActiveEditor] = useState<TiptapEditor | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "error" | "success" }[]>([]);
   const [hasPendingDocumentUpdates, setHasPendingDocumentUpdates] = useState(false);
@@ -556,6 +558,7 @@ export default function DashboardPage() {
           {currentDoc && (
             <DocumentHeader
               document={currentDoc}
+              editor={activeEditor}
               onRename={(title) => handleRenameDocument(currentDoc.id, title)}
               onDocumentUpdate={fetchDocuments}
               activeCollaborators={activeCollaborators}
@@ -571,6 +574,7 @@ export default function DashboardPage() {
                 documentId={documentId}
                 role={currentDoc.role}
                 onCollaboratorsChange={setActiveCollaborators}
+                onEditorChange={setActiveEditor}
                 onPendingUpdatesChange={setHasPendingDocumentUpdates}
                 onAccessLost={() => {
                   fetchDocuments();

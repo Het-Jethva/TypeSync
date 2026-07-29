@@ -2,10 +2,10 @@ import { useState } from "react";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { AnimatePresence } from "motion/react";
 import { ToolbarUrlPopover } from "./ToolbarUrlPopover";
+import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
 
 interface EditorToolbarProps {
   editor: TiptapEditor | null;
-  documentId: string;
   canEdit: boolean;
 }
 
@@ -49,8 +49,9 @@ function Divider() {
   return <div className="w-px h-4 bg-border mx-1" />;
 }
 
-export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProps) {
+export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
   const [openPopover, setOpenPopover] = useState<"link" | "image" | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   if (!editor) return null;
 
@@ -59,25 +60,67 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
     editor.chain().focus().run();
   };
 
-  const downloadExport = (format: "html" | "txt" | "json") => {
-    const title = `typesync-${documentId}`;
-    const content =
-      format === "html"
-        ? `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${editor.getHTML()}</body></html>`
-        : format === "json"
-          ? JSON.stringify(editor.getJSON(), null, 2)
-          : editor.getText();
-    const type = format === "html" ? "text/html" : format === "json" ? "application/json" : "text/plain";
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${title}.${format}`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  // The blocks people reach for least often, kept off the main row so it stays
+  // one line.
+  const overflowItems: DropdownMenuItem[] = [
+    {
+      id: "task-list",
+      label: "Task list",
+      disabled: !canEdit,
+      onSelect: () => editor.chain().focus().toggleTaskList().run(),
+    },
+    {
+      id: "code-block",
+      label: "Code block",
+      disabled: !canEdit,
+      onSelect: () => editor.chain().focus().toggleCodeBlock().run(),
+    },
+    {
+      id: "table",
+      label: "Table",
+      disabled: !canEdit,
+      onSelect: () =>
+        editor
+          .chain()
+          .focus()
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run(),
+    },
+    {
+      id: "divider",
+      label: "Divider",
+      disabled: !canEdit,
+      onSelect: () => editor.chain().focus().setHorizontalRule().run(),
+    },
+  ];
 
   return (
-    <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40 flex-wrap">
+    <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40">
+      {/* History */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().undo().run()}
+        title="Undo (Ctrl+Z)"
+        disabled={!canEdit || !editor.can().undo()}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+          <path d="M9 14L4 9l5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 9h11a5 5 0 0 1 0 10h-3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </ToolbarButton>
+
+      <ToolbarButton
+        onClick={() => editor.chain().focus().redo().run()}
+        title="Redo (Ctrl+Shift+Z)"
+        disabled={!canEdit || !editor.can().redo()}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+          <path d="M15 14l5-5-5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M20 9H9a5 5 0 0 0 0 10h3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </ToolbarButton>
+
+      <Divider />
+
       {/* Text style */}
       <ToolbarButton
         isActive={editor.isActive("bold")}
@@ -161,20 +204,6 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         </svg>
       </ToolbarButton>
 
-      <ToolbarButton
-        isActive={editor.isActive("taskList")}
-        onClick={() => editor.chain().focus().toggleTaskList().run()}
-        title="Task list"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <rect x="3" y="5" width="5" height="5" rx="1" strokeWidth="1.5" />
-          <path d="M5 7.5l1 1 2-2" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-          <rect x="3" y="14" width="5" height="5" rx="1" strokeWidth="1.5" />
-          <path d="M12 7h8M12 17h8" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </ToolbarButton>
-
       <Divider />
 
       {/* Block elements */}
@@ -189,46 +218,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         </svg>
       </ToolbarButton>
 
-      <ToolbarButton
-        isActive={editor.isActive("codeBlock")}
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        title="Code block"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </ToolbarButton>
-
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        title="Horizontal rule"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <path d="M3 12h18" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </ToolbarButton>
-
       <Divider />
-
-      {/* Table */}
-      <ToolbarButton
-        onClick={() =>
-          editor
-            .chain()
-            .focus()
-            .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-            .run()
-        }
-        title="Insert table"
-        disabled={!canEdit}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-          <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
-          <path d="M3 9h18M3 15h18M9 3v18M15 3v18" strokeWidth="1" />
-        </svg>
-      </ToolbarButton>
 
       {/* Link */}
       <div className="relative">
@@ -299,16 +289,29 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
 
       <Divider />
 
-      <div className="flex items-center gap-1">
-        <ToolbarButton onClick={() => downloadExport("html")} title="Export HTML">
-          <span className="text-micro font-semibold">HTML</span>
+      {/* Overflow */}
+      <div className="relative">
+        <ToolbarButton
+          onClick={() => setOverflowOpen((current) => !current)}
+          title="More blocks"
+          isActive={overflowOpen}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+            <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+          </svg>
         </ToolbarButton>
-        <ToolbarButton onClick={() => downloadExport("txt")} title="Export plain text">
-          <span className="text-micro font-semibold">TXT</span>
-        </ToolbarButton>
-        <ToolbarButton onClick={() => downloadExport("json")} title="Export JSON">
-          <span className="text-micro font-semibold">JSON</span>
-        </ToolbarButton>
+        <AnimatePresence>
+          {overflowOpen && (
+            <DropdownMenu
+              label="More blocks"
+              items={overflowItems}
+              onClose={() => setOverflowOpen(false)}
+              className="absolute top-full left-0 mt-1.5"
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -3,10 +3,14 @@ import { motion, AnimatePresence } from "motion/react";
 
 import { ShareModal } from "./ShareModal";
 import { CollaboratorPresence } from "./CollaboratorPresence";
+import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
+import { exportDocument } from "../lib/export-document";
 import type { DocumentWithRole } from "@typesync/shared";
+import type { Editor as TiptapEditor } from "@tiptap/react";
 
 interface DocumentHeaderProps {
   document: DocumentWithRole;
+  editor: TiptapEditor | null;
   onRename: (title: string) => Promise<void>;
   onDocumentUpdate: () => void;
   activeCollaborators: { name: string; color: string }[];
@@ -14,6 +18,7 @@ interface DocumentHeaderProps {
 
 export function DocumentHeader({
   document,
+  editor,
   onRename,
   onDocumentUpdate,
   activeCollaborators,
@@ -22,7 +27,29 @@ export function DocumentHeader({
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(document.title);
   const [shareOpen, setShareOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+
+  const documentMenuItems: DropdownMenuItem[] = [
+    {
+      id: "export-html",
+      label: "Download as HTML",
+      disabled: !editor,
+      onSelect: () => editor && exportDocument(editor, document.title, "html"),
+    },
+    {
+      id: "export-txt",
+      label: "Download as text",
+      disabled: !editor,
+      onSelect: () => editor && exportDocument(editor, document.title, "txt"),
+    },
+    {
+      id: "export-json",
+      label: "Download as JSON",
+      disabled: !editor,
+      onSelect: () => editor && exportDocument(editor, document.title, "json"),
+    },
+  ];
 
   useEffect(() => {
     setTitle(document.title);
@@ -129,6 +156,33 @@ export function DocumentHeader({
             <span className="hidden sm:inline">Share</span>
           </button>
         )}
+
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((current) => !current)}
+            aria-label="Document actions"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            title="Document actions"
+            className="touch-target w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+              <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <AnimatePresence>
+            {menuOpen && (
+              <DropdownMenu
+                label="Document actions"
+                items={documentMenuItems}
+                onClose={() => setMenuOpen(false)}
+                className="absolute top-full right-0 mt-1.5"
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       <ShareModal

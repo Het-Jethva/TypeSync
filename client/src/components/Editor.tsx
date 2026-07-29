@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import CharacterCount from "@tiptap/extension-character-count";
@@ -34,6 +34,8 @@ interface EditorProps {
   onCollaboratorsChange?: (collaborators: { name: string; color: string }[]) => void;
   onAccessLost?: () => void;
   onPendingUpdatesChange?: (hasPendingUpdates: boolean) => void;
+  /** Publishes the live instance so document-level actions can reach it. */
+  onEditorChange?: (editor: TiptapEditor | null) => void;
 }
 
 export function Editor({
@@ -42,6 +44,7 @@ export function Editor({
   onCollaboratorsChange,
   onAccessLost,
   onPendingUpdatesChange,
+  onEditorChange,
 }: EditorProps) {
   const confirm = useConfirm();
   const [slashMenu, setSlashMenu] = useState<{
@@ -240,6 +243,11 @@ export function Editor({
   }, [editor, awareness]);
 
   useEffect(() => {
+    onEditorChange?.(editor);
+    return () => onEditorChange?.(null);
+  }, [editor, onEditorChange]);
+
+  useEffect(() => {
     onPendingUpdatesChange?.(hasPendingUpdates);
   }, [hasPendingUpdates, onPendingUpdatesChange]);
 
@@ -266,7 +274,7 @@ export function Editor({
       transition={{ duration: 0.2 }}
       className="h-full flex flex-col"
     >
-      <EditorToolbar editor={editor} documentId={documentId} canEdit={canEdit} />
+      <EditorToolbar editor={editor} canEdit={canEdit} />
 
       <div className="editor-scroll-area relative flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
         <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
