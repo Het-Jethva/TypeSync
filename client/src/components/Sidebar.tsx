@@ -301,7 +301,9 @@ export function Sidebar({
           onChange={(e) => {
             if (isSortBy(e.target.value)) setSortBy(e.target.value);
           }}
-          className="text-micro text-text-secondary"
+          // Same size as the search field beside it: identical padding on a
+          // smaller line box made this control shorter than its neighbour.
+          className="text-ui text-text-secondary"
           wrapperClassName="shrink-0"
           aria-label="Sort documents"
           title="Sort documents"
