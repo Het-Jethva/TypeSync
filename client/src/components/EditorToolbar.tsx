@@ -27,7 +27,7 @@ function ToolbarButton({
       title={title}
       disabled={disabled}
       aria-label={title}
-      className={`toolbar-button touch-target w-6.5 h-6.5 rounded flex items-center justify-center transition-[background-color,border-color,color,box-shadow,transform,opacity] border text-xs ${
+      className={`toolbar-button touch-target w-6.5 h-6.5 rounded flex items-center justify-center transition-[background-color,border-color,color,box-shadow,transform,opacity] border text-ui ${
         disabled
           ? "cursor-not-allowed border-transparent text-text-muted opacity-50"
           : "cursor-pointer"
@@ -84,7 +84,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         title="Bold (Ctrl+B)"
         disabled={!canEdit}
       >
-        <span className="text-sm font-bold">B</span>
+        <span className="text-title font-bold">B</span>
       </ToolbarButton>
 
       <ToolbarButton
@@ -93,7 +93,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         title="Italic (Ctrl+I)"
         disabled={!canEdit}
       >
-        <span className="text-sm italic font-semibold">I</span>
+        <span className="text-title italic font-semibold">I</span>
       </ToolbarButton>
 
       <ToolbarButton
@@ -102,7 +102,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         title="Underline (Ctrl+U)"
         disabled={!canEdit}
       >
-        <span className="text-sm underline font-semibold">U</span>
+        <span className="text-title underline font-semibold">U</span>
       </ToolbarButton>
 
       <ToolbarButton
@@ -111,7 +111,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
         title="Strikethrough"
         disabled={!canEdit}
       >
-        <span className="text-sm line-through">S</span>
+        <span className="text-title line-through">S</span>
       </ToolbarButton>
 
       <Divider />
@@ -125,7 +125,7 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
           title={`Heading ${level}`}
           disabled={!canEdit}
         >
-          <span className="text-xs font-bold">H{level}</span>
+          <span className="text-ui font-bold">H{level}</span>
         </ToolbarButton>
       ))}
 
@@ -275,13 +275,13 @@ export function EditorToolbar({ editor, documentId, canEdit }: EditorToolbarProp
 
       <div className="flex items-center gap-1">
         <ToolbarButton onClick={() => downloadExport("html")} title="Export HTML">
-          <span className="text-[10px] font-semibold">HTML</span>
+          <span className="text-micro font-semibold">HTML</span>
         </ToolbarButton>
         <ToolbarButton onClick={() => downloadExport("txt")} title="Export plain text">
-          <span className="text-[10px] font-semibold">TXT</span>
+          <span className="text-micro font-semibold">TXT</span>
         </ToolbarButton>
         <ToolbarButton onClick={() => downloadExport("json")} title="Export JSON">
-          <span className="text-[10px] font-semibold">JSON</span>
+          <span className="text-micro font-semibold">JSON</span>
         </ToolbarButton>
       </div>
     </div>

@@ -139,14 +139,14 @@ export function Sidebar({
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-7 h-7 rounded bg-bg-tertiary border border-border-strong text-text-primary flex items-center justify-center text-xs font-semibold shrink-0">
+            <div className="w-7 h-7 rounded bg-bg-tertiary border border-border-strong text-text-primary flex items-center justify-center text-ui font-semibold shrink-0">
               {session?.user?.name?.charAt(0).toUpperCase() || "U"}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-text-primary truncate">
+              <p className="text-ui font-semibold text-text-primary truncate">
                 {session?.user?.name || "User"}
               </p>
-              <p className="text-[10px] text-text-muted truncate">
+              <p className="text-micro text-text-muted truncate">
                 {session?.user?.email}
               </p>
             </div>
@@ -185,7 +185,7 @@ export function Sidebar({
               <path d="M12 5v14M5 12h14" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           )}
-          <span className="text-xs">
+          <span className="text-ui">
             {isCreating ? "Creating…" : "New document"}
           </span>
         </button>
@@ -198,12 +198,12 @@ export function Sidebar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={hasMore ? "Search loaded documents…" : "Search…"}
-          className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+          className="flex-1 bg-bg-primary border border-border rounded px-2.5 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
         />
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="bg-bg-primary border border-border rounded px-2 py-1.5 text-[10px] text-text-secondary focus:outline-none focus:border-border-accent cursor-pointer shrink-0"
+          className="bg-bg-primary border border-border rounded px-2 py-1.5 text-micro text-text-secondary focus:outline-none focus:border-border-accent cursor-pointer shrink-0"
           aria-label="Sort documents"
           title="Sort documents"
         >
@@ -246,12 +246,12 @@ export function Sidebar({
           </div>
         ) : error ? (
           <div className="p-4 text-center">
-            <p className="text-xs text-error mb-3 leading-relaxed">{error}</p>
+            <p className="text-ui text-error mb-3 leading-relaxed">{error}</p>
             {onRetry && (
               <button
                 type="button"
                 onClick={onRetry}
-                className="btn-linear-primary text-xs px-3 py-1.5"
+                className="btn-linear-primary text-ui px-3 py-1.5"
               >
                 Try again
               </button>
@@ -263,7 +263,7 @@ export function Sidebar({
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-[11px] text-text-muted text-center py-8"
+                className="text-meta text-text-muted text-center py-8"
               >
                 {search ? "No documents found" : "No documents yet"}
               </motion.p>
@@ -273,7 +273,7 @@ export function Sidebar({
                   key={doc.id}
                   layout
                   onContextMenu={(e) => openContextMenu(e, doc)}
-                  className={`w-full rounded text-xs transition-[background-color,border-color,color,box-shadow,opacity] flex items-center gap-1 group border ${
+                  className={`w-full rounded text-ui transition-[background-color,border-color,color,box-shadow,opacity] flex items-center gap-1 group border ${
                     doc.id === activeDocId
                       ? "bg-bg-elevated border-border-strong text-text-primary font-medium shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
                       : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
@@ -282,7 +282,7 @@ export function Sidebar({
                   <button
                     type="button"
                     onClick={() => onSelectDocument(doc.id)}
-                    className="touch-target flex-1 min-w-0 text-left px-3 py-2 rounded text-xs transition-colors flex items-center gap-2.5"
+                    className="touch-target flex-1 min-w-0 text-left px-3 py-2 rounded text-ui transition-colors flex items-center gap-2.5"
                   >
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`w-3.5 h-3.5 shrink-0 mt-0.5 align-top transition-colors ${
                       doc.id === activeDocId ? "text-accent" : "text-text-muted opacity-50 group-hover:text-text-primary group-hover:opacity-100"
@@ -290,13 +290,13 @@ export function Sidebar({
                       <path d="M4 6h10l6 6v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     <div className="flex-1 min-w-0">
-                      <p className={`truncate text-xs ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
-                      <p className="text-[9px] text-text-muted">
+                      <p className={`truncate text-ui ${doc.id === activeDocId ? "text-accent font-semibold" : "text-text-primary"}`}>{doc.title}</p>
+                      <p className="text-micro text-text-muted">
                         {formatRelativeTime(doc.updatedAt)}
                       </p>
                     </div>
                     {doc.role !== "owner" && (
-                      <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
+                      <span className="text-micro font-medium px-1 py-0.5 rounded bg-bg-tertiary text-text-muted border border-border-strong shrink-0">
                         {doc.role}
                       </span>
                     )}
@@ -309,7 +309,7 @@ export function Sidebar({
                       onClick={(event) => openContextMenu(event, doc, event.currentTarget)}
                       className="touch-target shrink-0 px-2 py-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover"
                     >
-                      <span aria-hidden="true" className="text-base leading-none">⋯</span>
+                      <span aria-hidden="true" className="text-display leading-none">⋯</span>
                     </button>
                   )}
                 </motion.div>
@@ -320,7 +320,7 @@ export function Sidebar({
                 type="button"
                 onClick={onLoadMore}
                 disabled={isLoadingMore}
-                className="w-full mt-2 px-3 py-2 rounded text-[11px] font-medium text-text-secondary border border-border hover:bg-bg-hover hover:text-text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full mt-2 px-3 py-2 rounded text-meta font-medium text-text-secondary border border-border hover:bg-bg-hover hover:text-text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLoadingMore ? "Loading…" : "Load more"}
               </button>
@@ -348,7 +348,7 @@ export function Sidebar({
                 <button
                   autoFocus
                   onClick={() => confirmDelete(contextMenu.id, contextMenu.title)}
-                  className="touch-target w-full text-left px-3 py-1.5 text-xs text-error hover:bg-error/10 transition-colors font-medium"
+                  className="touch-target w-full text-left px-3 py-1.5 text-ui text-error hover:bg-error/10 transition-colors font-medium"
                 >
                   Delete document
                 </button>
@@ -362,7 +362,7 @@ export function Sidebar({
       <div className="p-3 border-t border-border flex items-center justify-between gap-2">
         <button
           onClick={handleSignOut}
-          className="flex-1 text-left px-3 py-1.5 rounded text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
+          className="flex-1 text-left px-3 py-1.5 rounded text-ui text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
         >
           Sign out
         </button>

@@ -172,7 +172,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
       >
         <div className="bg-bg-elevated border border-border-strong rounded-md p-6 shadow-xl">
           <div className="flex items-center justify-between mb-6">
-            <h2 id={titleId} className="text-sm font-semibold text-text-primary">Share document</h2>
+            <h2 id={titleId} className="text-title font-semibold text-text-primary">Share document</h2>
             <button
               onClick={onClose}
               aria-label="Close share dialog"
@@ -186,7 +186,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor={emailId} className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+              <label htmlFor={emailId} className="block text-micro font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Email address
               </label>
               <input
@@ -198,17 +198,17 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="colleague@example.com"
-                className="w-full bg-bg-secondary border border-border rounded px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+                className="w-full bg-bg-secondary border border-border rounded px-3 py-2 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
                 disabled={isLoading}
               />
-              <p className="mt-1.5 text-[10px] leading-relaxed text-text-muted">
+              <p className="mt-1.5 text-micro leading-relaxed text-text-muted">
                 The collaborator must already have a TypeSync account using this email.
               </p>
             </div>
 
             <div>
               <fieldset>
-                <legend className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                <legend className="block text-micro font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                   Role
                 </legend>
               <div id={roleId} className="flex gap-2" aria-label="Invitee role">
@@ -218,7 +218,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
                     type="button"
                     onClick={() => setRole(r)}
                     aria-pressed={role === r}
-                    className={`flex-1 py-1.5 rounded text-xs font-medium transition-[background-color,border-color,color,box-shadow] border ${
+                    className={`flex-1 py-1.5 rounded text-ui font-medium transition-[background-color,border-color,color,box-shadow] border ${
                       role === r
                         ? "bg-accent-light border-border-accent text-accent font-semibold"
                         : "border-border bg-bg-secondary text-text-secondary hover:bg-bg-hover hover:text-text-primary"
@@ -233,12 +233,12 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
 
             <div id={statusId} aria-live="polite" aria-atomic="true">
               {error && (
-                <p className="text-xs text-error bg-error/5 border border-error/20 rounded px-3 py-2">
+                <p className="text-ui text-error bg-error/5 border border-error/20 rounded px-3 py-2">
                   {error}
                 </p>
               )}
               {!error && success && (
-                <p className="text-xs text-success bg-success/5 border border-success/20 rounded px-3 py-2">
+                <p className="text-ui text-success bg-success/5 border border-success/20 rounded px-3 py-2">
                   {success}
                 </p>
               )}
@@ -247,7 +247,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-linear-primary text-xs"
+              className="w-full btn-linear-primary text-ui"
             >
               {isLoading ? "Adding collaborator…" : "Add collaborator"}
             </button>
@@ -255,7 +255,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
 
           {/* Collaborator List */}
           <div className="mt-6 pt-5 border-t border-border">
-            <h3 className="text-[10px] font-semibold text-text-primary uppercase tracking-wider mb-3">
+            <h3 className="text-micro font-semibold text-text-primary uppercase tracking-wider mb-3">
               Who has access
             </h3>
             
@@ -269,23 +269,23 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
                   className="w-4 h-4 border-2 border-border-strong border-t-accent rounded-full animate-spin"
                   aria-hidden="true"
                 />
-                <span className="text-xs font-medium text-text-muted">
+                <span className="text-ui font-medium text-text-muted">
                   Loading collaborators…
                 </span>
               </div>
             ) : collaborators.length === 0 ? (
-              <p className="text-xs text-text-muted">Only you have access to this document.</p>
+              <p className="text-ui text-text-muted">Only you have access to this document.</p>
             ) : (
               <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
                 {collaborators.map((collab) => (
-                  <div key={collab.user.id} className="flex items-center justify-between gap-3 text-xs">
+                  <div key={collab.user.id} className="flex items-center justify-between gap-3 text-ui">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-5.5 h-5.5 rounded bg-bg-secondary border border-border-strong flex items-center justify-center text-[9px] font-medium text-text-primary shrink-0">
+                      <div className="w-5.5 h-5.5 rounded bg-bg-secondary border border-border-strong flex items-center justify-center text-micro font-medium text-text-primary shrink-0">
                         {collab.user.name?.charAt(0).toUpperCase() || "U"}
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium text-text-primary truncate">{collab.user.name}</p>
-                        <p className="text-[10px] text-text-muted truncate">{collab.user.email}</p>
+                        <p className="text-micro text-text-muted truncate">{collab.user.email}</p>
                       </div>
                     </div>
 
@@ -295,7 +295,7 @@ export function ShareModal({ documentId, onClose, onUpdate }: ShareModalProps) {
                         onChange={(e) => handleUpdateRole(collab.user.email, e.target.value as "editor" | "viewer")}
                         aria-label={`Role for ${collab.user.name}`}
                         name={`role-${collab.user.id}`}
-                        className="bg-bg-secondary border border-border rounded px-1.5 py-0.5 text-[10px] text-text-primary focus:outline-none focus:border-border-accent"
+                        className="bg-bg-secondary border border-border rounded px-1.5 py-0.5 text-micro text-text-primary focus:outline-none focus:border-border-accent"
                       >
                         <option value="editor">Editor</option>
                         <option value="viewer">Viewer</option>

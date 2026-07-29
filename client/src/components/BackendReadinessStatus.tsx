@@ -60,10 +60,10 @@ export function BackendReadinessStatus({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold leading-5 text-text-primary">
+        <p className="text-ui font-semibold leading-5 text-text-primary">
           {content.title}
         </p>
-        <p className="text-xs leading-5 text-text-muted">
+        <p className="text-ui leading-5 text-text-muted">
           {content.description}
         </p>
       </div>
@@ -71,7 +71,7 @@ export function BackendReadinessStatus({
         <button
           type="button"
           onClick={retry}
-          className="btn-linear shrink-0 text-xs"
+          className="btn-linear shrink-0 text-ui"
         >
           Try again
         </button>

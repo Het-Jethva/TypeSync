@@ -294,7 +294,7 @@ export function Editor({
             }`}
           />
           <span
-            className="text-[10px] text-text-muted font-medium truncate"
+            className="text-micro text-text-muted font-medium truncate"
             title={syncError ?? undefined}
           >
             {syncStatus === "failed"
@@ -311,13 +311,13 @@ export function Editor({
             <button
               type="button"
               onClick={handleRecover}
-              className="text-[10px] text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
+              className="text-micro text-error hover:text-error/80 underline font-medium cursor-pointer shrink-0 ml-1"
             >
               Discard pending changes and reload
             </button>
           )}
         </div>
-        <span className="text-[10px] text-text-muted font-medium shrink-0">
+        <span className="text-micro text-text-muted font-medium shrink-0">
           {editor?.storage.characterCount?.characters?.() ?? 0} characters
         </span>
       </div>

@@ -31,7 +31,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <Logo className="w-7 h-7 shadow-[0_1px_2px_rgba(0,0,0,0.08)]" />
-            <span className="text-xs font-semibold tracking-tight text-text-primary">TypeSync</span>
+            <span className="text-ui font-semibold tracking-tight text-text-primary">TypeSync</span>
           </Link>
 
 
@@ -59,12 +59,12 @@ export default function LandingPage() {
             {!session && (
               <Link
                 to="/auth/signin"
-                className="text-xs text-text-secondary hover:text-text-primary transition-colors px-2 py-1.5 hidden sm:inline-block"
+                className="text-ui text-text-secondary hover:text-text-primary transition-colors px-2 py-1.5 hidden sm:inline-block"
               >
                 Sign in
               </Link>
             )}
-            <Link to={primaryCta.to} className="btn-linear-primary text-xs">
+            <Link to={primaryCta.to} className="btn-linear-primary text-ui">
               {primaryCta.label}
             </Link>
 
@@ -107,7 +107,7 @@ export default function LandingPage() {
                   <Link
                     to="/auth/signin"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors py-1.5 border-t border-border pt-3.5"
+                    className="text-ui font-semibold text-text-secondary hover:text-text-primary transition-colors py-1.5 border-t border-border pt-3.5"
                   >
                     Sign in
                   </Link>
@@ -130,7 +130,7 @@ export default function LandingPage() {
             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-text-primary leading-[1.15] mb-6 font-serif">
               Write together, <span className="italic font-normal text-accent font-serif">in sync.</span>
             </h1>
-            <p className="text-sm text-text-secondary leading-relaxed max-w-lg mx-auto mb-8 font-sans">
+            <p className="text-title text-text-secondary leading-relaxed max-w-lg mx-auto mb-8 font-sans">
               A real-time collaborative writing environment. A beautiful, distraction-free space designed for clarity and absolute focus.
             </p>
 

@@ -23,7 +23,7 @@ function LoadingFallback() {
         className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"
         aria-hidden="true"
       />
-      <span className="text-xs font-medium text-text-secondary">
+      <span className="text-ui font-medium text-text-secondary">
         Loading TypeSync…
       </span>
     </div>

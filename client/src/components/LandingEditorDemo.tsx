@@ -56,20 +56,20 @@ export function LandingEditorDemo() {
           <span className="w-2 h-2 rounded-full bg-border-strong" />
           <span className="w-2 h-2 rounded-full bg-border-strong" />
           <span className="w-2 h-2 rounded-full bg-border-strong" />
-          <span className="text-[10px] text-text-secondary font-medium ml-1.5">
+          <span className="text-micro text-text-secondary font-medium ml-1.5">
             demo_document.md
           </span>
         </div>
         <div className="flex items-center gap-2.5">
           <div className="flex -space-x-1" aria-hidden="true">
-            <span className="w-4 h-4 rounded bg-bg-tertiary border border-border text-[8px] font-bold text-text-primary flex items-center justify-center">
+            <span className="w-4 h-4 rounded bg-bg-tertiary border border-border text-micro font-bold text-text-primary flex items-center justify-center">
               Y
             </span>
-            <span className="w-4 h-4 rounded bg-accent border border-border text-[8px] font-bold text-white flex items-center justify-center">
+            <span className="w-4 h-4 rounded bg-accent border border-border text-micro font-bold text-white flex items-center justify-center">
               S
             </span>
           </div>
-          <span className="flex items-center gap-1 text-[10px] text-success font-medium">
+          <span className="flex items-center gap-1 text-micro text-success font-medium">
             <span className="w-1 h-1 rounded-full bg-success animate-pulse" aria-hidden="true" />
             Live
           </span>
@@ -85,7 +85,7 @@ export function LandingEditorDemo() {
           contentEditable
           suppressContentEditableWarning
           onInput={handleInput}
-          className="prose prose-sm dark:prose-invert focus:outline-none focus-visible:ring-2 focus-visible:ring-accent min-h-[160px] text-xs leading-relaxed text-text-primary px-4 py-3 font-serif"
+          className="prose prose-sm dark:prose-invert focus:outline-none focus-visible:ring-2 focus-visible:ring-accent min-h-[160px] text-ui leading-relaxed text-text-primary px-4 py-3 font-serif"
         >
           <h2>Collaborative Document</h2>
           <p ref={paragraphRef}>
@@ -96,7 +96,7 @@ export function LandingEditorDemo() {
               className="inline-flex align-baseline ml-0.5 items-start opacity-0 transition-opacity duration-75"
             >
               <span className="h-4 w-[1.5px] bg-accent" />
-              <span className="-mt-4 ml-0.5 text-[8px] font-medium bg-accent text-white px-1 py-0.25 rounded-sm rounded-tl-none whitespace-nowrap">
+              <span className="-mt-4 ml-0.5 text-micro font-medium bg-accent text-white px-1 py-0.25 rounded-sm rounded-tl-none whitespace-nowrap">
                 Sarah
               </span>
             </span>

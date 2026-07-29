@@ -93,7 +93,7 @@ export default function AuthPage() {
           className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"
           aria-hidden="true"
         />
-        <span className="text-xs font-medium text-text-secondary">
+        <span className="text-ui font-medium text-text-secondary">
           Checking your session…
         </span>
       </div>
@@ -117,7 +117,7 @@ export default function AuthPage() {
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2 mb-6">
               <Logo className="w-7 h-7 shadow-[0_1px_2px_rgba(0,0,0,0.08)]" />
-              <span className="text-sm font-semibold tracking-tight text-text-primary">TypeSync</span>
+              <span className="text-title font-semibold tracking-tight text-text-primary">TypeSync</span>
             </Link>
 
             <AnimatePresence mode="wait">
@@ -128,10 +128,10 @@ export default function AuthPage() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.15 }}
               >
-                <h1 className="text-lg font-bold text-text-primary tracking-tight">
+                <h1 className="text-display font-bold text-text-primary tracking-tight">
                   {isSignIn ? "Welcome back" : "Create your account"}
                 </h1>
-                <p className="text-xs text-text-muted mt-1.5">
+                <p className="text-ui text-text-muted mt-1.5">
                   {isSignIn
                     ? "Sign in to access your documents"
                     : "Get started with TypeSync for free"}
@@ -152,7 +152,7 @@ export default function AuthPage() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-4 px-3 py-2 rounded bg-error/5 border border-error/20 text-error text-xs"
+                className="mb-4 px-3 py-2 rounded bg-error/5 border border-error/20 text-error text-ui"
                 role="alert"
               >
                 {error}
@@ -170,7 +170,7 @@ export default function AuthPage() {
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <label htmlFor="name" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                  <label htmlFor="name" className="block text-micro font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                     Name
                   </label>
                   <input
@@ -178,7 +178,7 @@ export default function AuthPage() {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+                    className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
                     placeholder="Your name"
                     disabled={isLoading}
                   />
@@ -187,7 +187,7 @@ export default function AuthPage() {
             </AnimatePresence>
 
             <div>
-              <label htmlFor="email" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+              <label htmlFor="email" className="block text-micro font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Email
               </label>
               <input
@@ -195,7 +195,7 @@ export default function AuthPage() {
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
                 placeholder="you@example.com"
                 required
                 disabled={isLoading}
@@ -203,7 +203,7 @@ export default function AuthPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+              <label htmlFor="password" className="block text-micro font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <input
@@ -211,7 +211,7 @@ export default function AuthPage() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
+                className="w-full bg-bg-secondary border border-border rounded px-3 py-1.5 text-ui text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light transition-[background-color,border-color,color,box-shadow]"
                 placeholder="••••••••"
                 required
                 disabled={isLoading}
@@ -223,7 +223,7 @@ export default function AuthPage() {
               type="submit"
               disabled={isLoading || !isBackendReady}
               aria-describedby="backend-readiness-status"
-              className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2 text-xs"
+              className="w-full btn-linear-primary py-2 mt-2 flex items-center justify-center gap-2 text-ui"
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function AuthPage() {
           </form>
 
           {/* Toggle */}
-          <div className="mt-6 text-center text-xs text-text-muted">
+          <div className="mt-6 text-center text-ui text-text-muted">
             {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
             <Link
               to={isSignIn ? "/auth/signup" : "/auth/signin"}

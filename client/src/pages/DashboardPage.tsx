@@ -436,13 +436,13 @@ export default function DashboardPage() {
   const renderDocumentsError = () => (
     <div className="h-full flex items-center justify-center bg-bg-secondary/20">
       <div className="text-center max-w-sm px-6">
-        <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">
+        <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">
           Couldn't load documents
         </h3>
-        <p className="text-xs text-text-secondary mb-5 leading-relaxed">{documentsError}</p>
+        <p className="text-ui text-text-secondary mb-5 leading-relaxed">{documentsError}</p>
         <button
           onClick={handleRetryDocuments}
-          className="btn-linear-primary text-xs px-4 py-2"
+          className="btn-linear-primary text-ui px-4 py-2"
         >
           Try again
         </button>
@@ -566,21 +566,21 @@ export default function DashboardPage() {
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-border-strong border-t-primary animate-spin" />
-                  <span className="text-xs text-text-secondary font-medium">Loading document...</span>
+                  <span className="text-ui text-text-secondary font-medium">Loading document...</span>
                 </div>
               </div>
             ) : routeDocumentError && !routeDocumentNotFound ? (
               <div className="h-full flex items-center justify-center bg-bg-secondary/20">
                 <div className="text-center max-w-sm px-6">
-                  <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">
+                  <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">
                     Couldn't load document
                   </h3>
-                  <p className="text-xs text-text-secondary mb-5 leading-relaxed">
+                  <p className="text-ui text-text-secondary mb-5 leading-relaxed">
                     {routeDocumentError.message}
                   </p>
                   <button
                     onClick={() => setRouteDocumentRequestNonce((nonce) => nonce + 1)}
-                    className="btn-linear-primary text-xs px-4 py-2"
+                    className="btn-linear-primary text-ui px-4 py-2"
                   >
                     Try again
                   </button>
@@ -598,11 +598,11 @@ export default function DashboardPage() {
                       <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </div>
-                  <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">Document not found</h3>
-                  <p className="text-xs text-text-secondary mb-5 leading-relaxed">This manuscript does not exist, or you do not have permission to access it.</p>
+                  <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">Document not found</h3>
+                  <p className="text-ui text-text-secondary mb-5 leading-relaxed">This manuscript does not exist, or you do not have permission to access it.</p>
                   <button
                     onClick={() => navigate("/dashboard")}
-                    className="btn-linear-primary text-xs px-4 py-2"
+                    className="btn-linear-primary text-ui px-4 py-2"
                   >
                     Back to dashboard
                   </button>
@@ -624,12 +624,12 @@ export default function DashboardPage() {
                     <path d="M14 6v6h6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
-                <h3 className="text-base font-semibold text-text-primary tracking-tight font-sans mb-1.5">No document active</h3>
-                <p className="text-xs text-text-secondary mb-5 leading-relaxed">Select a manuscript from your library or initialize a new draft to begin writing.</p>
+                <h3 className="text-display font-semibold text-text-primary tracking-tight font-sans mb-1.5">No document active</h3>
+                <p className="text-ui text-text-secondary mb-5 leading-relaxed">Select a manuscript from your library or initialize a new draft to begin writing.</p>
                 <button
                   onClick={handleCreateDocument}
                   disabled={isCreatingDocument}
-                  className="btn-linear-primary text-xs px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="btn-linear-primary text-ui px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isCreatingDocument ? "Creating…" : "Create document"}
                 </button>
@@ -652,7 +652,7 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className={`pointer-events-auto flex items-center gap-2.5 px-3.5 py-2.5 rounded border shadow-lg text-[11px] font-medium max-w-sm bg-bg-elevated ${
+              className={`pointer-events-auto flex items-center gap-2.5 px-3.5 py-2.5 rounded border shadow-lg text-meta font-medium max-w-sm bg-bg-elevated ${
                 notif.type === "error"
                   ? "border-error/30 text-error"
                   : "border-success/30 text-success"

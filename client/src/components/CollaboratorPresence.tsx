@@ -20,7 +20,7 @@ export function CollaboratorPresence({ collaborators }: CollaboratorPresenceProp
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0, opacity: 0 }}
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
-              className="w-6 h-6 rounded-full border border-bg-primary text-white flex items-center justify-center text-[9px] font-bold shadow-[0_1px_2px_rgba(0,0,0,0.08)] cursor-default transition-transform hover:scale-110 relative"
+              className="w-6 h-6 rounded-full border border-bg-primary text-white flex items-center justify-center text-micro font-bold shadow-[0_1px_2px_rgba(0,0,0,0.08)] cursor-default transition-transform hover:scale-110 relative"
               style={{ backgroundColor: collab.color }}
               title={collab.name}
             >
@@ -35,7 +35,7 @@ export function CollaboratorPresence({ collaborators }: CollaboratorPresenceProp
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0, opacity: 0 }}
-          className="w-6 h-6 rounded-full bg-bg-tertiary border border-border-strong text-text-primary flex items-center justify-center text-[9px] font-bold shadow-[0_1px_2px_rgba(0,0,0,0.05)] cursor-default relative z-10"
+          className="w-6 h-6 rounded-full bg-bg-tertiary border border-border-strong text-text-primary flex items-center justify-center text-micro font-bold shadow-[0_1px_2px_rgba(0,0,0,0.05)] cursor-default relative z-10"
           title={`${extraCount} more active user${extraCount > 1 ? "s" : ""}`}
         >
           +{extraCount}

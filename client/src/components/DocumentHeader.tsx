@@ -72,19 +72,19 @@ export function DocumentHeader({
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-xs font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
+            className="bg-bg-primary border border-border rounded-md px-2 py-0.5 text-ui font-semibold text-text-primary outline-none focus:border-border-accent focus:ring-1 focus:ring-accent-light min-w-0 max-w-[120px] sm:max-w-[300px] transition-[background-color,border-color,color,box-shadow]"
           />
         ) : canEdit ? (
           <button
             onClick={() => setIsEditing(true)}
-            className="text-xs font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 max-w-[100px] sm:max-w-[300px]"
+            className="text-ui font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 max-w-[100px] sm:max-w-[300px]"
             title="Click to rename"
           >
             {document.title}
           </button>
         ) : (
           <span
-            className="text-xs font-semibold text-text-primary truncate px-1 max-w-[100px] sm:max-w-[300px]"
+            className="text-ui font-semibold text-text-primary truncate px-1 max-w-[100px] sm:max-w-[300px]"
             title={document.title}
           >
             {document.title}
@@ -100,7 +100,7 @@ export function DocumentHeader({
               exit={{ opacity: 0 }}
               role="status"
               aria-live="polite"
-              className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary shrink-0"
+              className="flex items-center gap-1.5 text-meta font-medium text-text-secondary shrink-0"
             >
               <span
                 className="w-2.5 h-2.5 rounded-full border-[1.5px] border-current border-t-transparent animate-spin"
@@ -120,7 +120,7 @@ export function DocumentHeader({
           <button
             onClick={() => setShareOpen(true)}
             aria-label="Share document"
-            className="touch-target btn-linear flex items-center gap-1.5 px-2 py-1 sm:px-2.5 text-xs text-text-secondary hover:text-text-primary transition-[background-color,border-color,color,box-shadow]"
+            className="touch-target btn-linear flex items-center gap-1.5 px-2 py-1 sm:px-2.5 text-ui text-text-secondary hover:text-text-primary transition-[background-color,border-color,color,box-shadow]"
             title="Share document"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-3.5 h-3.5">

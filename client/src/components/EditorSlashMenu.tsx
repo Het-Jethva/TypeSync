@@ -212,14 +212,14 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
               : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           }`}
         >
-          <div className={`w-5.5 h-5.5 rounded border border-border-strong flex items-center justify-center text-[10px] font-bold shrink-0 ${
+          <div className={`w-5.5 h-5.5 rounded border border-border-strong flex items-center justify-center text-micro font-bold shrink-0 ${
             selectedIndex === idx ? "bg-bg-elevated border-border-accent text-accent" : "bg-bg-secondary text-text-secondary"
           }`}>
             {item.icon}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium">{item.title}</p>
-            <p className="text-[9px] text-text-muted truncate">{item.description}</p>
+            <p className="text-ui font-medium">{item.title}</p>
+            <p className="text-micro text-text-muted truncate">{item.description}</p>
           </div>
         </button>
       ))}
