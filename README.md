@@ -1,39 +1,39 @@
 # TypeSync
 
-TypeSync is a deployed collaborative rich-text editor built to explore the
-hard parts of real-time document systems: convergent editing, authenticated
-room membership, live authorization changes, reconnect recovery, ephemeral
-presence, and honest persistence semantics.
+TypeSync is a deployed collaborative rich-text editor. I built it to work
+through the parts of real-time document systems that are actually hard:
+convergent editing, authenticated room membership, live authorization changes,
+reconnect recovery, ephemeral presence, and persistence semantics that don't
+lie to the user.
 
 **[Open the live demo](https://typesync.hetjethva.tech)**
 
 The frontend wakes the free Render backend when the page opens. A cold start
-can take tens of seconds; the interface reports whether the backend is waking,
-delayed, ready, or unavailable and retries automatically.
+can take tens of seconds. The interface says whether the backend is waking,
+delayed, ready, or unavailable, and it retries on its own.
 
 ## Engineering case study
 
 The editor binds TipTap to a client-side Yjs document. Local Yjs updates travel
-over Socket.IO to a server-owned Yjs document for the active room. Because Yjs
-updates are commutative and idempotent, collaborators can edit concurrently
-and converge without ordering every keystroke through the database.
+over Socket.IO to a server-owned Yjs document for the active room. Yjs updates
+are commutative and idempotent, so collaborators can edit at the same time and
+converge without pushing every keystroke through the database.
 
-The collaboration protocol is deliberately more restrictive than a raw Yjs
-relay:
+The collaboration protocol is stricter than a raw Yjs relay:
 
-- Every socket authenticates with a Better Auth session cookie and may join
-  only documents the server authorizes from PostgreSQL.
-- The server records the role for each socket and room. Owners and editors may
-  submit document updates; viewers receive document and presence updates but
-  cannot edit. Role changes are applied to active sessions, and revocation
-  removes the user's sockets from the room immediately.
+- Every socket authenticates with a Better Auth session cookie and can join
+  only the documents the server authorizes from PostgreSQL.
+- The server records a role per socket and room. Owners and editors may submit
+  document updates. Viewers get document and presence updates but cannot edit.
+  A role change hits live sessions, and revoking access drops the user's
+  sockets from the room right away.
 - Awareness is a separate, volatile channel. The server validates cursor
   payloads, binds one awareness client ID to its socket, replaces client-sent
   identity with the authenticated user's name and ID, rejects frames over
-  16 KiB, and rate-limits presence updates to 20 per second with a burst of 40.
-  Presence is neither queued for retry nor stored in PostgreSQL.
-- Document updates are also rate-limited and size-checked before the server
-  applies and broadcasts them.
+  16 KiB, and rate-limits presence to 20 updates per second with a burst of 40.
+  Nothing about presence is queued for retry or written to PostgreSQL.
+- Document updates get the same treatment. The server rate-limits and
+  size-checks them before it applies and broadcasts them.
 
 ### Architecture
 
@@ -46,52 +46,52 @@ flowchart LR
     Runtime <-->|"load + bounded snapshot flush"| Postgres
 ```
 
-Vercel serves the Vite application; the browser talks directly to the Render
-API. Render owns authenticated HTTP routes, Socket.IO rooms, and the in-memory
-Yjs runtime. PostgreSQL stores accounts, sessions, document metadata, access
-roles, and encoded Yjs snapshots.
+Vercel serves the Vite application, and the browser talks straight to the
+Render API. Render owns the authenticated HTTP routes, the Socket.IO rooms, and
+the in-memory Yjs runtime. PostgreSQL holds accounts, sessions, document
+metadata, access roles, and encoded Yjs snapshots.
 
 ### Reconnect and sync semantics
 
-Edits made while the socket is disconnected remain in the Yjs document and
-pending-update queue of the same mounted browser tab. After reconnecting, the
-client rejoins the authenticated room, applies the server snapshot, compares
+Edits you make while the socket is down stay in the Yjs document and the
+pending-update queue of that same mounted browser tab. On reconnect the client
+rejoins the authenticated room, applies the server snapshot, compares it
 against the server state vector, and sends the missing Yjs delta with
 acknowledged retries.
 
-This recovery is intentionally scoped to a same-tab reconnect. Pending edits
-are not written to IndexedDB or another browser store, so closing or reloading
-the tab can discard edits that have not reached the server.
+That recovery covers a same-tab reconnect and nothing more. Pending edits never
+reach IndexedDB or any other browser store, so closing or reloading the tab can
+throw away edits the server never saw.
 
-The UI reports an update as **Synced** only after the server accepts it into
-the active room. That acknowledgement is not an immediate durable database
-save. The server persists a full Yjs snapshot after 5 seconds of inactivity,
-forces a flush after at most 30 seconds of continuous changes, retries failed
-saves after 15 seconds, and flushes when the last collaborator leaves or the
-process shuts down gracefully. A crash between an acknowledgement and the
-next successful snapshot can therefore lose the newest accepted updates.
+The UI shows **Synced** once the server accepts an update into the active room.
+That acknowledgement is not a durable database write. The server writes a full
+Yjs snapshot after 5 seconds of quiet, forces a flush after at most 30 seconds
+of continuous changes, retries a failed save after 15 seconds, and flushes when
+the last collaborator leaves or when the process shuts down cleanly. A crash
+between an acknowledgement and the next good snapshot loses the newest accepted
+updates. I would rather say that here than let the checkmark imply more than it
+means.
 
-Persistence is bounded in size as well as time: individual updates are capped
-at 1 MiB, clients receive a warning when encoded document state reaches 8 MiB,
-and updates that would push it beyond 10 MiB are rejected.
+Size has limits too. One update caps at 1 MiB, clients get a warning when
+encoded document state reaches 8 MiB, and the server rejects updates that would
+push it past 10 MiB.
 
-### Deliberate deployment tradeoff
+### The one-server tradeoff
 
-TypeSync intentionally runs one collaboration server. Active Yjs documents,
-room membership, awareness state, and rate-limit buckets live in that process,
-using Socket.IO's in-memory adapter. This keeps the deployed portfolio project
-small and makes one server authoritative for each accepted update.
+TypeSync runs a single collaboration server on purpose. Active Yjs documents,
+room membership, awareness state, and rate-limit buckets all live in that one
+process, on Socket.IO's in-memory adapter. It keeps a portfolio deployment
+small, and it makes exactly one server authoritative for each accepted update.
 
-It also means the current design must not be horizontally replicated:
-independent instances would hold different room state and could race when
-writing snapshots. Multi-server operation would require explicit document
-ownership or shared collaboration coordination in addition to cross-instance
-Socket.IO fan-out.
+The cost is that you must not replicate this design horizontally. Separate
+instances would hold different room state and could race each other writing
+snapshots. Running more than one server needs explicit document ownership or
+shared collaboration coordination, on top of cross-instance Socket.IO fan-out.
 
-The free Render service may suspend while idle. The frontend probes
-`/api/ready`, waits for both the API and database, retries during the cold
-start, and prevents authentication attempts until the backend is ready. This
-is an intentional demo constraint rather than hidden loading latency.
+The free Render service can suspend while idle. The frontend probes
+`/api/ready`, waits for the API and the database, retries through the cold
+start, and blocks sign-in attempts until the backend answers. That is a demo
+constraint I chose to show rather than hide behind a spinner.
 
 ## Stack
 
@@ -105,7 +105,7 @@ is an intentional demo constraint rather than hidden loading latency.
 
 ## Run locally
 
-Requirements: Node.js 24 or later and Docker with Compose.
+You need Node.js 24 or later and Docker with Compose.
 
 ```bash
 git clone https://github.com/Het-Jethva/TypeSync.git
@@ -127,7 +127,7 @@ PORT=3000
 NODE_ENV=development
 ```
 
-Apply the checked-in Drizzle migrations and start both workspaces:
+Apply the checked-in Drizzle migrations, then start both workspaces:
 
 ```bash
 npm run db:migrate
@@ -135,8 +135,8 @@ npm run dev
 ```
 
 The Vite client runs at <http://localhost:5173> and proxies `/api` and
-`/socket.io` to the server at <http://localhost:3000>. No client environment
-file is needed for this standard local setup.
+`/socket.io` to the server at <http://localhost:3000>. A standard local setup
+needs no client environment file.
 
 ## Environment variables
 
@@ -145,21 +145,21 @@ file is needed for this standard local setup.
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection URL. Required in production and for database-backed local commands. |
-| `BETTER_AUTH_SECRET` | Better Auth signing secret. Production requires at least 32 characters and rejects the documented placeholder. |
-| `BETTER_AUTH_URL` | Public origin of the backend, for example `http://localhost:3000`. Required in production. |
-| `VITE_CLIENT_URL` | Public frontend origin allowed by CORS, Socket.IO origin checks, and Better Auth. Defaults to `http://localhost:5173` in development and is required in production. |
-| `AUTH_COOKIE_SAME_SITE` | `lax` or `none`. Use `lax` locally; the cross-origin Vercel-to-Render deployment uses `none` with secure cookies. Required in production. |
-| `PORT` | HTTP server port; defaults to `3000`. |
-| `NODE_ENV` | Set to `production` to enable strict production configuration validation and production cookie behavior. |
+| `BETTER_AUTH_SECRET` | Better Auth signing secret. Production wants at least 32 characters and rejects the placeholder above. |
+| `BETTER_AUTH_URL` | Public origin of the backend, such as `http://localhost:3000`. Required in production. |
+| `VITE_CLIENT_URL` | Public frontend origin that CORS, the Socket.IO origin check, and Better Auth allow. Defaults to `http://localhost:5173` in development. Required in production. |
+| `AUTH_COOKIE_SAME_SITE` | `lax` or `none`. Use `lax` locally. The cross-origin Vercel-to-Render deployment uses `none` with secure cookies. Required in production. |
+| `PORT` | HTTP server port. Defaults to `3000`. |
+| `NODE_ENV` | Set it to `production` for strict config validation and production cookie behavior. |
 
 ### Client (`client/.env` or Vercel build environment)
 
 | Variable | Purpose |
 | --- | --- |
-| `VITE_API_URL` | Public backend origin used by HTTP, auth, readiness, and Socket.IO clients. Omit it locally to use the Vite proxy; set it to the Render service origin for the Vercel build. |
+| `VITE_API_URL` | Public backend origin for the HTTP, auth, readiness, and Socket.IO clients. Leave it unset locally to use the Vite proxy. Point it at the Render service origin for the Vercel build. |
 
-Vite embeds `VITE_API_URL` at build time. Do not append `/api`; the client adds
-the API paths itself.
+Vite embeds `VITE_API_URL` at build time. Do not append `/api`, because the
+client adds the API paths itself.
 
 ## Repository commands
 
@@ -171,5 +171,5 @@ npm run typecheck
 npm run build
 ```
 
-For a deeper description of the collaboration modules and domain terminology,
-see [CONTEXT.md](CONTEXT.md).
+[CONTEXT.md](CONTEXT.md) goes deeper on the collaboration modules and the
+domain terminology.
