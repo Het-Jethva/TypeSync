@@ -25,18 +25,3 @@ export class DrizzleDocumentStateRepository implements DocumentStateRepository {
     return updatedAt;
   }
 }
-
-export class InMemoryDocumentStateRepository implements DocumentStateRepository {
-  private store = new Map<string, { state: Uint8Array; updatedAt: Date }>();
-
-  async loadState(documentId: string): Promise<Uint8Array | null> {
-    const entry = this.store.get(documentId);
-    return entry ? entry.state : null;
-  }
-
-  async saveState(documentId: string, state: Uint8Array): Promise<Date> {
-    const updatedAt = new Date();
-    this.store.set(documentId, { state, updatedAt });
-    return updatedAt;
-  }
-}

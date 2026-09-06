@@ -4,11 +4,9 @@ import { z } from "zod";
 export class AppError extends Error {
   constructor(
     public statusCode: number,
-    public message: string,
-    public isOperational = true
+    public message: string
   ) {
     super(message);
-    Object.setPrototypeOf(this, AppError.prototype);
   }
 }
 
