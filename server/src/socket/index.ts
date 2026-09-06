@@ -177,7 +177,11 @@ export function setupSocket(
       }
       const docId = parsed.data;
 
-      if (!(await ensureSocketSession(socket, true))) {
+      // Cached validation, like awareness. The join handler and the 60s
+      // revalidation timer are the session boundaries; forcing a DB lookup on
+      // every keystroke (up to 30/s per editor) buys nothing — per-update
+      // access is still enforced below via the room role check.
+      if (!(await ensureSocketSession(socket))) {
         respond({ success: false, code: "session-expired", error: "Session expired" });
         return;
       }
