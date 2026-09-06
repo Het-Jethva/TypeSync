@@ -26,6 +26,3 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Plans
-plans/
-

@@ -17,8 +17,6 @@
     "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run typecheck -w shared -w client -w server",
-    "typecheck:server": "npm run typecheck -w server",
-    "typecheck:client": "npm run typecheck -w client",
     "db:push": "npm run db:push -w server",
     "db:studio": "npm run db:studio -w server",
     "db:generate": "npm run db:generate -w server",
@@ -36,12 +34,6 @@
     "typescript-eslint": "^8.63.0"
   },
   "overrides": {
-    "esbuild": "^0.28.1",
-    "drizzle-kit": {
-      "esbuild": "^0.28.1"
-    },
-    "@esbuild-kit/core-utils": {
-      "esbuild": "^0.28.1"
-    }
+    "esbuild": "^0.28.1"
   }
 }

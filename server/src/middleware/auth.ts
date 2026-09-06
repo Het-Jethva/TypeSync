@@ -9,11 +9,6 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     image?: string | null;
   };
-  session?: {
-    id: string;
-    userId: string;
-    token: string;
-  };
 }
 
 export async function requireAuth(
@@ -32,7 +27,6 @@ export async function requireAuth(
     }
 
     req.user = session.user;
-    req.session = session.session as any;
     next();
   } catch {
     res.status(401).json({ success: false, error: "Unauthorized" });

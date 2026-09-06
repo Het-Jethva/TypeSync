@@ -13,8 +13,6 @@ import { DocumentAccessAuthorizer } from "../services/document-access-authorizer
 import { CollaborativeRoomSession } from "./room-session.js";
 import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
 
-export type { TypeSyncSocketServer } from "./types.js";
-
 const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
 const trustedClientOrigin = new URL(config.clientUrl).origin;

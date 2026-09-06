@@ -8,3 +8,6 @@ client/*
 .env.example
 README.md
 docker-compose.yml
+*.tsbuildinfo
+.vscode/
+.idea/

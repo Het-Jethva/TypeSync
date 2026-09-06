@@ -27,7 +27,6 @@ export const auth = betterAuth({
   ],
   baseURL: config.betterAuthUrl,
   advanced: {
-    crossSubDomainCookies: { enabled: false },
     defaultCookieAttributes: {
       sameSite: config.authCookieSameSite,
       secure: config.isProduction || config.authCookieSameSite === "none",
