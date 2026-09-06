@@ -9,32 +9,14 @@ import type {
 } from "@typesync/shared";
 import { config } from "../config.js";
 import { auth } from "../lib/auth.js";
+import { isTrustedWebOrigin } from "../lib/origin.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
 import type { SocketData, TypeSyncSocket, TypeSyncSocketServer } from "./types.js";
 
 const SESSION_REVALIDATION_INTERVAL = 60_000;
 const DocumentIdSchema = z.string().uuid();
-const trustedClientOrigin = new URL(config.clientUrl).origin;
-
-function originFromHeader(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  try {
-    return new URL(value).origin;
-  } catch {
-    return undefined;
-  }
-}
-
-function isTrustedSocketOrigin(
-  origin: string | undefined,
-  referer: string | undefined
-): boolean {
-  if (origin !== undefined) {
-    return originFromHeader(origin) === trustedClientOrigin;
-  }
-  return originFromHeader(referer) === trustedClientOrigin;
-}
+const MAX_SOCKET_BUFFER_BYTES = 12 * 1024 * 1024;
 
 async function ensureSocketSession(socket: TypeSyncSocket, force = false): Promise<boolean> {
   if (
@@ -88,10 +70,11 @@ export function setupSocket(
       origin: config.clientUrl,
       credentials: true,
     },
+    maxHttpBufferSize: MAX_SOCKET_BUFFER_BYTES,
     allowRequest: (request, callback) => {
       callback(
         null,
-        isTrustedSocketOrigin(request.headers.origin, request.headers.referer)
+        isTrustedWebOrigin(request.headers.origin, request.headers.referer)
       );
     },
   });
@@ -138,7 +121,7 @@ export function setupSocket(
       }
       const docId = parsed.data;
 
-      if (!(await ensureSocketSession(socket))) {
+      if (!(await ensureSocketSession(socket, true))) {
         respond({ success: false, error: "Session expired" });
         return;
       }
@@ -194,7 +177,7 @@ export function setupSocket(
       }
       const docId = parsed.data;
 
-      if (!(await ensureSocketSession(socket))) {
+      if (!(await ensureSocketSession(socket, true))) {
         respond({ success: false, code: "session-expired", error: "Session expired" });
         return;
       }

@@ -41,46 +41,12 @@ export type DocumentUpdateResult =
   | { kind: "not-loaded" }
   | { kind: "invalid"; error: unknown };
 
-const docs = new Map<string, Y.Doc>();
-const loadedDocs = new Set<string>();
-const loadingDocs = new Map<string, Promise<void>>();
-const persistenceStates = new Map<string, PersistenceState>();
-const documentSizeStates = new Map<string, DocumentSizeState>();
-
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
 const MAX_DOC_UPDATE_BYTES = 1 * 1024 * 1024;
 const DOC_SIZE_WARNING_BYTES = 8 * 1024 * 1024;
 const MAX_DOC_STATE_BYTES = 10 * 1024 * 1024;
-
-function getOrCreateDoc(docId: string): Y.Doc {
-  let doc = docs.get(docId);
-  if (!doc) {
-    doc = new Y.Doc();
-    docs.set(docId, doc);
-  }
-  return doc;
-}
-
-function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): number {
-  const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
-  documentSizeStates.set(docId, {
-    encodedBytes,
-    pendingUpdateBytes: 0,
-    warningEmitted: encodedBytes >= DOC_SIZE_WARNING_BYTES,
-  });
-  return encodedBytes;
-}
-
-function getDocumentSizeState(docId: string, ydoc: Y.Doc): DocumentSizeState {
-  let state = documentSizeStates.get(docId);
-  if (!state) {
-    recordEncodedDocumentSize(docId, ydoc);
-    state = documentSizeStates.get(docId)!;
-  }
-  return state;
-}
 
 function sizeStatus(documentId: string, bytes: number): DocumentSizeStatus | null {
   if (bytes < DOC_SIZE_WARNING_BYTES) return null;
@@ -90,58 +56,6 @@ function sizeStatus(documentId: string, bytes: number): DocumentSizeStatus | nul
     reason: "document",
     bytes,
     maxBytes: MAX_DOC_STATE_BYTES,
-  };
-}
-
-function preflightDocumentUpdate(
-  docId: string,
-  ydoc: Y.Doc,
-  update: Uint8Array
-): { allowed: boolean; status: DocumentSizeStatus | null } {
-  const state = getDocumentSizeState(docId, ydoc);
-  if (state.encodedBytes >= MAX_DOC_STATE_BYTES) {
-    return { allowed: false, status: sizeStatus(docId, state.encodedBytes) };
-  }
-
-  const projectedUpperBound =
-    state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
-  const needsWarningCheckpoint =
-    !state.warningEmitted && projectedUpperBound >= DOC_SIZE_WARNING_BYTES;
-  const needsLimitCheckpoint = projectedUpperBound > MAX_DOC_STATE_BYTES;
-
-  if (!needsWarningCheckpoint && !needsLimitCheckpoint) {
-    state.pendingUpdateBytes += update.byteLength;
-    return { allowed: true, status: null };
-  }
-
-  const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
-  const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
-
-  if (candidateSnapshot.byteLength > MAX_DOC_STATE_BYTES) {
-    state.encodedBytes = currentSnapshot.byteLength;
-    state.pendingUpdateBytes = 0;
-    return {
-      allowed: false,
-      status: {
-        documentId: docId,
-        level: "limit",
-        reason: "document",
-        bytes: candidateSnapshot.byteLength,
-        maxBytes: MAX_DOC_STATE_BYTES,
-      },
-    };
-  }
-
-  state.encodedBytes = candidateSnapshot.byteLength;
-  state.pendingUpdateBytes = 0;
-  const crossedWarning =
-    !state.warningEmitted && candidateSnapshot.byteLength >= DOC_SIZE_WARNING_BYTES;
-  if (crossedWarning) state.warningEmitted = true;
-  return {
-    allowed: true,
-    status: crossedWarning
-      ? sizeStatus(docId, candidateSnapshot.byteLength)
-      : null,
   };
 }
 
@@ -157,6 +71,92 @@ export function createDocumentRuntime(
   const repository = options.repository ?? new DrizzleDocumentStateRepository();
   const roomOccupancyProvider = options.roomOccupancyProvider ?? (() => 0);
   const onDocumentSavedCallback = options.onDocumentSaved;
+
+  const docs = new Map<string, Y.Doc>();
+  const loadedDocs = new Set<string>();
+  const loadingDocs = new Map<string, Promise<void>>();
+  const persistenceStates = new Map<string, PersistenceState>();
+  const documentSizeStates = new Map<string, DocumentSizeState>();
+
+  function getOrCreateDoc(docId: string): Y.Doc {
+    let doc = docs.get(docId);
+    if (!doc) {
+      doc = new Y.Doc();
+      docs.set(docId, doc);
+    }
+    return doc;
+  }
+
+  function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): number {
+    const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
+    documentSizeStates.set(docId, {
+      encodedBytes,
+      pendingUpdateBytes: 0,
+      warningEmitted: encodedBytes >= DOC_SIZE_WARNING_BYTES,
+    });
+    return encodedBytes;
+  }
+
+  function getDocumentSizeState(docId: string, ydoc: Y.Doc): DocumentSizeState {
+    let state = documentSizeStates.get(docId);
+    if (!state) {
+      recordEncodedDocumentSize(docId, ydoc);
+      state = documentSizeStates.get(docId)!;
+    }
+    return state;
+  }
+
+  function preflightDocumentUpdate(
+    docId: string,
+    ydoc: Y.Doc,
+    update: Uint8Array
+  ): { allowed: boolean; status: DocumentSizeStatus | null } {
+    const state = getDocumentSizeState(docId, ydoc);
+    if (state.encodedBytes >= MAX_DOC_STATE_BYTES) {
+      return { allowed: false, status: sizeStatus(docId, state.encodedBytes) };
+    }
+
+    const projectedUpperBound =
+      state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
+    const needsWarningCheckpoint =
+      !state.warningEmitted && projectedUpperBound >= DOC_SIZE_WARNING_BYTES;
+    const needsLimitCheckpoint = projectedUpperBound > MAX_DOC_STATE_BYTES;
+
+    if (!needsWarningCheckpoint && !needsLimitCheckpoint) {
+      state.pendingUpdateBytes += update.byteLength;
+      return { allowed: true, status: null };
+    }
+
+    const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
+    const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
+
+    if (candidateSnapshot.byteLength > MAX_DOC_STATE_BYTES) {
+      state.encodedBytes = currentSnapshot.byteLength;
+      state.pendingUpdateBytes = 0;
+      return {
+        allowed: false,
+        status: {
+          documentId: docId,
+          level: "limit",
+          reason: "document",
+          bytes: candidateSnapshot.byteLength,
+          maxBytes: MAX_DOC_STATE_BYTES,
+        },
+      };
+    }
+
+    state.encodedBytes = candidateSnapshot.byteLength;
+    state.pendingUpdateBytes = 0;
+    const crossedWarning =
+      !state.warningEmitted && candidateSnapshot.byteLength >= DOC_SIZE_WARNING_BYTES;
+    if (crossedWarning) state.warningEmitted = true;
+    return {
+      allowed: true,
+      status: crossedWarning
+        ? sizeStatus(docId, candidateSnapshot.byteLength)
+        : null,
+    };
+  }
 
   async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
     const state = await repository.loadState(docId);
@@ -397,8 +397,10 @@ export function createDocumentRuntime(
         const postSaveOccupancy = roomOccupancyProvider(documentId);
         if (postSaveOccupancy > 0) return;
       } catch (error) {
+        if (!docs.has(documentId)) return;
+        const state = persistenceStates.get(documentId);
+        if (!state || state.cancelled) return;
         console.error(`Failed to save doc ${documentId}; keeping it in memory:`, error);
-        const state = getPersistenceState(documentId);
         scheduleRetry(documentId, ydoc, state);
         return;
       }

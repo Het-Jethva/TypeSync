@@ -24,6 +24,7 @@ interface StoredAwarenessEntry {
 
 interface AwarenessManager {
   initializeSocket(socket: TypeSyncSocket): PresenceIdentity;
+  presenceFor(socket: TypeSyncSocket, role: Role | null): PresenceIdentity;
   consumeUpdate(
     socket: TypeSyncSocket,
     documentId: string,
@@ -35,10 +36,6 @@ interface AwarenessManager {
   forgetSocket(socketId: string): void;
   forgetDocument(documentId: string): void;
 }
-
-const socketAwarenessBindings = new Map<string, Map<string, AwarenessBinding>>();
-const awarenessClientOwners = new Map<string, Map<number, string>>();
-const activeAwarenessEntries = new Map<string, Map<number, StoredAwarenessEntry>>();
 
 const MAX_AWARENESS_UPDATE_BYTES = 16 * 1024;
 const AWARENESS_UPDATES_PER_SECOND = 20;
@@ -141,103 +138,107 @@ function encodeAwarenessEntry(
   return encodeAwarenessEntries([[clientId, clock, state]]);
 }
 
-function forgetAwarenessBinding(socketId: string, documentId: string): void {
-  const bindings = socketAwarenessBindings.get(socketId);
-  if (!bindings) return;
-  const binding = bindings.get(documentId);
-  if (!binding) return;
+export function createAwarenessManager(): AwarenessManager {
+  const socketAwarenessBindings = new Map<string, Map<string, AwarenessBinding>>();
+  const awarenessClientOwners = new Map<string, Map<number, string>>();
+  const activeAwarenessEntries = new Map<string, Map<number, StoredAwarenessEntry>>();
 
-  bindings.delete(documentId);
-  if (bindings.size === 0) socketAwarenessBindings.delete(socketId);
+  function forgetAwarenessBinding(socketId: string, documentId: string): void {
+    const bindings = socketAwarenessBindings.get(socketId);
+    if (!bindings) return;
+    const binding = bindings.get(documentId);
+    if (!binding) return;
 
-  const owners = awarenessClientOwners.get(documentId);
-  if (owners?.get(binding.clientId) === socketId) {
-    owners.delete(binding.clientId);
-    if (owners.size === 0) awarenessClientOwners.delete(documentId);
+    bindings.delete(documentId);
+    if (bindings.size === 0) socketAwarenessBindings.delete(socketId);
 
-    const entries = activeAwarenessEntries.get(documentId);
-    entries?.delete(binding.clientId);
-    if (entries?.size === 0) activeAwarenessEntries.delete(documentId);
-  }
-}
+    const owners = awarenessClientOwners.get(documentId);
+    if (owners?.get(binding.clientId) === socketId) {
+      owners.delete(binding.clientId);
+      if (owners.size === 0) awarenessClientOwners.delete(documentId);
 
-function sanitizeAwarenessUpdate(
-  socket: TypeSyncSocket,
-  documentId: string,
-  update: Uint8Array,
-  role: Role | null
-): SanitizedAwarenessUpdate | null {
-  const decoder = decoding.createDecoder(update);
-  const entryCount = decoding.readVarUint(decoder);
-  if (entryCount !== 1) throw new Error("Awareness frames must contain exactly one client");
-
-  const clientId = AwarenessClientIdSchema.parse(decoding.readVarUint(decoder));
-  const clock = AwarenessClockSchema.parse(decoding.readVarUint(decoder));
-  const rawState: unknown = JSON.parse(decoding.readVarString(decoder));
-  if (decoding.hasContent(decoder)) throw new Error("Awareness frame has trailing data");
-  const parsedState = rawState === null ? null : AwarenessStateSchema.parse(rawState);
-
-  let bindings = socketAwarenessBindings.get(socket.id);
-  if (!bindings) {
-    bindings = new Map();
-    socketAwarenessBindings.set(socket.id, bindings);
-  }
-  const existingBinding = bindings.get(documentId);
-
-  if (existingBinding && existingBinding.clientId !== clientId) {
-    throw new Error("Awareness client id changed within a document session");
-  }
-  if (!existingBinding && rawState === null) {
-    throw new Error("Cannot remove an unregistered awareness client");
+      const entries = activeAwarenessEntries.get(documentId);
+      entries?.delete(binding.clientId);
+      if (entries?.size === 0) activeAwarenessEntries.delete(documentId);
+    }
   }
 
-  let owners = awarenessClientOwners.get(documentId);
-  if (!owners) {
-    owners = new Map();
-    awarenessClientOwners.set(documentId, owners);
-  }
-  const ownerSocketId = owners.get(clientId);
-  if (ownerSocketId && ownerSocketId !== socket.id) {
-    throw new Error("Awareness client id is already owned by another socket");
-  }
+  function sanitizeAwarenessUpdate(
+    socket: TypeSyncSocket,
+    documentId: string,
+    update: Uint8Array,
+    role: Role | null
+  ): SanitizedAwarenessUpdate | null {
+    const decoder = decoding.createDecoder(update);
+    const entryCount = decoding.readVarUint(decoder);
+    if (entryCount !== 1) throw new Error("Awareness frames must contain exactly one client");
 
-  if (existingBinding) {
-    const isStale = rawState === null
-      ? clock < existingBinding.clock
-      : clock <= existingBinding.clock;
-    if (isStale) return null;
-    existingBinding.clock = clock;
-  } else {
-    bindings.set(documentId, { clientId, clock });
-    owners.set(clientId, socket.id);
-  }
+    const clientId = AwarenessClientIdSchema.parse(decoding.readVarUint(decoder));
+    const clock = AwarenessClockSchema.parse(decoding.readVarUint(decoder));
+    const rawState: unknown = JSON.parse(decoding.readVarString(decoder));
+    if (decoding.hasContent(decoder)) throw new Error("Awareness frame has trailing data");
+    const parsedState = rawState === null ? null : AwarenessStateSchema.parse(rawState);
 
-  if (rawState === null) {
-    const sanitized = {
-      update: encodeAwarenessEntry(clientId, clock, null),
+    let bindings = socketAwarenessBindings.get(socket.id);
+    if (!bindings) {
+      bindings = new Map();
+      socketAwarenessBindings.set(socket.id, bindings);
+    }
+    const existingBinding = bindings.get(documentId);
+
+    if (existingBinding && existingBinding.clientId !== clientId) {
+      throw new Error("Awareness client id changed within a document session");
+    }
+    if (!existingBinding && rawState === null) {
+      throw new Error("Cannot remove an unregistered awareness client");
+    }
+
+    let owners = awarenessClientOwners.get(documentId);
+    if (!owners) {
+      owners = new Map();
+      awarenessClientOwners.set(documentId, owners);
+    }
+    const ownerSocketId = owners.get(clientId);
+    if (ownerSocketId && ownerSocketId !== socket.id) {
+      throw new Error("Awareness client id is already owned by another socket");
+    }
+
+    if (existingBinding) {
+      const isStale = rawState === null
+        ? clock < existingBinding.clock
+        : clock <= existingBinding.clock;
+      if (isStale) return null;
+      existingBinding.clock = clock;
+    } else {
+      bindings.set(documentId, { clientId, clock });
+      owners.set(clientId, socket.id);
+    }
+
+    if (rawState === null) {
+      const sanitized = {
+        update: encodeAwarenessEntry(clientId, clock, null),
+        clientId,
+        clock,
+        state: null,
+        removed: true,
+      };
+      forgetAwarenessBinding(socket.id, documentId);
+      return sanitized;
+    }
+
+    const state = {
+      ...parsedState,
+      user: presenceIdentity(socket, role),
+    };
+    return {
+      update: encodeAwarenessEntry(clientId, clock, state),
       clientId,
       clock,
-      state: null,
-      removed: true,
+      state,
+      removed: false,
     };
-    forgetAwarenessBinding(socket.id, documentId);
-    return sanitized;
   }
 
-  const state = {
-    ...parsedState,
-    user: presenceIdentity(socket, role),
-  };
-  return {
-    update: encodeAwarenessEntry(clientId, clock, state),
-    clientId,
-    clock,
-    state,
-    removed: false,
-  };
-}
-
-export function createAwarenessManager(): AwarenessManager {
   return {
     initializeSocket(socket) {
       socket.data.awarenessTokens = AWARENESS_BURST_SIZE;
@@ -248,9 +249,12 @@ export function createAwarenessManager(): AwarenessManager {
       return presenceIdentity(socket, null);
     },
 
+    presenceFor(socket, role) {
+      return presenceIdentity(socket, role);
+    },
+
     consumeUpdate(socket, documentId, update, role) {
       if (!consumeAwarenessToken(socket)) {
-        rejectAwarenessUpdate(socket, documentId);
         return null;
       }
       if (!(update instanceof Uint8Array) || update.byteLength > MAX_AWARENESS_UPDATE_BYTES) {

@@ -34,12 +34,20 @@ function decodeDocumentCursor(cursor: string): DocumentCursor {
   }
 }
 
+const documentMetadata = {
+  id: document.id,
+  title: document.title,
+  ownerId: document.ownerId,
+  createdAt: document.createdAt,
+  updatedAt: document.updatedAt,
+} as const;
+
 export class DocumentService {
   static async createDocument(title: string, ownerId: string) {
     const [storedDocument] = await db
       .insert(document)
       .values({ title: title || "Untitled", ownerId })
-      .returning();
+      .returning(documentMetadata);
     return storedDocument;
   }
 
@@ -105,13 +113,7 @@ export class DocumentService {
 
   static async getDocument(documentId: string) {
     const [storedDocument] = await db
-      .select({
-        id: document.id,
-        title: document.title,
-        ownerId: document.ownerId,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-      })
+      .select(documentMetadata)
       .from(document)
       .where(eq(document.id, documentId));
     if (!storedDocument) throw new AppError(404, "Document not found");
@@ -154,8 +156,24 @@ export class DocumentService {
       .update(document)
       .set({ title, updatedAt: new Date() })
       .where(eq(document.id, documentId))
-      .returning();
+      .returning(documentMetadata);
+    if (!updated) throw new AppError(404, "Document not found");
     return updated;
+  }
+
+  static async listAccessUserIds(documentId: string): Promise<string[]> {
+    const [storedDocument] = await db
+      .select({ ownerId: document.ownerId })
+      .from(document)
+      .where(eq(document.id, documentId));
+    if (!storedDocument) return [];
+
+    const collaborators = await db
+      .select({ userId: documentCollaborator.userId })
+      .from(documentCollaborator)
+      .where(eq(documentCollaborator.documentId, documentId));
+
+    return [storedDocument.ownerId, ...collaborators.map((row) => row.userId)];
   }
 
   static async deleteDocument(documentId: string): Promise<void> {

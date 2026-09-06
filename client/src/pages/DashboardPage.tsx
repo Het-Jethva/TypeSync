@@ -310,18 +310,14 @@ export default function DashboardPage() {
       setDocuments((current) =>
         current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
-          const newUpdatedAt = isNewerOrEqual(payload.updatedAt, doc.updatedAt)
-            ? payload.updatedAt
-            : doc.updatedAt;
-          return { ...doc, title: payload.title, updatedAt: newUpdatedAt };
+          if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
+          return { ...doc, title: payload.title, updatedAt: payload.updatedAt };
         })
       );
       setRouteDocument((current) => {
         if (current?.id !== payload.documentId) return current;
-        const newUpdatedAt = isNewerOrEqual(payload.updatedAt, current.updatedAt)
-          ? payload.updatedAt
-          : current.updatedAt;
-        return { ...current, title: payload.title, updatedAt: newUpdatedAt };
+        if (!isNewerOrEqual(payload.updatedAt, current.updatedAt)) return current;
+        return { ...current, title: payload.title, updatedAt: payload.updatedAt };
       });
     };
 

@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@typesync/shared": "*",
@@ -35,6 +36,7 @@
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",
-    "typescript": "~5.8.0"
+    "typescript": "~5.8.0",
+    "vitest": "^3.2.4"
   }
 }

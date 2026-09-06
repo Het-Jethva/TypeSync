@@ -2,8 +2,10 @@ import "dotenv/config";
 import { z } from "zod";
 
 const AuthCookieSameSiteSchema = z.enum(["lax", "none"]);
-const DOCUMENTED_PLACEHOLDER_AUTH_SECRET =
-  "your-secret-key-change-in-production";
+const REJECTED_AUTH_SECRETS = new Set([
+  "replace-this-with-a-random-secret-at-least-32-characters",
+  "your-secret-key-change-in-production",
+]);
 
 const DatabaseUrlSchema = z
   .string({ required_error: "is required" })
@@ -38,7 +40,7 @@ const ProductionConfigSchema = z.object({
     .trim()
     .min(32, "must be at least 32 characters")
     .refine(
-      (value) => value !== DOCUMENTED_PLACEHOLDER_AUTH_SECRET,
+      (value) => !REJECTED_AUTH_SECRETS.has(value),
       "must not use the documented placeholder value"
     ),
   BETTER_AUTH_URL: HttpUrlSchema,

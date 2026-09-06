@@ -8,13 +8,12 @@ import {
 } from "@typesync/shared";
 import { asyncHandler } from "../middleware/error.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
+import { isTrustedWebOrigin } from "../lib/origin.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { DocumentService } from "../services/document.service.js";
 import { CollaborativeRoomSession } from "../socket/room-session.js";
-import type { TypeSyncSocketServer } from "../socket/types.js";
 
 export default function createDocumentRoutes(
-  io: TypeSyncSocketServer,
   roomSession: CollaborativeRoomSession,
   accessAuthorizer: DocumentAccessAuthorizer
 ) {
@@ -22,6 +21,17 @@ export default function createDocumentRoutes(
   const IdParamSchema = z.string().uuid();
 
   router.use(requireAuth as any);
+  router.use((req, res, next) => {
+    if (req.method === "GET" || req.method === "HEAD") {
+      next();
+      return;
+    }
+    if (!isTrustedWebOrigin(req.get("origin"), req.get("referer"))) {
+      res.status(403).json({ success: false, error: "Forbidden origin" });
+      return;
+    }
+    next();
+  });
 
   function paramStr(value: string | string[] | undefined): string {
     if (Array.isArray(value)) return value[0] ?? "";
@@ -77,10 +87,14 @@ export default function createDocumentRoutes(
       }
 
       const updated = await DocumentService.updateDocumentTitle(documentId, title);
-      io.to(`doc:${documentId}`).emit("doc:title-updated", {
+      const payload = {
         documentId,
         title: updated.title,
         updatedAt: updated.updatedAt.toISOString(),
+      };
+      const audience = await DocumentService.listAccessUserIds(documentId);
+      roomSession.emitToUsers(audience, (socket) => {
+        socket.emit("doc:title-updated", payload);
       });
       res.json({ success: true, data: updated });
     })

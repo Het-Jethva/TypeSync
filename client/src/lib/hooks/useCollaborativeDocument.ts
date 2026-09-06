@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getSocket } from "../socket";
-import type { PresenceIdentity } from "@typesync/shared";
+import type { PresenceIdentity, Role } from "@typesync/shared";
 import { CollaborativeSyncManager, type SyncState } from "../sync-manager";
 import type { ActiveCollaborator } from "../presence";
 
@@ -101,16 +101,30 @@ export function useCollaborativeDocument(
       }
     };
 
+    const handlePermissionUpdated = (payload: { documentId: string; role: Role }) => {
+      if (payload.documentId !== documentId) return;
+      const current = awareness.getLocalState() as { user?: PresenceIdentity } | null;
+      if (!current?.user) return;
+      awareness.setLocalStateField("user", { ...current.user, role: payload.role });
+    };
+
     const handleDocumentSizeStatus = (payload: any) => {
       if (payload.documentId === documentId) {
         syncManager.setDocumentSizeStatus(payload);
       }
     };
 
+    let failedLoadRetries = 0;
+
     const handleDocError = (payload: { documentId?: string; message: string }) => {
       if (payload.documentId && payload.documentId !== documentId) return;
       const { message } = payload;
       console.error(`Socket document error: ${message}`);
+      if (message === "Failed to load document" && failedLoadRetries < 2) {
+        failedLoadRetries += 1;
+        joinDocument();
+        return;
+      }
       if (
         message === "Access denied" ||
         message === "Failed to load document" ||
@@ -121,9 +135,11 @@ export function useCollaborativeDocument(
     };
 
     function joinDocument() {
+      if (resourceVersions.get(ydoc) !== resourceVersion) return;
       syncManager.cancelDeliveryAttempt();
       syncManager.setConnected(false);
       socket.emit("doc:join", documentId, (result) => {
+        if (resourceVersions.get(ydoc) !== resourceVersion) return;
         if (!result.success) {
           if (result.error !== "Document join was cancelled") {
             handleDocError({ documentId, message: result.error });
@@ -131,8 +147,12 @@ export function useCollaborativeDocument(
           return;
         }
 
+        failedLoadRetries = 0;
         Y.applyUpdate(ydoc, new Uint8Array(result.state), "remote");
-        awareness.setLocalStateField("user", result.presence);
+        awareness.setLocalStateField("user", {
+          ...result.presence,
+          role: result.role,
+        });
         syncManager.setConnected(true);
 
         syncManager.reconcilePendingUpdates(new Uint8Array(result.stateVector));
@@ -153,6 +173,7 @@ export function useCollaborativeDocument(
     socket.on("doc:update", handleUpdate);
     socket.on("awareness:update", handleAwarenessUpdate);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
+    socket.on("doc:permission-updated", handlePermissionUpdated);
     socket.on("doc:size-status", handleDocumentSizeStatus);
     socket.on("doc:error", handleDocError);
     socket.on("connect", joinDocument);
@@ -220,6 +241,7 @@ export function useCollaborativeDocument(
       socket.off("doc:update", handleUpdate);
       socket.off("awareness:update", handleAwarenessUpdate);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
+      socket.off("doc:permission-updated", handlePermissionUpdated);
       socket.off("doc:size-status", handleDocumentSizeStatus);
       socket.off("doc:error", handleDocError);
       socket.off("connect", joinDocument);

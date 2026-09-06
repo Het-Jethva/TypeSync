@@ -114,20 +114,16 @@ npm install
 docker compose up -d
 ```
 
-Create `server/.env` with the local PostgreSQL credentials from
-`docker-compose.yml`:
+Copy `server/.env.example` to `server/.env` and keep the local PostgreSQL
+credentials from `docker-compose.yml`. `dotenv` loads `server/.env` because
+the server scripts run with that working directory.
 
-```dotenv
-DATABASE_URL=postgresql://typesync:typesync_dev@localhost:5432/typesync
-BETTER_AUTH_SECRET=replace-this-with-a-random-secret-at-least-32-characters
-BETTER_AUTH_URL=http://localhost:3000
-VITE_CLIENT_URL=http://localhost:5173
-AUTH_COOKIE_SAME_SITE=lax
-PORT=3000
-NODE_ENV=development
+```bash
+cp server/.env.example server/.env
 ```
 
-Apply the checked-in Drizzle migrations, then start both workspaces:
+Apply the checked-in Drizzle migrations, then start both workspaces.
+`npm run dev` builds `@typesync/shared` first so the server can resolve it:
 
 ```bash
 npm run db:migrate
@@ -145,7 +141,7 @@ needs no client environment file.
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection URL. Required in production and for database-backed local commands. |
-| `BETTER_AUTH_SECRET` | Better Auth signing secret. Production wants at least 32 characters and rejects the placeholder above. |
+| `BETTER_AUTH_SECRET` | Better Auth signing secret. Production wants at least 32 characters and rejects the placeholder in `server/.env.example`. |
 | `BETTER_AUTH_URL` | Public origin of the backend, such as `http://localhost:3000`. Required in production. |
 | `VITE_CLIENT_URL` | Public frontend origin that CORS, the Socket.IO origin check, and Better Auth allow. Defaults to `http://localhost:5173` in development. Required in production. |
 | `AUTH_COOKIE_SAME_SITE` | `lax` or `none`. Use `lax` locally. The cross-origin Vercel-to-Render deployment uses `none` with secure cookies. Required in production. |
@@ -164,10 +160,11 @@ client adds the API paths itself.
 ## Repository commands
 
 ```bash
-npm run dev          # start client and server development processes
+npm run dev          # build shared, then start client and server
 npm run db:migrate   # apply checked-in Drizzle migrations
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 

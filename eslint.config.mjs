@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "server/drizzle/**"],
+    ignores: ["**/dist/**", "**/node_modules/**", "server/drizzle/**", "server/vitest.config.ts"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

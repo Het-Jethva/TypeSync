@@ -43,7 +43,7 @@ export class CollaborativeRoomSession {
     this.getRoomOccupancy = options.getRoomOccupancy ?? (() => 0);
     this.runtime = createDocumentRuntime({
       repository: options.repository,
-      roomOccupancyProvider: (documentId) => this.getRoomOccupancy(documentId),
+      roomOccupancyProvider: (documentId) => this.holdCount(documentId),
       onDocumentSaved: options.onDocumentSaved,
     });
     this.awarenessManager = createAwarenessManager();
@@ -171,10 +171,12 @@ export class CollaborativeRoomSession {
         return { success: false, error: "Document join was cancelled" };
       }
 
-      const presence = this.socketPresences.get(socket.id);
-      if (!presence) {
+      if (!this.socketPresences.has(socket.id)) {
         return { success: false, error: "Document join was cancelled" };
       }
+
+      const presence = this.awarenessManager.presenceFor(socket, currentAccess.role);
+      this.socketPresences.set(socket.id, presence);
 
       const snapshot = this.runtime.snapshotForJoin(documentId);
       socket.join(`doc:${documentId}`);
@@ -313,7 +315,10 @@ export class CollaborativeRoomSession {
 
       const inRoom = socket.rooms.has(roomName);
       if (role) {
-        if (inRoom) this.setRole(socket.id, documentId, role);
+        if (inRoom) {
+          this.setRole(socket.id, documentId, role);
+          this.socketPresences.set(socket.id, this.awarenessManager.presenceFor(socket, role));
+        }
         socket.emit("doc:permission-updated", { documentId, role });
         continue;
       }
@@ -336,11 +341,26 @@ export class CollaborativeRoomSession {
     return false;
   }
 
+  private holdCount(documentId: string): number {
+    const pending = this.pendingJoinCounts.get(documentId) ?? 0;
+    if (pending > 0) return pending;
+    if (this.hasActiveSockets(documentId)) return 1;
+    return this.getRoomOccupancy(documentId);
+  }
+
+  emitToUsers(
+    userIds: Iterable<string>,
+    emit: (socket: TypeSyncSocket) => void
+  ): void {
+    const audience = new Set(userIds);
+    for (const socket of this.sockets.values()) {
+      if (audience.has(socket.data.userId)) emit(socket);
+    }
+  }
+
   async evictIfEmpty(documentId: string): Promise<void> {
-    if ((this.pendingJoinCounts.get(documentId) ?? 0) > 0) return;
-    if (this.hasActiveSockets(documentId)) return;
-    if (this.getRoomOccupancy(documentId) > 0) return;
-    await this.runtime.evictIfEmpty(documentId, 0);
+    if (this.holdCount(documentId) > 0) return;
+    await this.runtime.evictIfEmpty(documentId);
   }
 
   handleDocumentDeleted(documentId: string): void {
@@ -368,8 +388,10 @@ export class CollaborativeRoomSession {
     this.sockets.delete(socket.id);
     this.updateTokens.delete(socket.id);
 
-    for (const documentId of documentIds) {
-      await this.evictIfEmpty(documentId);
+    if (!this.isDraining) {
+      for (const documentId of documentIds) {
+        await this.evictIfEmpty(documentId);
+      }
     }
   }
 

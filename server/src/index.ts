@@ -6,6 +6,7 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
 import { DocumentAccessAuthorizer } from "./services/document-access-authorizer.js";
+import { DocumentService } from "./services/document.service.js";
 import { setupSocket } from "./socket/index.js";
 import { CollaborativeRoomSession } from "./socket/room-session.js";
 import type { TypeSyncSocketServer } from "./socket/types.js";
@@ -23,8 +24,8 @@ if (config.isProduction) {
 }
 const httpServer = createServer(app);
 
-pool.on("error", () => {
-  console.error("Unexpected database pool error");
+pool.on("error", (error) => {
+  console.error("Unexpected database pool error", error);
 });
 
 // ─── Middleware ───────────────────────────────────────────
@@ -57,8 +58,8 @@ app.get("/api/ready", readinessRateLimit, async (_req, res) => {
   try {
     await pool.query("select 1");
     res.json({ status: "ready", timestamp: new Date().toISOString() });
-  } catch {
-    console.error("Database readiness check failed");
+  } catch (error) {
+    console.error("Database readiness check failed", error);
     res.status(503).json({ status: "not_ready", timestamp: new Date().toISOString() });
   }
 });
@@ -69,10 +70,19 @@ const roomSession = new CollaborativeRoomSession({
     return socketServer.current?.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
   },
   onDocumentSaved({ documentId, updatedAt }) {
-    socketServer.current?.to(`doc:${documentId}`).emit("doc:saved", {
+    const payload = {
       documentId,
       updatedAt: updatedAt.toISOString(),
-    });
+    };
+    void DocumentService.listAccessUserIds(documentId)
+      .then((userIds) => {
+        roomSession.emitToUsers(userIds, (socket) => {
+          socket.emit("doc:saved", payload);
+        });
+      })
+      .catch((error) => {
+        console.error(`Failed to notify audience that ${documentId} was saved:`, error);
+      });
   },
 });
 const accessAuthorizer = new DocumentAccessAuthorizer(roomSession);
@@ -85,7 +95,7 @@ socketServer.current = io;
 app.use(
   "/api/documents",
   documentsRateLimit,
-  createDocumentRoutes(io, roomSession, accessAuthorizer)
+  createDocumentRoutes(roomSession, accessAuthorizer)
 );
 
 // ─── Error handler (must come after all routes) ──────────

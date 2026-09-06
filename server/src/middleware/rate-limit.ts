@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { config } from "../config.js";
 
 interface TokenBucket {
   tokens: number;
@@ -45,7 +46,13 @@ export function createRateLimit({
 
   return function rateLimit(req: Request, res: Response, next: NextFunction): void {
     const key = req.ip;
-    if (!key) return next();
+    if (!key) {
+      if (config.isProduction) {
+        res.status(429).json({ success: false, error: "Too many requests" });
+        return;
+      }
+      return next();
+    }
 
     const now = Date.now();
     let bucket = buckets.get(key);
