@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { lazy, Suspense, useState } from "react";
 import { useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
-import { toggleThemeWithTransition } from "../lib/theme";
+import { toggleTheme, type Theme } from "../lib/theme";
 import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
 
 // The editor is the heaviest thing on the page and nothing above it depends
@@ -57,13 +57,9 @@ function DemoFallback() {
 export default function LandingPage() {
   const { data: session } = useSession();
 
-  const [theme, setTheme] = useState<"light" | "dark">(() =>
+  const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light"
   );
-
-  const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
-    toggleThemeWithTransition(theme, setTheme, event);
-  };
 
   const primaryCta = session
     ? { label: "Go to dashboard", to: "/dashboard" }
@@ -82,7 +78,7 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={toggleTheme}
+              onClick={() => toggleTheme(theme, setTheme)}
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               className="touch-target w-8 h-8 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"

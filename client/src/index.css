@@ -207,15 +207,11 @@
   }
 }
 
-/* ─── Accessible control affordances ───────────────────── */
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* Applied to things that are genuinely tapped, rather than to every button on
-   the page — a blanket rule forced icon buttons in dense rows to 44px wide and
-   pushed the toolbar onto three lines. */
 @media (pointer: coarse) {
   .touch-target {
     min-width: 44px;
@@ -555,37 +551,5 @@ body {
 /* ─── Selection ─────────────────────────────────────────── */
 ::selection {
   background: var(--color-accent-light);
-}
-
-/* ─── View Transitions Theme Toggle overrides ───────────── */
-/* Disable transitions on all elements during view-transition to capture final state immediately */
-html.no-transitions *,
-html.no-transitions {
-  transition: none !important;
-}
-
-::view-transition-group(root) {
-  animation: none;
-}
-
-::view-transition-old(root) {
-  animation: none;
-  mix-blend-mode: normal;
-  z-index: 1;
-}
-
-::view-transition-new(root) {
-  animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) reveal;
-  mix-blend-mode: normal;
-  z-index: 9999;
-}
-
-@keyframes reveal {
-  from {
-    clip-path: circle(0px at var(--theme-x) var(--theme-y));
-  }
-  to {
-    clip-path: circle(var(--theme-r) at var(--theme-x) var(--theme-y));
-  }
 }
 

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
 import type { DocumentWithRole, Role } from "@typesync/shared";
-import { toggleThemeWithTransition } from "../lib/theme";
+import { toggleTheme, type Theme } from "../lib/theme";
 import { useConfirm } from "../lib/confirm-context";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
 import { Select } from "./Select";
@@ -101,9 +101,9 @@ export function Sidebar({
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
 
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return document.documentElement.classList.contains("dark") ? "dark" : "light";
-  });
+  const [theme, setTheme] = useState<Theme>(() =>
+    document.documentElement.classList.contains("dark") ? "dark" : "light"
+  );
   const [sortBy, setSortBy] = useState<SortBy>("updated");
 
   const beginRename = (id: string, title: string) => setRenaming({ id, value: title });
@@ -114,10 +114,6 @@ export function Sidebar({
     const original = documents.find((doc) => doc.id === renaming.id)?.title;
     if (trimmed && trimmed !== original) onRenameDocument(renaming.id, trimmed);
     setRenaming(null);
-  };
-
-  const toggleTheme = (e: React.MouseEvent<HTMLButtonElement>) => {
-    toggleThemeWithTransition(theme, setTheme, e);
   };
 
   // Filtering is the server's job now; ordering stays local to the loaded page.
@@ -479,7 +475,7 @@ export function Sidebar({
           Sign out
         </button>
         <button
-          onClick={toggleTheme}
+          onClick={() => toggleTheme(theme, setTheme)}
           aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           className="touch-target w-7 h-7 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer shrink-0"
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
