@@ -1,0 +1,13 @@
+node_modules
+client/*
+!client/package.json
+**/dist
+.git
+.gitignore
+.env
+.env.example
+README.md
+docker-compose.yml
+*.tsbuildinfo
+.vscode/
+.idea/

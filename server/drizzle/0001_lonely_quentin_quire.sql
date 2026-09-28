@@ -1,0 +1,2 @@
+CREATE INDEX "document_owner_id_updated_at_idx" ON "document" USING btree ("owner_id","updated_at");--> statement-breakpoint
+CREATE INDEX "document_updated_at_idx" ON "document" USING btree ("updated_at");

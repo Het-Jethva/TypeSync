@@ -1,0 +1,591 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens (Default: Light Mode) ────────────────── */
+@theme {
+  --color-bg-primary: #faf8f5;
+  --color-bg-secondary: #f3f0ea;
+  --color-bg-tertiary: #e6e1d6;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #ebe6db;
+
+  --color-border: rgba(46, 42, 37, 0.06);
+  --color-border-strong: rgba(46, 42, 37, 0.12);
+  --color-border-accent: rgba(194, 89, 63, 0.25);
+
+  --color-text-primary: #1e1c19;
+  --color-text-secondary: #514c44;
+  --color-text-muted: #696257;
+
+  --color-accent: #a3442d;
+  --color-accent-hover: #8f3825;
+  --color-accent-light: rgba(163, 68, 45, 0.08);
+  --color-accent-glow: rgba(163, 68, 45, 0.15);
+
+  --color-success: #2e624a;
+  --color-error: #a83a32;
+  --color-warning: #895a16;
+
+  --font-sans: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Interface type scale. `ui` is the body size for all chrome and matches the
+     button label size, so controls never read larger than the text around them.
+     `micro` is a hard floor — nothing in the interface goes below it. Document
+     content is deliberately outside this scale; see `.tiptap` below. */
+  --text-micro: 0.6875rem; /* 11px */
+  --text-micro--line-height: 1.45;
+  --text-meta: 0.75rem; /* 12px */
+  --text-meta--line-height: 1.5;
+  --text-ui: 0.8125rem; /* 13px */
+  --text-ui--line-height: 1.5;
+  --text-title: 0.9375rem; /* 15px */
+  --text-title--line-height: 1.4;
+  --text-display: 1.125rem; /* 18px */
+  --text-display--line-height: 1.3;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+}
+
+/* ─── Dark Mode Overrides (Linear Charcoal Style) ────────── */
+.dark {
+  --color-bg-primary: #121110;
+  --color-bg-secondary: #1a1917;
+  --color-bg-tertiary: #262421;
+  --color-bg-elevated: #1a1917;
+  --color-bg-hover: #2b2825;
+
+  --color-border: rgba(240, 235, 225, 0.08);
+  --color-border-strong: rgba(240, 235, 225, 0.15);
+  --color-border-accent: rgba(219, 114, 88, 0.35);
+
+  --color-text-primary: #f2ede4;
+  --color-text-secondary: #c6bdaf;
+  --color-text-muted: #aaa294;
+
+  --color-accent: #db7258;
+  --color-accent-hover: #e17b62;
+  --color-accent-light: rgba(219, 114, 88, 0.12);
+  --color-accent-glow: rgba(219, 114, 88, 0.25);
+
+  --color-success: #67a087;
+  --color-error: #e17b72;
+  --color-warning: #d99a4c;
+}
+
+/* ─── Tactile Button Utilities (Linear Aesthetic) ────────── */
+.btn-linear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.btn-linear:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-text-muted);
+}
+
+.btn-linear:active {
+  transform: translateY(0.5px);
+}
+
+.btn-linear-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-accent);
+  background-color: var(--color-accent);
+  color: #faf8f5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.dark .btn-linear-primary {
+  color: #121110;
+}
+
+.btn-linear-primary:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.btn-linear-primary:active {
+  transform: translateY(0.5px);
+}
+
+.btn-linear-primary:disabled {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn-linear-primary:disabled:hover,
+.btn-linear-primary:disabled:active {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-strong);
+  transform: none;
+}
+
+.btn-linear-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-error);
+  background-color: var(--color-error);
+  color: #faf8f5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.dark .btn-linear-danger {
+  color: #121110;
+}
+
+.btn-linear-danger:hover {
+  filter: brightness(0.94);
+}
+
+.btn-linear-danger:active {
+  transform: translateY(0.5px);
+}
+
+/* ─── Dialog ────────────────────────────────────────────── */
+/* The panel is centred by transform, so its entrance animates the same
+   transform rather than fighting a utility class for it. */
+.dialog-panel {
+  transform: translate(-50%, -50%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog-backdrop {
+    animation: dialog-backdrop-in 150ms ease-out;
+  }
+
+  .dialog-panel {
+    animation: dialog-panel-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-panel-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.97);
+  }
+}
+
+/* ─── Accessible control affordances ───────────────────── */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Applied to things that are genuinely tapped, rather than to every button on
+   the page — a blanket rule forced icon buttons in dense rows to 44px wide and
+   pushed the toolbar onto three lines. */
+@media (pointer: coarse) {
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  select,
+  input,
+  textarea {
+    min-height: 44px;
+  }
+}
+
+/* Horizontal strips that must stay one line on narrow screens. */
+.scroll-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-row > * {
+  flex-shrink: 0;
+}
+
+/* ─── Base ──────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+/* Smooth transition elements for dark mode */
+.h-screen,
+.bg-bg-primary,
+.bg-bg-secondary,
+.bg-bg-elevated,
+.border,
+.border-b,
+.border-r,
+.text-text-primary,
+.text-text-secondary,
+.text-text-muted,
+.btn-linear,
+.btn-linear-primary,
+.tiptap {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease, transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ─── Tiptap Editor Styles ──────────────────────────────── */
+.tiptap {
+  outline: none;
+  min-height: 400px;
+  padding: 1.5rem 1rem;
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  color: var(--color-text-primary);
+}
+
+@media (min-width: 640px) {
+  .tiptap {
+    padding: 2.5rem 2rem;
+  }
+}
+
+.tiptap p {
+  margin: 1.25em 0;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
+.tiptap h1 {
+  font-size: 2.125rem;
+  font-weight: 700;
+  margin: 1.8em 0 0.6em;
+}
+
+.tiptap h2 {
+  font-size: 1.5rem;
+  margin: 1.5em 0 0.5em;
+}
+
+.tiptap h3 {
+  font-size: 1.2rem;
+  margin: 1.2em 0 0.5em;
+}
+
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  font-size: 1rem;
+  margin: 1.2em 0 0.5em;
+}
+
+.tiptap blockquote {
+  border-left: 2px solid var(--color-accent);
+  padding-left: 1.25rem;
+  margin: 1.5em 0;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.tiptap ul,
+.tiptap ol {
+  padding-left: 1.75rem;
+  margin: 1.25em 0;
+}
+
+.tiptap li {
+  margin: 0.4em 0;
+}
+
+/* List items wrap their text in a paragraph, which would otherwise carry the
+   full paragraph margin and open a gap above the first line. Task items nest
+   theirs one level deeper inside a wrapper, so this is a descendant match
+   rather than a child one. Inner spacing is kept, so an item with several
+   paragraphs still reads as several. */
+.tiptap li p:first-child {
+  margin-top: 0;
+}
+
+.tiptap li p:last-child {
+  margin-bottom: 0;
+}
+
+.tiptap code {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.15em 0.35em;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+}
+
+.tiptap pre {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.tiptap pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.tiptap hr {
+  border: none;
+  border-top: 1px solid var(--color-border-strong);
+  margin: 2em 0;
+}
+
+.tiptap a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  color: var(--color-accent-hover);
+}
+
+.tiptap img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  margin: 1em 0;
+}
+
+.tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--color-border-strong);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.tiptap th {
+  background: var(--color-bg-tertiary);
+  font-weight: 600;
+}
+
+/* Task list */
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* The box is centred against the first line of text by matching the editor's
+   line height, so it stays aligned at any font size. */
+.tiptap ul[data-type="taskList"] li > label {
+  display: flex;
+  align-items: center;
+  height: 1.8em;
+  margin: 0;
+  user-select: none;
+}
+
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tiptap ul[data-type="taskList"] li input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Collaboration cursor position marker */
+.collaboration-carets__marker {
+  position: relative;
+  border-left: 2px solid transparent;
+  border-right: none;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  word-break: normal;
+}
+
+/* Persistent overlay allows remote carets to animate between text positions. */
+.collaboration-carets__overlay {
+  --collaboration-caret-color: var(--color-accent);
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  display: block;
+  width: 0;
+  min-height: 20px;
+  border-left: 2px solid var(--collaboration-caret-color);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.collaboration-carets__overlay.is-ready {
+  transition:
+    transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.collaboration-carets__overlay-label {
+  position: absolute;
+  top: -1.5em;
+  left: -2px;
+  padding: 1px 6px;
+  border-radius: 4px 4px 4px 0;
+  background: var(--collaboration-caret-color);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  height: 0;
+}
+
+/* ─── Selection ─────────────────────────────────────────── */
+::selection {
+  background: var(--color-accent-light);
+}
+
+/* ─── View Transitions Theme Toggle overrides ───────────── */
+/* Disable transitions on all elements during view-transition to capture final state immediately */
+html.no-transitions *,
+html.no-transitions {
+  transition: none !important;
+}
+
+::view-transition-group(root) {
+  animation: none;
+}
+
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  animation: 450ms cubic-bezier(0.4, 0, 0.2, 1) reveal;
+  mix-blend-mode: normal;
+  z-index: 9999;
+}
+
+@keyframes reveal {
+  from {
+    clip-path: circle(0px at var(--theme-x) var(--theme-y));
+  }
+  to {
+    clip-path: circle(var(--theme-r) at var(--theme-x) var(--theme-y));
+  }
+}
+
