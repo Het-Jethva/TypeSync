@@ -1,4 +1,5 @@
 import { Server as HttpServer } from "http";
+import { isIP } from "node:net";
 import { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
 import type {
@@ -8,7 +9,7 @@ import type {
   ServerToClientEvents,
 } from "@typesync/shared";
 import { config } from "../config.js";
-import { auth } from "../lib/auth.js";
+import { AUTH_CLIENT_IP_HEADER, auth } from "../lib/auth.js";
 import { isTrustedWebOrigin } from "../lib/origin.js";
 import { sessionCacheHit, sessionRecheck } from "../lib/session-recheck.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
@@ -26,6 +27,16 @@ const SESSION_CHECK_UNAVAILABLE_COOLDOWN_MS = 5_000;
 const SESSION_CHECK_UNAVAILABLE_ERROR = "Session check unavailable";
 const DocumentIdSchema = z.string().uuid();
 const MAX_SOCKET_BUFFER_BYTES = 12 * 1024 * 1024;
+
+function socketClientIp(socket: TypeSyncSocket): string {
+  if (config.isProduction) {
+    const forwarded = socket.handshake.headers["x-forwarded-for"];
+    const forwardedValue = Array.isArray(forwarded) ? forwarded.at(-1) : forwarded;
+    const nearest = forwardedValue?.split(",").at(-1)?.trim();
+    if (nearest && isIP(nearest)) return nearest;
+  }
+  return socket.handshake.address;
+}
 
 async function ensureSocketSession(
   socket: TypeSyncSocket,
@@ -56,6 +67,7 @@ async function ensureSocketSession(
 
   const headers = new Headers();
   headers.set("cookie", socket.data.authCookie);
+  headers.set(AUTH_CLIENT_IP_HEADER, socket.data.clientIp);
   const validation = Promise.resolve()
     .then(() => auth.api.getSession({ headers }))
     .then((session): SocketSessionCheck =>
@@ -117,6 +129,8 @@ export function setupSocket(
       const cookies = socket.handshake.headers.cookie || "";
       const headers = new Headers();
       headers.set("cookie", cookies);
+      const clientIp = socketClientIp(socket);
+      headers.set(AUTH_CLIENT_IP_HEADER, clientIp);
 
       const session = await auth.api.getSession({ headers });
       if (!session) return next(new Error("Unauthorized"));
@@ -125,6 +139,7 @@ export function setupSocket(
       socket.data.userName = session.user.name;
       socket.data.userEmail = session.user.email;
       socket.data.authCookie = cookies;
+      socket.data.clientIp = clientIp;
       socket.data.sessionId = session.session.id;
       socket.data.lastSessionValidation = Date.now();
       next();

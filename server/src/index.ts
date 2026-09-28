@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
-import { auth } from "./lib/auth.js";
+import { AUTH_CLIENT_IP_HEADER, auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
 import { DocumentAccessAuthorizer } from "./services/document-access-authorizer.js";
 import { DocumentService } from "./services/document.service.js";
@@ -48,9 +48,9 @@ app.all("/api/auth/*splat", (req, _res, next) => {
   // allowlist. Express has already resolved the client through the one Render
   // edge hop above. Overwrite this header so callers cannot choose their own IP.
   if (req.ip) {
-    req.headers["x-typesync-client-ip"] = req.ip;
+    req.headers[AUTH_CLIENT_IP_HEADER] = req.ip;
   } else {
-    delete req.headers["x-typesync-client-ip"];
+    delete req.headers[AUTH_CLIENT_IP_HEADER];
   }
   next();
 }, toNodeHandler(auth));

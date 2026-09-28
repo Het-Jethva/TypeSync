@@ -12,6 +12,7 @@ export interface SocketData {
   userName: string;
   userEmail: string;
   authCookie: string;
+  clientIp: string;
   sessionId: string;
   /** Timestamp of the last lookup that resolved to a matching session. */
   lastSessionValidation: number;

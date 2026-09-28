@@ -4,6 +4,8 @@ import { db } from "../db/index.js";
 import * as schema from "../db/schema.js";
 import { config } from "../config.js";
 
+export const AUTH_CLIENT_IP_HEADER = "x-typesync-client-ip";
+
 export const auth = betterAuth({
   secret: config.betterAuthSecret,
   database: drizzleAdapter(db, {
@@ -28,7 +30,7 @@ export const auth = betterAuth({
   baseURL: config.betterAuthUrl,
   advanced: {
     ipAddress: {
-      ipAddressHeaders: ["x-typesync-client-ip"],
+      ipAddressHeaders: [AUTH_CLIENT_IP_HEADER],
     },
     defaultCookieAttributes: {
       sameSite: config.authCookieSameSite,

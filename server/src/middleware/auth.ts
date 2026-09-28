@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "../lib/auth.js";
+import { AUTH_CLIENT_IP_HEADER, auth } from "../lib/auth.js";
 import { AppError } from "./error.js";
 
 export interface AuthenticatedUser {
@@ -27,8 +27,14 @@ export async function requireAuth(
   next: NextFunction
 ): Promise<void> {
   try {
+    const headers = fromNodeHeaders(req.headers);
+    if (req.ip) {
+      headers.set(AUTH_CLIENT_IP_HEADER, req.ip);
+    } else {
+      headers.delete(AUTH_CLIENT_IP_HEADER);
+    }
     const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
+      headers,
     });
 
     if (!session) {
