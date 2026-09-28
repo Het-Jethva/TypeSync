@@ -43,7 +43,17 @@ app.use(
 app.use(express.json());
 
 // ─── Better Auth handler ─────────────────────────────────
-app.all("/api/auth/*splat", toNodeHandler(auth));
+app.all("/api/auth/*splat", (req, _res, next) => {
+  // Better Auth rejects a multi-hop X-Forwarded-For chain without a proxy
+  // allowlist. Express has already resolved the client through the one Render
+  // edge hop above. Overwrite this header so callers cannot choose their own IP.
+  if (req.ip) {
+    req.headers["x-typesync-client-ip"] = req.ip;
+  } else {
+    delete req.headers["x-typesync-client-ip"];
+  }
+  next();
+}, toNodeHandler(auth));
 
 // ─── Health check ────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

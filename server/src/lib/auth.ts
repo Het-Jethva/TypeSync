@@ -27,6 +27,9 @@ export const auth = betterAuth({
   ],
   baseURL: config.betterAuthUrl,
   advanced: {
+    ipAddress: {
+      ipAddressHeaders: ["x-typesync-client-ip"],
+    },
     defaultCookieAttributes: {
       sameSite: config.authCookieSameSite,
       secure: config.isProduction || config.authCookieSameSite === "none",
