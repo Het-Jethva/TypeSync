@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useEditor, useEditorState, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
 import CharacterCount from "@tiptap/extension-character-count";
 
 import Image from "@tiptap/extension-image";
@@ -100,7 +99,6 @@ export function Editor({
             autolink: true,
           },
         }),
-        Underline,
         CharacterCount,
         Image.configure({
           inline: false,
