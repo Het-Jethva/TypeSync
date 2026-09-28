@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -44,7 +43,6 @@ export function LandingEditorDemo() {
         codeBlock: false,
         link: { openOnClick: false, autolink: true },
       }),
-      Underline,
       // The toolbar is shared with the app, so the demo carries every
       // extension it can drive. Anything missing would be a button that
       // silently does nothing.
