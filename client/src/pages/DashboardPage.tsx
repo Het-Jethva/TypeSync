@@ -150,16 +150,12 @@ export default function DashboardPage() {
     documentsRef.current = documents;
   }, [documents]);
 
-  const routeDocumentIsInList = documents.some(
-    (document) => document.id === documentId
-  );
-
   useEffect(() => {
     const requestGeneration = ++routeDocumentRequestGenerationRef.current;
     setRouteDocument(null);
     setRouteDocumentError(null);
 
-    if (!documentId || routeDocumentIsInList) {
+    if (!documentId) {
       setIsRouteDocumentLoading(false);
       return;
     }
@@ -185,7 +181,7 @@ export default function DashboardPage() {
         setIsRouteDocumentLoading(false);
       }
     );
-  }, [documentId, routeDocumentIsInList, routeDocumentRequestNonce]);
+  }, [documentId, routeDocumentRequestNonce]);
 
   const fetchDocuments = useCallback(async () => {
     const requestGeneration = ++documentsRequestGenerationRef.current;
@@ -521,16 +517,13 @@ export default function DashboardPage() {
     void fetchDocuments();
   }, [fetchDocuments]);
 
-  const currentDoc =
-    documents.find((document) => document.id === documentId) ??
-    (routeDocument?.id === documentId ? routeDocument : undefined);
+  const currentDoc = routeDocument?.id === documentId ? routeDocument : undefined;
   const routeDocumentNotFound =
     routeDocumentError instanceof ApiError &&
     (routeDocumentError.status === 403 || routeDocumentError.status === 404);
   const isFetchingRouteDoc =
     isRouteDocumentLoading ||
     (Boolean(documentId) &&
-      !routeDocumentIsInList &&
       routeDocument?.id !== documentId &&
       !routeDocumentError);
 
