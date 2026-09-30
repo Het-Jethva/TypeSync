@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import type { DocumentSizeStatus } from "@typesync/shared";
 import type { DocumentStateRepository } from "./repository.js";
@@ -24,7 +25,7 @@ export interface DocumentRuntime {
     state: Uint8Array;
     stateVector: Uint8Array;
     sizeStatus: DocumentSizeStatus | null;
-    epoch: number;
+    epoch: string;
     persistedRevision: number;
   };
   applyUpdate(documentId: string, update: Uint8Array): DocumentUpdateResult;
@@ -34,7 +35,7 @@ export interface DocumentRuntime {
 }
 
 export type DocumentUpdateResult =
-  | { kind: "accepted"; status: DocumentSizeStatus | null; revision: number; epoch: number }
+  | { kind: "accepted"; status: DocumentSizeStatus | null; revision: number; epoch: string }
   | { kind: "update-too-large"; status: DocumentSizeStatus }
   | { kind: "document-too-large"; status: DocumentSizeStatus }
   | { kind: "not-loaded" }
@@ -82,7 +83,7 @@ export interface DocumentRuntimeOptions {
     documentId: string;
     updatedAt: Date;
     revision: number;
-    epoch: number;
+    epoch: string;
   }) => void;
   sizeLimits?: DocumentSizeLimits;
 }
@@ -101,16 +102,14 @@ export function createDocumentRuntime(
   const persistenceStates = new Map<string, PersistenceState>();
   const documentSizeStates = new Map<string, DocumentSizeState>();
   const documentRevisions = new Map<string, number>();
-  const documentEpochs = new Map<string, number>();
+  const documentEpochs = new Map<string, string>();
   /** Highest encoded revision written to PostgreSQL for the current epoch. */
   const documentPersistedRevisions = new Map<string, number>();
-  let nextPersistenceEpoch = 1;
 
-  function assignPersistenceEpoch(docId: string): number {
+  function assignPersistenceEpoch(docId: string): string {
     const existing = documentEpochs.get(docId);
     if (existing !== undefined) return existing;
-    const epoch = nextPersistenceEpoch;
-    nextPersistenceEpoch += 1;
+    const epoch = randomUUID();
     documentEpochs.set(docId, epoch);
     return epoch;
   }

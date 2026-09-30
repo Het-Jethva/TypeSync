@@ -61,8 +61,8 @@ export class CollaborativeSyncManager {
     awaitingPersistence: false,
   };
 
-  /** 0 until a join or an ack names the server runtime. */
-  private persistenceEpoch = 0;
+  /** Null until a join or an ack names the server runtime. */
+  private persistenceEpoch: string | null = null;
   /** Revision on the latest successful ack. Persistence must catch up to this. */
   private ackedRevision = 0;
   /** Highest saved revision in `persistenceEpoch` that covered the latest ack. */
@@ -137,7 +137,7 @@ export class CollaborativeSyncManager {
    * Another runtime's epoch does not count. A revision older than the latest
    * ack is an in-flight save from before that edit and does not count.
    */
-  notePersisted(epoch: number, revision: number): void {
+  notePersisted(epoch: string, revision: number): void {
     if (this.disposed || epoch !== this.persistenceEpoch || revision < this.ackedRevision) return;
     const nextPersisted = Math.max(this.persistedRevision, revision);
     if (nextPersisted === this.persistedRevision) return;
@@ -150,7 +150,7 @@ export class CollaborativeSyncManager {
    * The server revision is not an ack: other people's saves must not look
    * like this client's, and a higher local ack stays unsynced until it catches up.
    */
-  noteServerPersistence(epoch: number, serverPersistedRevision: number): void {
+  noteServerPersistence(epoch: string, serverPersistedRevision: number): void {
     if (this.disposed) return;
     if (epoch !== this.persistenceEpoch) {
       this.persistenceEpoch = epoch;
@@ -358,13 +358,11 @@ export class CollaborativeSyncManager {
 
         this.pendingBatches.shift();
         this.retryAttempt = 0;
-        // A new runtime's epoch replaces the cursor. A lower ack is a restart
-        // the join has not replaced, so the previous snapshot revision must not count.
+        // Only saves from the acknowledged runtime can cover these edits.
         if (result.epoch !== this.persistenceEpoch) {
           this.persistenceEpoch = result.epoch;
           this.persistedRevision = 0;
         }
-        if (result.revision < this.ackedRevision) this.persistedRevision = 0;
         this.ackedRevision = result.revision;
         const acceptedUpdate =
           this.state.documentSizeStatus?.reason === "update"

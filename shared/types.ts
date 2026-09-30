@@ -110,7 +110,7 @@ export type DocumentUpdateErrorCode =
   | "document-not-loaded";
 
 export type DocumentUpdateResult =
-  | { success: true; revision: number; epoch: number }
+  | { success: true; revision: number; epoch: string }
   | {
       success: false;
       code: DocumentUpdateErrorCode;
@@ -133,8 +133,8 @@ export type DocumentJoinResult =
       stateVector: Uint8Array;
       role: Role;
       presence: PresenceIdentity;
-      /** In-memory runtime generation. A new load after discard gets the next value. */
-      epoch: number;
+      /** Unique document runtime generation, including across server restarts. */
+      epoch: string;
       /** Highest revision of this epoch written to PostgreSQL. 0 if this epoch has not saved. */
       persistedRevision: number;
     }
@@ -154,7 +154,7 @@ export interface ServerToClientEvents {
     documentId: string;
     updatedAt: string;
     revision: number;
-    epoch: number;
+    epoch: string;
   }) => void;
   "doc:size-status": (payload: DocumentSizeStatus) => void;
   "doc:error": (payload: { documentId?: string; message: string }) => void;
