@@ -218,23 +218,21 @@ export class CollaborativeSyncManager {
       this.refreshPendingState();
       return;
     }
-    this.deliveryBlocked = false;
     this.retryAttempt = 0;
     if (!this.permissionHold) {
       this.updateState({ syncError: null, isSyncBlocked: false });
     }
-    this.pendingBatches.unshift(...this.acknowledgedBatches);
+    this.pendingBatches = [...this.acknowledgedBatches, ...this.pendingBatches];
     this.acknowledgedBatches = [];
     this.refreshPendingState();
     if (this.permissionHold) return;
     this.flushPendingUpdates();
   }
 
-  flushPendingUpdates(socketConnected = true): void {
+  private flushPendingUpdates(): void {
     if (
       this.disposed ||
       !this.joined ||
-      !socketConnected ||
       this.deliveryBlocked ||
       this.permissionHold ||
       this.retryTimer !== undefined ||
@@ -266,10 +264,7 @@ export class CollaborativeSyncManager {
 
         this.activeBatchId = null;
         if (error || result === undefined) {
-          this.scheduleRetry(
-            socketConnected,
-            "The server did not acknowledge these changes. Retrying…"
-          );
+          this.scheduleRetry("The server did not acknowledge these changes. Retrying…");
           return;
         }
 
@@ -279,7 +274,7 @@ export class CollaborativeSyncManager {
             result.code === "rate-limited" ||
             result.code === "unavailable"
           ) {
-            this.scheduleRetry(socketConnected, `${result.error}. Retrying…`);
+            this.scheduleRetry(`${result.error}. Retrying…`);
             return;
           }
           if (
@@ -302,7 +297,7 @@ export class CollaborativeSyncManager {
               this.permissionHold = false;
               this.updateState({ syncError: null, isSyncBlocked: false });
               this.refreshPendingState();
-              this.flushPendingUpdates(socketConnected);
+              this.flushPendingUpdates();
               return;
             }
 
@@ -343,7 +338,7 @@ export class CollaborativeSyncManager {
             : {};
         this.updateState({ syncError: null, isSyncBlocked: false, ...acceptedUpdate });
         this.refreshPendingState();
-        this.flushPendingUpdates(socketConnected);
+        this.flushPendingUpdates();
       }
     );
   }
@@ -361,12 +356,11 @@ export class CollaborativeSyncManager {
     this.updateState({ retrying: false });
   }
 
-  private scheduleRetry(socketConnected: boolean, message: string): void {
+  private scheduleRetry(message: string): void {
     if (
       this.disposed ||
       this.retryTimer ||
       !this.joined ||
-      !socketConnected ||
       this.deliveryBlocked ||
       this.permissionHold
     ) {
@@ -382,7 +376,7 @@ export class CollaborativeSyncManager {
     this.retryAttempt += 1;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;
-      this.flushPendingUpdates(socketConnected);
+      this.flushPendingUpdates();
     }, delay);
   }
 
