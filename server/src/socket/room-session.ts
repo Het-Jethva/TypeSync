@@ -265,7 +265,7 @@ export class CollaborativeRoomSession {
 
   async leaveSession(socket: TypeSyncSocket, documentId: string): Promise<void> {
     this.advanceJoinGeneration(socket.id, documentId);
-    this.releaseAwarenessBinding(socket, documentId);
+    this.awarenessManager.releaseBinding(socket, documentId);
     socket.leave(`doc:${documentId}`);
     this.clearRole(socket.id, documentId);
     if (!this.isDraining) {
@@ -348,23 +348,17 @@ export class CollaborativeRoomSession {
     );
   }
 
-  private releaseAwarenessBinding(socket: TypeSyncSocket, documentId: string): void {
-    this.awarenessManager.releaseBinding(socket, documentId);
-  }
-
   private removeSocketDocumentAccess(
     socket: TypeSyncSocket,
     documentId: string
-  ): boolean {
+  ): void {
     const roomName = `doc:${documentId}`;
-    const wasInRoom = socket.rooms.has(roomName);
     if (this.socketJoinGenerations.get(socket.id)?.has(documentId)) {
       this.advanceJoinGeneration(socket.id, documentId);
     }
-    this.releaseAwarenessBinding(socket, documentId);
+    this.awarenessManager.releaseBinding(socket, documentId);
     socket.leave(roomName);
     this.clearRole(socket.id, documentId);
-    return wasInRoom;
   }
 
   reconcileAccessChange(
@@ -437,10 +431,12 @@ export class CollaborativeRoomSession {
     await this.runtime.evictIfEmpty(documentId);
   }
 
-  handleDocumentDeleted(documentId: string): void {
+  handleDocumentDeleted(documentId: string, userIds: Iterable<string>): void {
+    const audience = new Set(userIds);
     for (const socket of this.sockets.values()) {
-      const wasInRoom = this.removeSocketDocumentAccess(socket, documentId);
-      if (wasInRoom) {
+      const shouldNotify = audience.has(socket.data.userId) || socket.rooms.has(`doc:${documentId}`);
+      this.removeSocketDocumentAccess(socket, documentId);
+      if (shouldNotify) {
         this.notifySocket(socket, () => socket.emit("doc:permission-revoked", { documentId }));
       }
     }
@@ -452,7 +448,7 @@ export class CollaborativeRoomSession {
   async handleDisconnect(socket: TypeSyncSocket): Promise<void> {
     const documentIds = [...(this.socketRoles.get(socket.id)?.keys() ?? [])];
     for (const documentId of documentIds) {
-      this.releaseAwarenessBinding(socket, documentId);
+      this.awarenessManager.releaseBinding(socket, documentId);
       this.clearRole(socket.id, documentId);
     }
     this.awarenessManager.forgetSocket(socket.id);

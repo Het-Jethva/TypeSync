@@ -306,7 +306,7 @@ export function createAwarenessManager(): AwarenessManager {
 
       socket.to(`doc:${documentId}`).emit("awareness:update", {
         documentId,
-        update: encodeAwarenessEntry(binding.clientId, binding.clock + 1, null),
+        update: encodeAwarenessEntry(binding.clientId, binding.clock, null),
       });
       forgetAwarenessBinding(socket.id, documentId);
     },

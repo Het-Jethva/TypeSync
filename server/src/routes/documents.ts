@@ -105,8 +105,9 @@ export default function createDocumentRoutes(
     asyncHandler(async (req, res) => {
       const documentId = uuidParam(req.params.id);
       await accessAuthorizer.requireDocumentRole(documentId, authenticatedUser(req).id, "owner");
+      const audience = await DocumentService.listAccessUserIds(documentId);
       await DocumentService.deleteDocument(documentId);
-      roomSession.handleDocumentDeleted(documentId);
+      roomSession.handleDocumentDeleted(documentId, audience);
       res.json({ success: true });
     })
   );
