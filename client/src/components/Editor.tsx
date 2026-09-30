@@ -70,9 +70,7 @@ export function Editor({
     recover,
   } = useCollaborativeDocument(documentId, onCollaboratorsChange, onAccessLost);
   const effectiveRole = sessionRole ?? role;
-  const documentFull =
-    documentSizeStatus?.level === "limit" && documentSizeStatus.reason === "document";
-  const canEdit = canEditDocument(effectiveRole) && !documentFull && !isSyncBlocked;
+  const canEdit = canEditDocument(effectiveRole) && !isSyncBlocked;
 
   // The guarded form is what gets published, so no caller can discard unsynced
   // edits without asking first.
@@ -188,7 +186,7 @@ export function Editor({
     },
     // `canEdit` is deliberately absent: a dependency change destroys and
     // recreates the editor, which drops selection, focus and scroll position.
-    // It flips on role change, on the document size limit, and on sync being
+    // It flips on role change and on sync being
     // blocked — the last of which is the worst moment to move the caret. The
     // effect below applies it to the live instance instead.
     [documentId, ydoc, awareness]

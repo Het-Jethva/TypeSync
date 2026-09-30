@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const DOCUMENT_MAX_UPDATE_BYTES = 12 * 1024 * 1024;
+
 export const RoleSchema = z.enum(["owner", "editor", "viewer"]);
 export type Role = z.infer<typeof RoleSchema>;
 
@@ -161,7 +163,7 @@ export interface ServerToClientEvents {
 
 export interface DocumentSizeStatus {
   documentId: string;
-  level: "warning" | "limit";
+  level: "ok" | "warning" | "limit";
   reason: "update" | "document";
   bytes: number;
   maxBytes: number;

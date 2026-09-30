@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
-import type { DocumentSizeStatus } from "@typesync/shared";
+import { DOCUMENT_MAX_UPDATE_BYTES, type DocumentSizeStatus } from "@typesync/shared";
 import type { DocumentStateRepository } from "./repository.js";
 
 interface PersistenceState {
@@ -11,12 +11,6 @@ interface PersistenceState {
   maxWaitTimer?: NodeJS.Timeout;
   retryTimer?: NodeJS.Timeout;
   cancelled: boolean;
-}
-
-interface DocumentSizeState {
-  encodedBytes: number;
-  pendingUpdateBytes: number;
-  warningEmitted: boolean;
 }
 
 export interface DocumentRuntime {
@@ -47,14 +41,10 @@ export interface DocumentSizeLimits {
 }
 
 const defaultDocumentSizeLimits: DocumentSizeLimits = {
-  maxUpdateBytes: 1024 * 1024,
+  maxUpdateBytes: DOCUMENT_MAX_UPDATE_BYTES,
   warningBytes: 8 * 1024 * 1024,
   maxStateBytes: 10 * 1024 * 1024,
 };
-
-type UpdatePreflight =
-  | { decision: "allow"; status: DocumentSizeStatus | null }
-  | { decision: "reject"; status: DocumentSizeStatus };
 
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
@@ -64,11 +54,10 @@ function sizeStatus(
   documentId: string,
   bytes: number,
   limits: DocumentSizeLimits
-): DocumentSizeStatus | null {
-  if (bytes < limits.warningBytes) return null;
+): DocumentSizeStatus {
   return {
     documentId,
-    level: bytes >= limits.maxStateBytes ? "limit" : "warning",
+    level: bytes >= limits.maxStateBytes ? "limit" : bytes >= limits.warningBytes ? "warning" : "ok",
     reason: "document",
     bytes,
     maxBytes: limits.maxStateBytes,
@@ -99,7 +88,6 @@ export function createDocumentRuntime(
   const loadedDocs = new Set<string>();
   const loadingDocs = new Map<string, Promise<void>>();
   const persistenceStates = new Map<string, PersistenceState>();
-  const documentSizeStates = new Map<string, DocumentSizeState>();
   const documentRevisions = new Map<string, number>();
   const documentEpochs = new Map<string, string>();
   /** Highest encoded revision written to PostgreSQL for the current epoch. */
@@ -120,83 +108,6 @@ export function createDocumentRuntime(
       docs.set(docId, doc);
     }
     return doc;
-  }
-
-  function recordEncodedDocumentSize(docId: string, ydoc: Y.Doc): DocumentSizeState {
-    const encodedBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
-    const state: DocumentSizeState = {
-      encodedBytes,
-      pendingUpdateBytes: 0,
-      warningEmitted: encodedBytes >= limits.warningBytes,
-    };
-    documentSizeStates.set(docId, state);
-    return state;
-  }
-
-  function getDocumentSizeState(docId: string, ydoc: Y.Doc): DocumentSizeState {
-    return documentSizeStates.get(docId) ?? recordEncodedDocumentSize(docId, ydoc);
-  }
-
-  function preflightDocumentUpdate(
-    docId: string,
-    ydoc: Y.Doc,
-    update: Uint8Array
-  ): UpdatePreflight {
-    const state = getDocumentSizeState(docId, ydoc);
-    if (state.encodedBytes >= limits.maxStateBytes) {
-      return {
-        decision: "reject",
-        status: {
-          documentId: docId,
-          level: "limit",
-          reason: "document",
-          bytes: state.encodedBytes,
-          maxBytes: limits.maxStateBytes,
-        },
-      };
-    }
-
-    const projectedUpperBound =
-      state.encodedBytes + state.pendingUpdateBytes + update.byteLength;
-    const needsWarningCheckpoint =
-      !state.warningEmitted && projectedUpperBound >= limits.warningBytes;
-    const needsLimitCheckpoint = projectedUpperBound > limits.maxStateBytes;
-
-    if (!needsWarningCheckpoint && !needsLimitCheckpoint) {
-      state.pendingUpdateBytes += update.byteLength;
-      return { decision: "allow", status: null };
-    }
-
-    const currentSnapshot = Y.encodeStateAsUpdate(ydoc);
-    const candidateSnapshot = Y.mergeUpdates([currentSnapshot, update]);
-
-    if (candidateSnapshot.byteLength > limits.maxStateBytes) {
-      state.encodedBytes = currentSnapshot.byteLength;
-      state.pendingUpdateBytes = 0;
-      return {
-        decision: "reject",
-        status: {
-          documentId: docId,
-          level: "limit",
-          reason: "document",
-          bytes: candidateSnapshot.byteLength,
-          maxBytes: limits.maxStateBytes,
-        },
-      };
-    }
-
-    state.encodedBytes = candidateSnapshot.byteLength;
-    state.pendingUpdateBytes = 0;
-    const crossedWarning =
-      !state.warningEmitted &&
-      candidateSnapshot.byteLength >= limits.warningBytes;
-    if (crossedWarning) state.warningEmitted = true;
-    return {
-      decision: "allow",
-      status: crossedWarning
-        ? sizeStatus(docId, candidateSnapshot.byteLength, limits)
-        : null,
-    };
   }
 
   async function loadDocFromDB(docId: string, ydoc: Y.Doc): Promise<void> {
@@ -245,11 +156,6 @@ export function createDocumentRuntime(
         const encodedRevision = documentRevisions.get(docId) ?? 0;
         const encodedEpoch = documentEpochs.get(docId);
         const snapshot = Y.encodeStateAsUpdate(ydoc);
-        documentSizeStates.set(docId, {
-          encodedBytes: snapshot.byteLength,
-          pendingUpdateBytes: 0,
-          warningEmitted: snapshot.byteLength >= limits.warningBytes,
-        });
         try {
           const updatedAt = await repository.saveState(docId, snapshot);
           // A delete can remove the row while this write is in flight. Discard
@@ -345,7 +251,6 @@ export function createDocumentRuntime(
 
   function discardPersistenceState(docId: string): void {
     const state = persistenceStates.get(docId);
-    documentSizeStates.delete(docId);
     if (!state) return;
     state.cancelled = true;
     state.flushRequested = false;
@@ -369,7 +274,6 @@ export function createDocumentRuntime(
         }
         loadedDocs.add(docId);
         assignPersistenceEpoch(docId);
-        recordEncodedDocumentSize(docId, ydoc);
       })
       .finally(() => {
         if (loadingDocs.get(docId) === loadPromise) loadingDocs.delete(docId);
@@ -387,7 +291,6 @@ export function createDocumentRuntime(
     }
     loadedDocs.delete(documentId);
     loadingDocs.delete(documentId);
-    documentSizeStates.delete(documentId);
     documentRevisions.delete(documentId);
     documentEpochs.delete(documentId);
     documentPersistedRevisions.delete(documentId);
@@ -459,37 +362,37 @@ export function createDocumentRuntime(
       const ydoc = docs.get(documentId);
       if (!ydoc || !loadedDocs.has(documentId)) return { kind: "not-loaded" };
 
+      const candidate = new Y.Doc();
       try {
-        Y.decodeUpdate(update);
-      } catch (error) {
-        return { kind: "invalid", error };
-      }
+        const before = Y.encodeStateAsUpdate(ydoc);
+        Y.applyUpdate(candidate, before);
+        Y.applyUpdate(candidate, update);
+        const after = Y.encodeStateAsUpdate(candidate);
+        const previousStatus = sizeStatus(documentId, before.byteLength, limits);
+        const nextStatus = sizeStatus(documentId, after.byteLength, limits);
 
-      let preflight: UpdatePreflight;
-      try {
-        preflight = preflightDocumentUpdate(documentId, ydoc, update);
-      } catch (error) {
-        return { kind: "invalid", error };
-      }
-      if (preflight.decision === "reject") {
-        return { kind: "document-too-large", status: preflight.status };
-      }
+        if (after.byteLength > limits.maxStateBytes && after.byteLength >= before.byteLength) {
+          return { kind: "document-too-large", status: nextStatus };
+        }
 
-      try {
-        Y.applyUpdate(ydoc, update);
+        let revision = documentRevisions.get(documentId) ?? 0;
+        if (!Buffer.from(before).equals(after)) {
+          Y.applyUpdate(ydoc, update);
+          revision += 1;
+          documentRevisions.set(documentId, revision);
+          scheduleSave(documentId, ydoc);
+        }
+        return {
+          kind: "accepted",
+          status: nextStatus.level !== previousStatus.level ? nextStatus : null,
+          revision,
+          epoch: assignPersistenceEpoch(documentId),
+        };
       } catch (error) {
-        recordEncodedDocumentSize(documentId, ydoc);
         return { kind: "invalid", error };
+      } finally {
+        candidate.destroy();
       }
-      const revision = (documentRevisions.get(documentId) ?? 0) + 1;
-      documentRevisions.set(documentId, revision);
-      scheduleSave(documentId, ydoc);
-      return {
-        kind: "accepted",
-        status: preflight.status,
-        revision,
-        epoch: assignPersistenceEpoch(documentId),
-      };
     },
 
     evictIfEmpty,

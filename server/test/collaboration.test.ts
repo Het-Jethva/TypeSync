@@ -166,3 +166,48 @@ test("typing during backoff waits for the scheduled retry", (context) => {
     local.destroy();
   }
 });
+
+test("size checks accept large pastes and shrinking edits without applying rejected updates", async () => {
+  const repository = { loadState: async () => null, saveState: async () => new Date() };
+  const large = new Y.Doc();
+  const runtime = createDocumentRuntime({ repository });
+  try {
+    await runtime.ensureLoaded("large");
+    large.getText("default").insert(0, "x".repeat(1_100_000));
+    assert.equal(runtime.applyUpdate("large", Y.encodeStateAsUpdate(large)).kind, "accepted");
+  } finally {
+    large.destroy();
+    runtime.discard("large");
+  }
+
+  const local = new Y.Doc();
+  local.getText("default").insert(0, "x".repeat(1000));
+  const stored = Y.encodeStateAsUpdate(local);
+  const full = createDocumentRuntime({
+    repository: { ...repository, loadState: async () => stored },
+    sizeLimits: {
+      maxUpdateBytes: 1_000_000,
+      warningBytes: stored.byteLength - 10,
+      maxStateBytes: stored.byteLength,
+    },
+  });
+  try {
+    await full.ensureLoaded("full");
+    assert.equal(full.snapshotForJoin("full").sizeStatus?.level, "limit");
+    const vector = Y.encodeStateVector(local);
+    local.getText("default").insert(1000, "growth");
+    assert.equal(full.applyUpdate("full", Y.encodeStateAsUpdate(local, vector)).kind, "document-too-large");
+    assert.deepEqual(full.snapshotForJoin("full").state, stored);
+    assert.equal(full.applyUpdate("full", new Uint8Array([255])).kind, "invalid");
+    assert.deepEqual(full.snapshotForJoin("full").state, stored);
+
+    local.getText("default").delete(0, local.getText("default").length);
+    const deletion = full.applyUpdate("full", Y.encodeStateAsUpdate(local, vector));
+    assert.equal(deletion.kind, "accepted");
+    if (deletion.kind === "accepted") assert.equal(deletion.status?.level, "ok");
+    assert(full.snapshotForJoin("full").state.byteLength < stored.byteLength);
+  } finally {
+    full.discard("full");
+    local.destroy();
+  }
+});

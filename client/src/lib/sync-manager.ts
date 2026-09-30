@@ -1,15 +1,13 @@
 import * as Y from "yjs";
 import {
   canEditDocument,
+  DOCUMENT_MAX_UPDATE_BYTES,
   type DocumentSizeStatus,
-  type DocumentUpdateErrorCode,
   type DocumentUpdateResult,
   type Role,
 } from "@typesync/shared";
-import { splitDocumentUpdate } from "./sync-update-chunks";
 
 const DOCUMENT_UPDATE_ACK_TIMEOUT_MS = 5_000;
-const MAX_MERGED_UPDATE_BYTES = 512 * 1024;
 const MAX_RETRY_DELAY_MS = 10_000;
 
 export type SyncStatus = "offline" | "syncing" | "synced" | "failed";
@@ -38,8 +36,6 @@ export interface CollaborativeSyncManagerOptions {
   emitAwareness: (documentId: string, update: Uint8Array) => void;
   onAccessLost?: () => void;
   onJoinRequired?: () => void;
-  /** Defaults to `MAX_MERGED_UPDATE_BYTES`. Tests inject a smaller cap. */
-  maxUpdateBytes?: number;
 }
 
 export class CollaborativeSyncManager {
@@ -65,7 +61,7 @@ export class CollaborativeSyncManager {
   private ackedRevision = 0;
   /** Highest saved revision in `persistenceEpoch` that covered the latest ack. */
   private persistedRevision = 0;
-  private acknowledgedUpdate: Uint8Array | null = null;
+  private acknowledgedBatches: { id: number; update: Uint8Array }[] = [];
 
   private listeners = new Set<(state: SyncState) => void>();
 
@@ -77,9 +73,6 @@ export class CollaborativeSyncManager {
   private retryAttempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private deliveryBlocked = false;
-  /** Why outbound delivery stopped. Only `update-too-large` is cleared on join. */
-  private deliveryBlockCode: DocumentUpdateErrorCode | null = null;
-  private maxUpdateBytes: number;
   /** Pauses outbound sends after `forbidden` or while the role is viewer. */
   private permissionHold = false;
   private documentRole: Role | null = null;
@@ -92,7 +85,6 @@ export class CollaborativeSyncManager {
     this.emitAwareness = options.emitAwareness;
     this.onAccessLost = options.onAccessLost;
     this.onJoinRequired = options.onJoinRequired;
-    this.maxUpdateBytes = options.maxUpdateBytes ?? MAX_MERGED_UPDATE_BYTES;
   }
 
   subscribe(listener: (state: SyncState) => void): () => void {
@@ -140,7 +132,7 @@ export class CollaborativeSyncManager {
     const nextPersisted = Math.max(this.persistedRevision, revision);
     if (nextPersisted === this.persistedRevision) return;
     this.persistedRevision = nextPersisted;
-    this.acknowledgedUpdate = null;
+    this.acknowledgedBatches = [];
     this.refreshPendingState();
   }
 
@@ -156,7 +148,7 @@ export class CollaborativeSyncManager {
       this.ackedRevision = 0;
       this.persistedRevision = 0;
     } else if (serverPersistedRevision >= this.ackedRevision) {
-      this.acknowledgedUpdate = null;
+      this.acknowledgedBatches = [];
     }
     this.persistedRevision = Math.max(this.persistedRevision, serverPersistedRevision);
     this.refreshPendingState();
@@ -173,17 +165,11 @@ export class CollaborativeSyncManager {
   }
 
   enqueueDocumentUpdate(update: Uint8Array): void {
-    for (const piece of splitDocumentUpdate(update, this.maxUpdateBytes)) {
-      this.enqueueUpdatePiece(piece);
-    }
-  }
-
-  private enqueueUpdatePiece(update: Uint8Array): void {
     const mergeableIndex = this.activeBatchId === null ? 0 : 1;
     const lastBatch = this.pendingBatches.at(-1);
     if (lastBatch && this.pendingBatches.length > mergeableIndex) {
       const merged = Y.mergeUpdates([lastBatch.update, update]);
-      if (merged.byteLength <= this.maxUpdateBytes) {
+      if (merged.byteLength <= DOCUMENT_MAX_UPDATE_BYTES) {
         lastBatch.update = merged;
         this.refreshPendingState();
         this.flushPendingUpdates();
@@ -228,23 +214,17 @@ export class CollaborativeSyncManager {
 
   reconcilePendingUpdates(): void {
     this.cancelDeliveryAttempt();
-    if (this.deliveryBlocked && this.deliveryBlockCode !== "update-too-large") {
+    if (this.deliveryBlocked) {
       this.refreshPendingState();
       return;
     }
     this.deliveryBlocked = false;
-    this.deliveryBlockCode = null;
     this.retryAttempt = 0;
     if (!this.permissionHold) {
       this.updateState({ syncError: null, isSyncBlocked: false });
     }
-    if (this.acknowledgedUpdate) {
-      const retained = splitDocumentUpdate(this.acknowledgedUpdate, this.maxUpdateBytes);
-      this.pendingBatches.unshift(
-        ...retained.map((update) => ({ id: this.nextBatchId++, update }))
-      );
-      this.acknowledgedUpdate = null;
-    }
+    this.pendingBatches.unshift(...this.acknowledgedBatches);
+    this.acknowledgedBatches = [];
     this.refreshPendingState();
     if (this.permissionHold) return;
     this.flushPendingUpdates();
@@ -336,15 +316,7 @@ export class CollaborativeSyncManager {
             return;
           }
 
-          if (result.code === "update-too-large" && this.replaceOversizedBatch(batch.update)) {
-            this.retryAttempt = 0;
-            this.refreshPendingState();
-            this.flushPendingUpdates(socketConnected);
-            return;
-          }
-
           this.deliveryBlocked = true;
-          this.deliveryBlockCode = result.code;
           this.updateState({
             syncStatus: "failed",
             syncError: result.error,
@@ -363,9 +335,7 @@ export class CollaborativeSyncManager {
         }
         this.ackedRevision = result.revision;
         if (this.ackedRevision > this.persistedRevision) {
-          this.acknowledgedUpdate = this.acknowledgedUpdate
-            ? Y.mergeUpdates([this.acknowledgedUpdate, batch.update])
-            : batch.update;
+          this.acknowledgedBatches.push(batch);
         }
         const acceptedUpdate =
           this.state.documentSizeStatus?.reason === "update"
@@ -382,22 +352,6 @@ export class CollaborativeSyncManager {
     this.deliveryGeneration += 1;
     this.activeBatchId = null;
     this.clearRetryTimer();
-  }
-
-  /**
-   * Replaces the in-flight batch when it can be cut into a strictly smaller
-   * first piece. A single struct larger than the cap cannot be split.
-   */
-  private replaceOversizedBatch(update: Uint8Array): boolean {
-    const pieces = splitDocumentUpdate(update, this.maxUpdateBytes);
-    const first = pieces[0];
-    if (!first || pieces.length < 2 || first.byteLength >= update.byteLength) return false;
-    this.pendingBatches.splice(
-      0,
-      1,
-      ...pieces.map((piece) => ({ id: this.nextBatchId++, update: piece })),
-    );
-    return true;
   }
 
   private clearRetryTimer(): void {

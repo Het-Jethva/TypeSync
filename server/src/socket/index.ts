@@ -2,6 +2,7 @@ import { Server as HttpServer } from "http";
 import { isIP } from "node:net";
 import { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
+import { DOCUMENT_MAX_UPDATE_BYTES } from "@typesync/shared";
 import type {
   ClientToServerEvents,
   DocumentJoinResult,
@@ -26,7 +27,7 @@ const SESSION_REVALIDATION_INTERVAL = 60_000;
 const SESSION_CHECK_UNAVAILABLE_COOLDOWN_MS = 5_000;
 const SESSION_CHECK_UNAVAILABLE_ERROR = "Session check unavailable";
 const DocumentIdSchema = z.string().uuid();
-const MAX_SOCKET_BUFFER_BYTES = 12 * 1024 * 1024;
+const MAX_SOCKET_BUFFER_BYTES = DOCUMENT_MAX_UPDATE_BYTES + 64 * 1024;
 
 function socketClientIp(socket: TypeSyncSocket): string {
   if (config.isProduction) {
