@@ -59,7 +59,6 @@ export function useCollaborativeDocument(
 
     const syncManager = new CollaborativeSyncManager({
       documentId,
-      ydoc,
       emitUpdate(docId, update, timeoutMs, callback) {
         socket.timeout(timeoutMs).emit("doc:update", docId, update, callback);
       },
@@ -175,7 +174,7 @@ export function useCollaborativeDocument(
         syncManager.noteServerPersistence(result.epoch, result.persistedRevision);
         syncManager.setConnected(true);
         syncManager.setDocumentRole(result.role, { flush: false });
-        syncManager.reconcilePendingUpdates(new Uint8Array(result.stateVector));
+        syncManager.reconcilePendingUpdates();
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,

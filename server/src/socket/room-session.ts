@@ -232,7 +232,6 @@ export class CollaborativeRoomSession {
       return {
         success: true,
         state: snapshot.state,
-        stateVector: snapshot.stateVector,
         role,
         presence,
         epoch: snapshot.epoch,

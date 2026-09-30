@@ -23,7 +23,6 @@ export interface DocumentRuntime {
   ensureLoaded(documentId: string): Promise<void>;
   snapshotForJoin(documentId: string): {
     state: Uint8Array;
-    stateVector: Uint8Array;
     sizeStatus: DocumentSizeStatus | null;
     epoch: string;
     persistedRevision: number;
@@ -437,7 +436,6 @@ export function createDocumentRuntime(
       const state = Y.encodeStateAsUpdate(ydoc);
       return {
         state,
-        stateVector: Y.encodeStateVector(ydoc),
         sizeStatus: sizeStatus(documentId, state.byteLength, limits),
         epoch: assignPersistenceEpoch(documentId),
         persistedRevision: documentPersistedRevisions.get(documentId) ?? 0,

@@ -29,7 +29,6 @@ export interface SyncState {
 
 export interface CollaborativeSyncManagerOptions {
   documentId: string;
-  ydoc: Y.Doc;
   emitUpdate: (
     documentId: string,
     update: Uint8Array,
@@ -45,7 +44,6 @@ export interface CollaborativeSyncManagerOptions {
 
 export class CollaborativeSyncManager {
   private documentId: string;
-  private ydoc: Y.Doc;
   private emitUpdate: CollaborativeSyncManagerOptions["emitUpdate"];
   private emitAwareness: CollaborativeSyncManagerOptions["emitAwareness"];
   private onAccessLost?: () => void;
@@ -67,6 +65,7 @@ export class CollaborativeSyncManager {
   private ackedRevision = 0;
   /** Highest saved revision in `persistenceEpoch` that covered the latest ack. */
   private persistedRevision = 0;
+  private acknowledgedUpdate: Uint8Array | null = null;
 
   private listeners = new Set<(state: SyncState) => void>();
 
@@ -89,7 +88,6 @@ export class CollaborativeSyncManager {
 
   constructor(options: CollaborativeSyncManagerOptions) {
     this.documentId = options.documentId;
-    this.ydoc = options.ydoc;
     this.emitUpdate = options.emitUpdate;
     this.emitAwareness = options.emitAwareness;
     this.onAccessLost = options.onAccessLost;
@@ -142,6 +140,7 @@ export class CollaborativeSyncManager {
     const nextPersisted = Math.max(this.persistedRevision, revision);
     if (nextPersisted === this.persistedRevision) return;
     this.persistedRevision = nextPersisted;
+    this.acknowledgedUpdate = null;
     this.refreshPendingState();
   }
 
@@ -156,6 +155,8 @@ export class CollaborativeSyncManager {
       this.persistenceEpoch = epoch;
       this.ackedRevision = 0;
       this.persistedRevision = 0;
+    } else if (serverPersistedRevision >= this.ackedRevision) {
+      this.acknowledgedUpdate = null;
     }
     this.persistedRevision = Math.max(this.persistedRevision, serverPersistedRevision);
     this.refreshPendingState();
@@ -197,8 +198,7 @@ export class CollaborativeSyncManager {
 
   /**
    * Records the role that gates outbound updates.
-   * Join passes `flush: false` so `reconcilePendingUpdates` can replace the
-   * queue with a chunked state-vector delta before anything is sent.
+   * Join passes `flush: false` until pending delivery has been reconciled.
    */
   setDocumentRole(role: Role, options?: { flush?: boolean }): void {
     const dropRetryCopy = !this.deliveryBlocked && this.state.retrying;
@@ -226,7 +226,7 @@ export class CollaborativeSyncManager {
     }
   }
 
-  reconcilePendingUpdates(serverStateVector: Uint8Array): void {
+  reconcilePendingUpdates(): void {
     this.cancelDeliveryAttempt();
     if (this.deliveryBlocked && this.deliveryBlockCode !== "update-too-large") {
       this.refreshPendingState();
@@ -238,15 +238,12 @@ export class CollaborativeSyncManager {
     if (!this.permissionHold) {
       this.updateState({ syncError: null, isSyncBlocked: false });
     }
-    this.pendingBatches = [];
-
-    const localDelta = Y.encodeStateAsUpdate(this.ydoc, serverStateVector);
-    if (localDelta.byteLength > 2) {
-      for (const piece of splitDocumentUpdate(localDelta, this.maxUpdateBytes)) {
-        if (piece.byteLength > 2) {
-          this.pendingBatches.push({ id: this.nextBatchId++, update: piece });
-        }
-      }
+    if (this.acknowledgedUpdate) {
+      const retained = splitDocumentUpdate(this.acknowledgedUpdate, this.maxUpdateBytes);
+      this.pendingBatches.unshift(
+        ...retained.map((update) => ({ id: this.nextBatchId++, update }))
+      );
+      this.acknowledgedUpdate = null;
     }
     this.refreshPendingState();
     if (this.permissionHold) return;
@@ -260,6 +257,7 @@ export class CollaborativeSyncManager {
       !socketConnected ||
       this.deliveryBlocked ||
       this.permissionHold ||
+      this.retryTimer !== undefined ||
       this.activeBatchId !== null ||
       this.pendingBatches.length === 0
     ) {
@@ -364,6 +362,11 @@ export class CollaborativeSyncManager {
           this.persistedRevision = 0;
         }
         this.ackedRevision = result.revision;
+        if (this.ackedRevision > this.persistedRevision) {
+          this.acknowledgedUpdate = this.acknowledgedUpdate
+            ? Y.mergeUpdates([this.acknowledgedUpdate, batch.update])
+            : batch.update;
+        }
         const acceptedUpdate =
           this.state.documentSizeStatus?.reason === "update"
             ? { documentSizeStatus: null }

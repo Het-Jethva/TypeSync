@@ -19,7 +19,6 @@ test("reconnecting after a server restart waits for the new edits to persist", a
   const local = new Y.Doc();
   const manager = new CollaborativeSyncManager({
     documentId: "document",
-    ydoc: local,
     emitUpdate(_id, update, _timeout, acknowledge) {
       const result = runtime.applyUpdate("document", update);
       assert.equal(result.kind, "accepted");
@@ -51,7 +50,7 @@ test("reconnecting after a server restart waits for the new edits to persist", a
     manager.noteServerPersistence(rejoined.epoch, rejoined.persistedRevision);
     manager.setDocumentRole("owner", { flush: false });
     manager.setConnected(true);
-    manager.reconcilePendingUpdates(rejoined.stateVector);
+    manager.reconcilePendingUpdates();
     assert.equal(manager.getState().awaitingPersistence, true);
     assert.equal(manager.getState().syncStatus, "syncing");
     const database = new Y.Doc();
@@ -68,6 +67,102 @@ test("reconnecting after a server restart waits for the new edits to persist", a
   } finally {
     manager.destroy();
     runtime.discard("document");
+    local.destroy();
+  }
+});
+
+test("clean viewers send nothing, but acknowledged deletions survive reconnects", async () => {
+  const local = new Y.Doc();
+  local.getText("default").insert(0, "abc");
+  local.getText("default").delete(0, 1);
+  let stored = Y.encodeStateAsUpdate(local);
+  const repository = {
+    loadState: async () => stored,
+    saveState: async (_id: string, state: Uint8Array) => {
+      stored = state;
+      return new Date();
+    },
+  };
+  let runtime = createDocumentRuntime({ repository });
+  let sends = 0;
+  const manager = new CollaborativeSyncManager({
+    documentId: "document",
+    emitUpdate(_id, update, _timeout, acknowledge) {
+      sends += 1;
+      const result = runtime.applyUpdate("document", update);
+      assert.equal(result.kind, "accepted");
+      if (result.kind === "accepted") {
+        acknowledge(null, { success: true, epoch: result.epoch, revision: result.revision });
+      }
+    },
+    emitAwareness() {},
+  });
+  try {
+    await runtime.ensureLoaded("document");
+    const initial = runtime.snapshotForJoin("document");
+    manager.noteServerPersistence(initial.epoch, initial.persistedRevision);
+    manager.setConnected(true);
+    manager.setDocumentRole("viewer", { flush: false });
+    manager.reconcilePendingUpdates();
+    assert.equal(sends, 0);
+    assert.equal(manager.getState().syncStatus, "synced");
+    assert.equal(manager.getState().hasPendingUpdates, false);
+
+    manager.setDocumentRole("editor");
+    local.on("update", (update: Uint8Array) => manager.enqueueDocumentUpdate(update));
+    local.getText("default").delete(0, 1);
+    assert.equal(sends, 1);
+    assert.equal(manager.getState().hasPendingUpdates, false);
+    manager.cancelDeliveryAttempt();
+    manager.setConnected(false);
+    runtime.discard("document");
+    runtime = createDocumentRuntime({ repository });
+    await runtime.ensureLoaded("document");
+    const rejoined = runtime.snapshotForJoin("document");
+    manager.noteServerPersistence(rejoined.epoch, rejoined.persistedRevision);
+    manager.setConnected(true);
+    manager.setDocumentRole("editor", { flush: false });
+    manager.reconcilePendingUpdates();
+    assert.equal(sends, 2);
+    await runtime.flushAll();
+    const database = new Y.Doc();
+    try {
+      Y.applyUpdate(database, stored);
+      assert.equal(database.getText("default").toString(), "c");
+    } finally {
+      database.destroy();
+    }
+  } finally {
+    manager.destroy();
+    runtime.discard("document");
+    local.destroy();
+  }
+});
+
+test("typing during backoff waits for the scheduled retry", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const local = new Y.Doc();
+  let sends = 0;
+  const manager = new CollaborativeSyncManager({
+    documentId: "document",
+    emitUpdate(_id, _update, _timeout, acknowledge) {
+      sends += 1;
+      acknowledge(null, { success: false, code: "unavailable", error: "Unavailable" });
+    },
+    emitAwareness() {},
+  });
+  try {
+    manager.setDocumentRole("owner");
+    manager.setConnected(true);
+    local.on("update", (update: Uint8Array) => manager.enqueueDocumentUpdate(update));
+    local.getText("default").insert(0, "a");
+    local.getText("default").insert(1, "b");
+    assert.equal(sends, 1);
+    assert.equal(manager.getState().retrying, true);
+    context.mock.timers.tick(1000);
+    assert.equal(sends, 2);
+  } finally {
+    manager.destroy();
     local.destroy();
   }
 });

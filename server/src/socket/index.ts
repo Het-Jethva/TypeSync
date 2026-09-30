@@ -197,7 +197,6 @@ export function setupSocket(
       respond({
         success: true,
         state: result.state,
-        stateVector: result.stateVector,
         role: result.role,
         presence: result.presence,
         epoch: result.epoch,

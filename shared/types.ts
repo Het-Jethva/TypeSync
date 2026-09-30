@@ -130,7 +130,6 @@ export type DocumentJoinResult =
   | {
       success: true;
       state: Uint8Array;
-      stateVector: Uint8Array;
       role: Role;
       presence: PresenceIdentity;
       /** Unique document runtime generation, including across server restarts. */
