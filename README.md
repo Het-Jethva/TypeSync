@@ -35,7 +35,7 @@ A simplified flow looks like this.
 
 - You open `/document/:id`.
 - The client joins the room with `doc:join`.
-- The server returns the current Yjs state, a state vector, your role, and an epoch.
+- The server returns the current Yjs state, your role, and a unique runtime epoch.
 - Edits send binary updates with `doc:update`.
 - Other clients receive `doc:update` and presence through `awareness:update`.
 
@@ -93,7 +93,8 @@ Run these from the repo root.
 
 - `npm run dev`. Build shared types, then run server and client together.
 - `npm run build`. Build shared, client, and server.
-- `npm run check`. Run lint, typecheck, and build.
+- `npm run check`. Run lint, typecheck, regression tests, and build.
+- `npm test`. Run the four collaboration regression tests using real Yjs documents.
 - `npm run lint`. Run ESLint with zero warnings allowed.
 - `npm run typecheck`. Typecheck shared, client, and server.
 - `npm run db:push -w server`. Push Drizzle schema to Postgres.
