@@ -9,7 +9,7 @@ import {
 } from "@typesync/shared";
 import { createAwarenessManager } from "./awareness.js";
 import { createDocumentRuntime, type DocumentRuntimeOptions } from "./document-runtime.js";
-import type { TypeSyncSocket } from "./types.js";
+import type { SocketSessionCheck, TypeSyncSocket } from "./types.js";
 
 const DOCUMENT_UPDATES_PER_SECOND = 30;
 const DOCUMENT_UPDATE_BURST_SIZE = 60;
@@ -49,7 +49,6 @@ export class CollaborativeRoomSession {
   /** Role written while join is past its access read and not in the room yet. */
   private readonly joinRoleOverrides = new Map<string, Map<string, Role>>();
   private readonly socketJoinGenerations = new Map<string, Map<string, number>>();
-  private readonly socketPresences = new Map<string, PresenceIdentity>();
   private readonly sockets = new Map<string, TypeSyncSocket>();
   private readonly pendingJoinCounts = new Map<string, number>();
   private readonly pendingJoinWaiters = new Set<() => void>();
@@ -80,9 +79,7 @@ export class CollaborativeRoomSession {
       lastRefill: Date.now(),
     });
 
-    const presence = this.awarenessManager.initializeSocket(socket);
-    this.socketPresences.set(socket.id, presence);
-    return presence;
+    return this.awarenessManager.initializeSocket(socket);
   }
 
   beginDrain(): void {
@@ -177,9 +174,10 @@ export class CollaborativeRoomSession {
   async joinSession(params: {
     socket: TypeSyncSocket;
     documentId: string;
+    checkSession: () => Promise<SocketSessionCheck>;
     authorize: () => Promise<SessionAccess>;
   }): Promise<CollaborativeRoomJoinResult> {
-    const { socket, documentId, authorize } = params;
+    const { socket, documentId, checkSession, authorize } = params;
     if (this.isDraining) {
       return rejectedJoin("server-draining", "Server is shutting down");
     }
@@ -192,6 +190,17 @@ export class CollaborativeRoomSession {
     let appliedJoinRole = false;
 
     try {
+      if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
+        return rejectedJoin("cancelled", "Document join was cancelled");
+      }
+
+      const session = await checkSession();
+      if (session === "expired") {
+        return rejectedJoin("session-expired", "Session expired");
+      }
+      if (session === "unavailable") {
+        return rejectedJoin("unavailable", "Session check unavailable");
+      }
       if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
@@ -216,13 +225,12 @@ export class CollaborativeRoomSession {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
-      if (!this.socketPresences.has(socket.id)) {
+      if (!this.sockets.has(socket.id)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
       const role = this.takeJoinRoleOverride(socket.id, documentId) ?? currentAccess.role;
       const presence = this.awarenessManager.presenceFor(socket, role);
-      this.socketPresences.set(socket.id, presence);
 
       const snapshot = this.runtime.snapshotForJoin(documentId);
       socket.join(`doc:${documentId}`);
@@ -373,8 +381,7 @@ export class CollaborativeRoomSession {
       if (role) {
         if (inRoom) {
           this.setRole(socket.id, documentId, role);
-          this.socketPresences.set(socket.id, this.awarenessManager.presenceFor(socket, role));
-            this.clearJoinRoleOverride(socket.id, documentId);
+          this.clearJoinRoleOverride(socket.id, documentId);
         } else {
           this.setJoinRoleOverride(socket.id, documentId, role);
         }
@@ -452,7 +459,6 @@ export class CollaborativeRoomSession {
     this.socketRoles.delete(socket.id);
     this.joinRoleOverrides.delete(socket.id);
     this.socketJoinGenerations.delete(socket.id);
-    this.socketPresences.delete(socket.id);
     this.sockets.delete(socket.id);
     this.updateTokens.delete(socket.id);
 

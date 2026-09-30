@@ -15,6 +15,7 @@ export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> 
       // and its upgrade round trips. Polling stays as a fallback for networks
       // that block WebSocket outright.
       transports: ["websocket", "polling"],
+      tryAllTransports: true,
     });
   }
   return socket;
@@ -28,7 +29,5 @@ export function connectSocket(): void {
 }
 
 export function disconnectSocket(): void {
-  if (socket?.connected) {
-    socket.disconnect();
-  }
+  socket?.disconnect();
 }

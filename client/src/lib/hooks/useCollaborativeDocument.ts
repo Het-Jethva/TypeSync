@@ -125,6 +125,8 @@ export function useCollaborativeDocument(
 
     let joinRetryAttempt = 0;
     let joinRetryTimer: number | undefined;
+    let active = true;
+    let joinGeneration = 0;
 
     const clearJoinRetry = () => {
       if (joinRetryTimer !== undefined) window.clearTimeout(joinRetryTimer);
@@ -147,12 +149,17 @@ export function useCollaborativeDocument(
     };
 
     function joinDocument() {
-      if (resourceVersions.get(ydoc) !== resourceVersion) return;
+      if (!active || !socket.connected) return;
+      const generation = ++joinGeneration;
       clearJoinRetry();
       syncManager.cancelDeliveryAttempt();
       syncManager.setConnected(false);
-      socket.emit("doc:join", documentId, (result) => {
-        if (resourceVersions.get(ydoc) !== resourceVersion) return;
+      socket.timeout(10_000).emit("doc:join", documentId, (error, result) => {
+        if (!active || generation !== joinGeneration) return;
+        if (error) {
+          scheduleJoinRetry();
+          return;
+        }
         if (!result.success) {
           const action = joinFailureAction(result.code);
           if (action === "access-lost") syncManager.handleAccessLost();
@@ -185,6 +192,7 @@ export function useCollaborativeDocument(
     }
 
     const handleDisconnect = () => {
+      joinGeneration += 1;
       clearJoinRetry();
       joinRetryAttempt = 0;
       syncManager.cancelDeliveryAttempt();
@@ -257,6 +265,8 @@ export function useCollaborativeDocument(
     awareness.on("change", handleAwarenessChange);
 
     return () => {
+      active = false;
+      joinGeneration += 1;
       syncManager.destroy();
       unsubscribe();
       socket.off("doc:update", handleUpdate);

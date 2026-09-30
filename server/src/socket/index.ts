@@ -169,23 +169,10 @@ export function setupSocket(
       }
       const docId = parsed.data;
 
-      const session = await ensureSocketSession(socket, true);
-      if (session === "expired") {
-        respond({ success: false, code: "session-expired", error: "Session expired" });
-        return;
-      }
-      if (session === "unavailable") {
-        respond({
-          success: false,
-          code: "unavailable",
-          error: SESSION_CHECK_UNAVAILABLE_ERROR,
-        });
-        return;
-      }
-
       const result = await roomSession.joinSession({
         socket,
         documentId: docId,
+        checkSession: () => ensureSocketSession(socket, true),
         authorize: () => accessAuthorizer.authorizeSocketSession(docId, socket.data.userId),
       });
 
