@@ -4,7 +4,7 @@ import * as Y from "yjs";
 import { createDocumentRuntime } from "../src/socket/document-runtime.ts";
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 
-test("reconnecting after a server restart waits for the new edits to persist", async () => {
+test("reconnecting restores remote dependencies before reporting local edits persisted", async () => {
   let stored: Uint8Array | null = null;
   const repository = {
     loadState: async () => stored,
@@ -28,7 +28,9 @@ test("reconnecting after a server restart waits for the new edits to persist", a
     },
     emitAwareness() {},
   });
-  local.on("update", (update: Uint8Array) => manager.enqueueDocumentUpdate(update));
+  local.on("update", (update: Uint8Array, origin: unknown) => {
+    if (origin !== "remote") manager.enqueueDocumentUpdate(update);
+  });
   const initial = first.snapshotForJoin("document");
   manager.noteServerPersistence(initial.epoch, initial.persistedRevision);
   manager.setDocumentRole("owner");
@@ -38,10 +40,30 @@ test("reconnecting after a server restart waits for the new edits to persist", a
   manager.notePersisted(initial.epoch, 1);
   assert.equal(manager.getState().syncStatus, "synced");
 
+  const collaborator = new Y.Doc();
+  Y.applyUpdate(collaborator, first.snapshotForJoin("document").state);
+  const vector = Y.encodeStateVector(collaborator);
+  collaborator.getText("default").insert(5, "A");
+  const remoteUpdate = Y.encodeStateAsUpdate(collaborator, vector);
+  assert.equal(first.applyUpdate("document", remoteUpdate).kind, "accepted");
+  Y.applyUpdate(local, remoteUpdate, "remote");
+  local.getText("default").insert(6, "B");
+  collaborator.destroy();
+
+  const unsaved = first.snapshotForJoin("document");
+  manager.cancelDeliveryAttempt();
+  manager.setConnected(false);
+  manager.noteServerPersistence(unsaved.epoch, unsaved.persistedRevision);
+  manager.setConnected(true);
+  manager.setDocumentRole("owner", { flush: false });
+  manager.reconcilePendingUpdates(local, unsaved.state);
+  assert.equal(manager.getState().awaitingPersistence, true);
+  assert.equal(manager.getState().syncStatus, "syncing");
+
   manager.cancelDeliveryAttempt();
   manager.setConnected(false);
   first.discard("document");
-  local.getText("default").insert(5, " offline edit");
+  local.getText("default").insert(7, " offline edit");
   runtime = createDocumentRuntime({ repository });
   try {
     await runtime.ensureLoaded("document");
@@ -50,7 +72,7 @@ test("reconnecting after a server restart waits for the new edits to persist", a
     manager.noteServerPersistence(rejoined.epoch, rejoined.persistedRevision);
     manager.setDocumentRole("owner", { flush: false });
     manager.setConnected(true);
-    manager.reconcilePendingUpdates();
+    manager.reconcilePendingUpdates(local, rejoined.state);
     assert.equal(manager.getState().awaitingPersistence, true);
     assert.equal(manager.getState().syncStatus, "syncing");
     const database = new Y.Doc();
@@ -62,8 +84,18 @@ test("reconnecting after a server restart waits for the new edits to persist", a
       database.destroy();
     }
     await runtime.flushAll();
-    manager.notePersisted(rejoined.epoch, 1);
+    const persisted = runtime.snapshotForJoin("document");
+    manager.notePersisted(persisted.epoch, persisted.persistedRevision);
     assert.equal(manager.getState().syncStatus, "synced");
+    const reopened = new Y.Doc();
+    try {
+      assert(stored);
+      Y.applyUpdate(reopened, stored);
+      assert.equal(reopened.getText("default").toString(), "savedAB offline edit");
+      assert.equal(reopened.getText("default").toString(), local.getText("default").toString());
+    } finally {
+      reopened.destroy();
+    }
   } finally {
     manager.destroy();
     runtime.discard("document");
@@ -103,16 +135,29 @@ test("clean viewers send nothing, but acknowledged deletions survive reconnects"
     manager.noteServerPersistence(initial.epoch, initial.persistedRevision);
     manager.setConnected(true);
     manager.setDocumentRole("viewer", { flush: false });
-    manager.reconcilePendingUpdates();
+    manager.reconcilePendingUpdates(local, initial.state);
     assert.equal(sends, 0);
     assert.equal(manager.getState().syncStatus, "synced");
     assert.equal(manager.getState().hasPendingUpdates, false);
 
     manager.setDocumentRole("editor");
-    local.on("update", (update: Uint8Array) => manager.enqueueDocumentUpdate(update));
+    local.on("update", (update: Uint8Array, origin: unknown) => {
+      if (origin !== "remote") manager.enqueueDocumentUpdate(update);
+    });
     local.getText("default").delete(0, 1);
     assert.equal(sends, 1);
     assert.equal(manager.getState().hasPendingUpdates, false);
+    const collaborator = new Y.Doc();
+    try {
+      Y.applyUpdate(collaborator, runtime.snapshotForJoin("document").state);
+      const vector = Y.encodeStateVector(collaborator);
+      collaborator.getText("default").delete(0, 1);
+      const deletion = Y.encodeStateAsUpdate(collaborator, vector);
+      assert.equal(runtime.applyUpdate("document", deletion).kind, "accepted");
+      Y.applyUpdate(local, deletion, "remote");
+    } finally {
+      collaborator.destroy();
+    }
     manager.cancelDeliveryAttempt();
     manager.setConnected(false);
     runtime.discard("document");
@@ -121,14 +166,18 @@ test("clean viewers send nothing, but acknowledged deletions survive reconnects"
     const rejoined = runtime.snapshotForJoin("document");
     manager.noteServerPersistence(rejoined.epoch, rejoined.persistedRevision);
     manager.setConnected(true);
-    manager.setDocumentRole("editor", { flush: false });
-    manager.reconcilePendingUpdates();
+    manager.setDocumentRole("viewer", { flush: false });
+    manager.reconcilePendingUpdates(local, rejoined.state);
+    assert.equal(sends, 1);
+    assert.equal(manager.getState().hasPendingUpdates, true);
+    assert.equal(manager.getState().syncStatus, "failed");
+    manager.setDocumentRole("editor");
     assert.equal(sends, 2);
     await runtime.flushAll();
     const database = new Y.Doc();
     try {
       Y.applyUpdate(database, stored);
-      assert.equal(database.getText("default").toString(), "c");
+      assert.equal(database.getText("default").toString(), "");
     } finally {
       database.destroy();
     }

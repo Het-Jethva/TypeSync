@@ -181,7 +181,7 @@ export function useCollaborativeDocument(
         syncManager.noteServerPersistence(result.epoch, result.persistedRevision);
         syncManager.setConnected(true);
         syncManager.setDocumentRole(result.role, { flush: false });
-        syncManager.reconcilePendingUpdates();
+        syncManager.reconcilePendingUpdates(ydoc, new Uint8Array(result.state));
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,

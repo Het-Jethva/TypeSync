@@ -212,7 +212,7 @@ export class CollaborativeSyncManager {
     }
   }
 
-  reconcilePendingUpdates(): void {
+  reconcilePendingUpdates(local: Y.Doc, serverState: Uint8Array): void {
     this.cancelDeliveryAttempt();
     if (this.deliveryBlocked) {
       this.refreshPendingState();
@@ -224,6 +224,18 @@ export class CollaborativeSyncManager {
     }
     this.pendingBatches = [...this.acknowledgedBatches, ...this.pendingBatches];
     this.acknowledgedBatches = [];
+    const server = new Y.Doc();
+    try {
+      Y.applyUpdate(server, serverState);
+      // State vectors omit deletions. Applying the delta to the joined state
+      // emits only real changes, including missing remote dependencies.
+      server.on("update", (update: Uint8Array) => {
+        this.pendingBatches = [{ id: this.nextBatchId++, update }];
+      });
+      Y.applyUpdate(server, Y.encodeStateAsUpdate(local, Y.encodeStateVector(server)));
+    } finally {
+      server.destroy();
+    }
     this.refreshPendingState();
     if (this.permissionHold) return;
     this.flushPendingUpdates();
