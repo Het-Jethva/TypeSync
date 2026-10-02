@@ -1,7 +1,5 @@
 import { config } from "../config.js";
 
-const trustedClientOrigin = new URL(config.clientUrl).origin;
-
 function originFromHeader(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -16,7 +14,7 @@ export function isTrustedWebOrigin(
   referer: string | undefined
 ): boolean {
   if (origin !== undefined) {
-    return originFromHeader(origin) === trustedClientOrigin;
+    return originFromHeader(origin) === config.clientUrl;
   }
-  return originFromHeader(referer) === trustedClientOrigin;
+  return originFromHeader(referer) === config.clientUrl;
 }

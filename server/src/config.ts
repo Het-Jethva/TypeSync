@@ -37,6 +37,8 @@ const HttpUrlSchema = requiredString()
     }
   }, "must be a valid HTTP(S) URL");
 
+const ClientOriginSchema = HttpUrlSchema.transform((value) => new URL(value).origin);
+
 const ResendApiKeySchema = requiredString().trim().regex(/^re_[A-Za-z0-9_]+$/, "must be a Resend API key");
 const EmailFromSchema = requiredString().trim().refine((value) => {
   if (/[\r\n]/.test(value)) return false;
@@ -54,7 +56,7 @@ const ProductionConfigSchema = z.object({
       "must not use the documented placeholder value"
     ),
   BETTER_AUTH_URL: HttpUrlSchema,
-  VITE_CLIENT_URL: HttpUrlSchema,
+  VITE_CLIENT_URL: ClientOriginSchema,
   AUTH_COOKIE_SAME_SITE: z.preprocess(
     (value) => typeof value === "string" ? value.toLowerCase() : value,
     AuthCookieSameSiteSchema
@@ -89,8 +91,7 @@ export const config = {
   port: parseListenPort(process.env.PORT),
   clientUrl:
     productionConfig?.VITE_CLIENT_URL ??
-    process.env.VITE_CLIENT_URL ??
-    "http://localhost:5173",
+    ClientOriginSchema.parse(process.env.VITE_CLIENT_URL ?? "http://localhost:5173"),
   databaseUrl: productionConfig?.DATABASE_URL ?? process.env.DATABASE_URL,
   betterAuthSecret:
     productionConfig?.BETTER_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET,

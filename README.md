@@ -84,7 +84,7 @@ The server reads these values from `server/.env`. See `server/.env.example` for 
 - `DATABASE_URL`. Postgres connection string.
 - `BETTER_AUTH_SECRET`. Random string with at least 32 characters.
 - `BETTER_AUTH_URL`. Public URL of the server. Use `http://localhost:3000` for dev.
-- `VITE_CLIENT_URL`. Client origin used for CORS and auth origins. Use `http://localhost:5173` for dev.
+- `VITE_CLIENT_URL`. Client HTTP(S) URL used for CORS and auth origins. The server uses its origin, so trailing slashes and paths are removed. Use `http://localhost:5173` for dev.
 - `PORT`. Server port. Defaults to 3000.
 - `NODE_ENV`. Set to `production` for strict config checks.
 - `AUTH_COOKIE_SAME_SITE`. Use `lax` or `none`.

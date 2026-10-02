@@ -34,7 +34,7 @@ export const auth = betterAuth({
       const requestedCallback = verificationUrl.searchParams.get("callbackURL") ?? "/";
       if (URL.canParse(requestedCallback, config.clientUrl)) {
         const callback = new URL(requestedCallback, config.clientUrl);
-        if (callback.origin === new URL(config.clientUrl).origin) {
+        if (callback.origin === config.clientUrl) {
           destination = getAuthDestination(
             callback.pathname === "/auth/signin"
               ? callback.searchParams.get("next")
