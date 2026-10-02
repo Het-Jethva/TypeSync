@@ -61,10 +61,80 @@ export default function DashboardPage() {
   const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
   const documentsAppendRequestGenerationRef = useRef(0);
+  const documentChangesRef = useRef(new Map<string, {
+    revision: number;
+    pendingMutations: number;
+    removed: boolean;
+    metadata: Pick<DocumentWithRole, "title" | "updatedAt"> | null;
+    role: DocumentWithRole["role"] | null;
+  }>());
+  const documentChangeRevisionRef = useRef(0);
   const routeDocumentRequestGenerationRef = useRef(0);
   const documentIdRef = useRef(documentId);
   const documentsRef = useRef(documents);
   const bypassNextNavigationRef = useRef(false);
+
+  const markDocumentChanged = useCallback(({
+    docId,
+    pendingDelta = 0,
+    removed,
+    metadata,
+    role,
+  }: {
+    docId: string;
+    pendingDelta?: number;
+    removed?: boolean;
+    metadata?: Pick<DocumentWithRole, "title" | "updatedAt">;
+    role?: DocumentWithRole["role"];
+  }) => {
+    const previous = documentChangesRef.current.get(docId);
+    documentChangesRef.current.set(docId, {
+      revision: ++documentChangeRevisionRef.current,
+      pendingMutations: (previous?.pendingMutations ?? 0) + pendingDelta,
+      removed: removed ?? previous?.removed ?? false,
+      metadata: metadata && (!previous?.metadata || isNewerOrEqual(metadata.updatedAt, previous.metadata.updatedAt))
+        ? metadata : previous?.metadata ?? null,
+      role: role ?? previous?.role ?? null,
+    });
+  }, []);
+
+  const reconcileDocumentSnapshot = useCallback((
+    snapshot: DocumentWithRole[],
+    current: DocumentWithRole[],
+    requestRevision: number,
+  ) => {
+    const changedAfterRequest = (docId: string) => {
+      const change = documentChangesRef.current.get(docId);
+      return change !== undefined &&
+        (change.revision > requestRevision || change.pendingMutations > 0);
+    };
+    const currentById = new Map(current.map((document) => [document.id, document]));
+    const snapshotIds = new Set(snapshot.map((document) => document.id));
+    const localAdditions = current.filter((document) =>
+      !snapshotIds.has(document.id) && changedAfterRequest(document.id)
+    );
+    const reconciled = snapshot.flatMap((document) => {
+      if (!changedAfterRequest(document.id)) return [document];
+      const latest = currentById.get(document.id);
+      const change = documentChangesRef.current.get(document.id);
+      if (latest) {
+        const snapshotIsNewer = !isNewerOrEqual(latest.updatedAt, document.updatedAt);
+        return [{
+          ...latest,
+          ...(snapshotIsNewer && change?.pendingMutations === 0
+            ? { title: document.title, updatedAt: document.updatedAt } : {}),
+        }];
+      }
+      if (change?.removed) return [];
+      return [{
+        ...document,
+        ...(change?.metadata && isNewerOrEqual(change.metadata.updatedAt, document.updatedAt)
+          ? change.metadata : {}),
+        ...(change?.role ? { role: change.role } : {}),
+      }];
+    });
+    return [...localAdditions, ...reconciled];
+  }, []);
 
   // Confirmations can expire on their own; failures cannot. An error that
   // disappears after five seconds is an error the reader may never have seen.
@@ -185,6 +255,7 @@ export default function DashboardPage() {
 
   const fetchDocuments = useCallback(async () => {
     const requestGeneration = ++documentsRequestGenerationRef.current;
+    const requestRevision = documentChangeRevisionRef.current;
     documentsAppendRequestGenerationRef.current += 1;
     setNextDocumentsCursor(null);
     setIsLoadingMoreDocuments(false);
@@ -195,7 +266,7 @@ export default function DashboardPage() {
         ...(debouncedSearch ? { q: debouncedSearch } : {}),
       });
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
-      setDocuments(res.items);
+      setDocuments((current) => reconcileDocumentSnapshot(res.items, current, requestRevision));
       setNextDocumentsCursor(res.nextCursor);
       hasLoadedDocumentsRef.current = true;
       setDocumentsError(null);
@@ -213,13 +284,14 @@ export default function DashboardPage() {
         setIsLoading(false);
       }
     }
-  }, [addNotification, debouncedSearch, sort]);
+  }, [addNotification, debouncedSearch, reconcileDocumentSnapshot, sort]);
 
   const loadMoreDocuments = useCallback(async () => {
     if (!nextDocumentsCursor || isLoadingMoreDocuments) return;
 
     const refreshGeneration = documentsRequestGenerationRef.current;
     const appendGeneration = ++documentsAppendRequestGenerationRef.current;
+    const requestRevision = documentChangeRevisionRef.current;
     setIsLoadingMoreDocuments(true);
 
     try {
@@ -234,7 +306,8 @@ export default function DashboardPage() {
       ) return;
       setDocuments((current) => {
         const loadedIds = new Set(current.map((document) => document.id));
-        const newItems = res.items.filter((document) => !loadedIds.has(document.id));
+        const newItems = reconcileDocumentSnapshot(res.items, current, requestRevision)
+          .filter((document) => !loadedIds.has(document.id));
         return [...current, ...newItems];
       });
       setNextDocumentsCursor(res.nextCursor);
@@ -254,7 +327,7 @@ export default function DashboardPage() {
         setIsLoadingMoreDocuments(false);
       }
     }
-  }, [addNotification, debouncedSearch, isLoadingMoreDocuments, nextDocumentsCursor, sort]);
+  }, [addNotification, debouncedSearch, isLoadingMoreDocuments, nextDocumentsCursor, reconcileDocumentSnapshot, sort]);
 
   // The socket outlives any individual query, so its lifecycle is kept apart
   // from fetching. Tying the two together reconnected it on every keystroke.
@@ -271,6 +344,7 @@ export default function DashboardPage() {
     const socket = getSocket();
 
     const handlePermissionUpdated = (payload: { documentId: string; role: "editor" | "viewer" | "owner" }) => {
+      markDocumentChanged({ docId: payload.documentId, removed: false, role: payload.role });
       // The server sends this to every socket of the granted user, including
       // ones that have never opened the document. A role change on a document
       // we already list is a local patch; a first-time grant is not in the list
@@ -290,6 +364,7 @@ export default function DashboardPage() {
     };
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
+      markDocumentChanged({ docId: payload.documentId, removed: true });
       setDocuments((current) => current.filter((doc) => doc.id !== payload.documentId));
       if (documentId === payload.documentId) {
         routeDocumentRequestGenerationRef.current += 1;
@@ -301,6 +376,10 @@ export default function DashboardPage() {
     };
 
     const handleTitleUpdated: ServerToClientEvents["doc:title-updated"] = (payload) => {
+      markDocumentChanged({
+        docId: payload.documentId,
+        metadata: { title: payload.title, updatedAt: payload.updatedAt },
+      });
       setDocuments((current) =>
         current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
@@ -316,6 +395,10 @@ export default function DashboardPage() {
     };
 
     const handleDocSaved: ServerToClientEvents["doc:saved"] = (payload) => {
+      markDocumentChanged({
+        docId: payload.documentId,
+        metadata: { title: payload.title, updatedAt: payload.updatedAt },
+      });
       setDocuments((current) =>
         current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
@@ -341,7 +424,7 @@ export default function DashboardPage() {
       socket.off("doc:title-updated", handleTitleUpdated);
       socket.off("doc:saved", handleDocSaved);
     };
-  }, [documentId, fetchDocuments, navigate]);
+  }, [documentId, fetchDocuments, markDocumentChanged, navigate]);
 
   // Keyboard shortcut for sidebar toggle
   useEffect(() => {
@@ -367,6 +450,7 @@ export default function DashboardPage() {
     try {
       const createdDocument = await api.documents.create({ title: "Untitled" });
       const created: DocumentWithRole = { ...createdDocument, role: "owner" };
+      markDocumentChanged({ docId: created.id, removed: false });
       setDocuments((current) =>
         current.some((document) => document.id === created.id)
           ? current
@@ -392,6 +476,7 @@ export default function DashboardPage() {
     const removedIndex = documents.findIndex((document) => document.id === docId);
 
     setDeletingDocumentIds((current) => new Set(current).add(docId));
+    markDocumentChanged({ docId, pendingDelta: 1, removed: true });
     setDocuments((current) => current.filter((document) => document.id !== docId));
     if (documentId === docId) {
       if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
@@ -405,6 +490,7 @@ export default function DashboardPage() {
       console.error("Failed to delete document:", err);
       const msg = errorMessage(err, "Failed to delete document");
       addNotification(`Failed to delete document: ${msg}`, "error");
+      markDocumentChanged({ docId, removed: false });
       if (removedDocument) {
         setDocuments((current) => {
           if (current.some((document) => document.id === docId)) return current;
@@ -414,6 +500,7 @@ export default function DashboardPage() {
         });
       }
     } finally {
+      markDocumentChanged({ docId, pendingDelta: -1 });
       setDeletingDocumentIds((current) => {
         const next = new Set(current);
         next.delete(docId);
@@ -438,9 +525,21 @@ export default function DashboardPage() {
       documents.find((document) => document.id === docId)?.title ??
       (routeDocument?.id === docId ? routeDocument.title : undefined);
 
+    markDocumentChanged({ docId, pendingDelta: 1 });
     applyDocumentTitle(docId, title);
     try {
-      await api.documents.update(docId, { title });
+      const updated = await api.documents.update(docId, { title });
+      if (!updated) return;
+      const metadata = { title: updated.title, updatedAt: updated.updatedAt };
+      markDocumentChanged({ docId, metadata });
+      setDocuments((current) => current.map((document) =>
+        document.id === docId && isNewerOrEqual(updated.updatedAt, document.updatedAt)
+          ? { ...document, ...metadata } : document
+      ));
+      setRouteDocument((current) =>
+        current?.id === docId && isNewerOrEqual(updated.updatedAt, current.updatedAt)
+          ? { ...current, ...metadata } : current
+      );
     } catch (err) {
       console.error("Failed to rename document:", err);
       if (previousTitle !== undefined) {
@@ -460,6 +559,8 @@ export default function DashboardPage() {
       const msg = errorMessage(err, "Failed to rename document");
       addNotification(`Failed to rename document: ${msg}`, "error");
       throw err;
+    } finally {
+      markDocumentChanged({ docId, pendingDelta: -1 });
     }
   };
 
@@ -473,6 +574,7 @@ export default function DashboardPage() {
     const removedDocument = documents.find((document) => document.id === docId);
     const removedIndex = documents.findIndex((document) => document.id === docId);
 
+    markDocumentChanged({ docId, pendingDelta: 1, removed: true });
     setDocuments((current) => current.filter((document) => document.id !== docId));
     if (documentId === docId) {
       if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
@@ -486,6 +588,7 @@ export default function DashboardPage() {
       console.error("Failed to leave document:", err);
       const msg = errorMessage(err, "Failed to leave document");
       addNotification(`Failed to leave document: ${msg}`, "error");
+      markDocumentChanged({ docId, removed: false });
       if (removedDocument) {
         setDocuments((current) => {
           if (current.some((document) => document.id === docId)) return current;
@@ -494,6 +597,8 @@ export default function DashboardPage() {
           return restored;
         });
       }
+    } finally {
+      markDocumentChanged({ docId, pendingDelta: -1 });
     }
   };
 
