@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signOut, useSession } from "../lib/auth-client";
 import { canEditDocument, type DocumentWithRole, type ListDocumentsQuery, type Role } from "@typesync/shared";
@@ -49,6 +48,8 @@ interface SidebarProps {
   sort: SortBy;
   onSortChange: (sort: SortBy) => void;
   onBeforeSignOut?: () => Promise<boolean>;
+  onSignedOut: () => void | Promise<void>;
+  onSignOutError: (message: string) => void;
   onClose?: () => void;
   showCloseButton?: boolean;
 }
@@ -95,14 +96,16 @@ export function Sidebar({
   sort,
   onSortChange,
   onBeforeSignOut,
+  onSignedOut,
+  onSignOutError,
   onClose,
   showCloseButton,
 }: SidebarProps) {
-  const navigate = useNavigate();
   const confirm = useConfirm();
   const { data: session } = useSession();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
   // Cleared when renaming starts, so a blur that never arrives cannot swallow the next commit.
   const ignoreRenameBlurRef = useRef(false);
@@ -220,9 +223,27 @@ export function Sidebar({
   };
 
   const handleSignOut = async () => {
-    if (onBeforeSignOut && !(await onBeforeSignOut())) return;
-    await signOut();
-    navigate("/");
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      if (onBeforeSignOut && !(await onBeforeSignOut())) return;
+      const { error } = await signOut({
+        fetchOptions: {
+          onSuccess: async () => {
+            await onSignedOut();
+          },
+        },
+      });
+      if (error) {
+        onSignOutError(`Failed to sign out: ${error.message || "Please try again"}`);
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Please try again";
+      onSignOutError(`Failed to sign out: ${message}`);
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
@@ -481,9 +502,10 @@ export function Sidebar({
       <div className="p-3 border-t border-border flex items-center justify-between gap-2">
         <button
           onClick={handleSignOut}
+          disabled={isSigningOut}
           className="flex-1 text-left px-3 py-1.5 rounded text-ui text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
         >
-          Sign out
+          {isSigningOut ? "Signing out..." : "Sign out"}
         </button>
         <button
           onClick={toggleTheme}

@@ -712,13 +712,14 @@ export default function DashboardPage() {
                   setSidebarOpen(false);
                 }
               }}
-              onBeforeSignOut={async () => {
-                const canLeave = await confirmLeavingWithPendingUpdates();
-                if (canLeave && hasPendingDocumentUpdates) {
+              onBeforeSignOut={confirmLeavingWithPendingUpdates}
+              onSignedOut={async () => {
+                if (hasPendingDocumentUpdates) {
                   bypassNextNavigationRef.current = true;
                 }
-                return canLeave;
+                await navigate("/", { flushSync: true });
               }}
+              onSignOutError={addNotification}
               onClose={() => setSidebarOpen(false)}
               showCloseButton={isMobile}
             />

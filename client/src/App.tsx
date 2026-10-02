@@ -37,7 +37,14 @@ export default function App() {
       <ConfirmProvider>
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route
+              path="/"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <LandingPage />
+                </Suspense>
+              }
+            />
             <Route path="/auth/:mode" element={<AuthPage />} />
             <Route
               path="/auth"
