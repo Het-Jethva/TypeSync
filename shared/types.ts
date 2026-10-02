@@ -1,5 +1,30 @@
 import { z } from "zod";
 
+export function getAuthDestination(value: string | null): string {
+  if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\") ||
+    Array.from(value).some(character => character.charCodeAt(0) <= 32)) {
+    return "/dashboard";
+  }
+  try {
+    const url = new URL(value, "https://typesync.invalid");
+    const pathname = decodeURIComponent(url.pathname).toLowerCase();
+    if (pathname.startsWith("//") || pathname.includes("\\") ||
+      Array.from(pathname).some(character => character.charCodeAt(0) <= 32)) return "/dashboard";
+    if (pathname === "/auth" || pathname.startsWith("/auth/")) return "/dashboard";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/dashboard";
+  }
+}
+
+export function getAuthPath({ mode, destination }: {
+  mode: "signin" | "signup";
+  destination: string;
+}): string {
+  const query = new URLSearchParams({ next: destination });
+  return `/auth/${mode}?${query}`;
+}
+
 export const DOCUMENT_MAX_UPDATE_BYTES = 12 * 1024 * 1024;
 
 export const RoleSchema = z.enum(["owner", "editor", "viewer"]);

@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import * as schema from "../db/schema.js";
 import { config } from "../config.js";
 import { sendVerificationEmail } from "./verification-email.js";
+import { getAuthDestination, getAuthPath } from "@typesync/shared";
 
 export const AUTH_CLIENT_IP_HEADER = "x-typesync-client-ip";
 
@@ -29,10 +30,21 @@ export const auth = betterAuth({
     expiresIn: 60 * 60,
     async sendVerificationEmail({ user, url }) {
       const verificationUrl = new URL(url);
-      verificationUrl.searchParams.set(
-        "callbackURL",
-        new URL("/auth/signin?verified=1", config.clientUrl).href,
-      );
+      let destination = "/dashboard";
+      const requestedCallback = verificationUrl.searchParams.get("callbackURL") ?? "/";
+      if (URL.canParse(requestedCallback, config.clientUrl)) {
+        const callback = new URL(requestedCallback, config.clientUrl);
+        if (callback.origin === new URL(config.clientUrl).origin) {
+          destination = getAuthDestination(
+            callback.pathname === "/auth/signin"
+              ? callback.searchParams.get("next")
+              : callback.pathname === "/" ? null : callback.pathname + callback.search + callback.hash,
+          );
+        }
+      }
+      const callback = new URL(getAuthPath({ mode: "signin", destination }), config.clientUrl);
+      callback.searchParams.set("verified", "1");
+      verificationUrl.searchParams.set("callbackURL", callback.href);
       await sendVerificationEmail({ email: user.email, url: verificationUrl.href });
     },
   },

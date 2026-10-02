@@ -6,11 +6,15 @@ import { Logo } from "../components/Logo";
 import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
 import { useBackendReadiness } from "../lib/backend-readiness-context";
 import { errorMessage } from "../lib/error-message";
+import { getAuthDestination, getAuthPath } from "@typesync/shared";
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const { mode } = useParams();
   const [searchParams] = useSearchParams();
+  const destination = getAuthDestination(searchParams.get("next"));
+  const signInPath = getAuthPath({ mode: "signin", destination });
+  const verificationCallbackURL = new URL(signInPath, window.location.origin).href;
   const { data: session, isPending: isSessionPending, refetch } = useSession();
   const { status: backendStatus } = useBackendReadiness();
 
@@ -62,7 +66,7 @@ export default function AuthPage() {
     try {
       if (isSignIn) {
         const result = await signIn.email(
-          { email, password },
+          { email, password, callbackURL: new URL(destination, window.location.origin).href },
           { disableSignal: true },
         );
         if (result.error) {
@@ -74,7 +78,7 @@ export default function AuthPage() {
         }
       } else {
         const result = await signUp.email(
-          { name, email, password },
+          { name, email, password, callbackURL: verificationCallbackURL },
           { disableSignal: true },
         );
         if (result.error) {
@@ -87,7 +91,7 @@ export default function AuthPage() {
       }
 
       await refetch();
-      navigate("/dashboard", { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(errorMessage(err, "Authentication failed. Please try again."));
     } finally {
@@ -101,7 +105,7 @@ export default function AuthPage() {
     setVerificationResent(false);
     setIsLoading(true);
     try {
-      const result = await sendVerificationEmail({ email: pendingEmail });
+      const result = await sendVerificationEmail({ email: pendingEmail, callbackURL: verificationCallbackURL });
       if (result.error) {
         setError(result.error.message || "Could not send verification email. Try again.");
         return;
@@ -133,7 +137,7 @@ export default function AuthPage() {
   }
 
   if (session?.user.emailVerified) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={destination} replace />;
   }
 
   return (
@@ -216,7 +220,7 @@ export default function AuthPage() {
                 className="w-full btn-linear-primary py-2 text-ui">
                 {isLoading ? "Sending…" : "Resend verification email"}
               </button>
-              <Link to="/auth/signin" onClick={() => setVerificationEmail(null)}
+              <Link to={signInPath} onClick={() => setVerificationEmail(null)}
                 className="block text-center text-ui text-accent">
                 Back to sign in
               </Link>
@@ -308,7 +312,7 @@ export default function AuthPage() {
           <div className="mt-6 text-center text-ui text-text-muted">
             {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
             <Link
-              to={isSignIn ? "/auth/signup" : "/auth/signin"}
+              to={getAuthPath({ mode: isSignIn ? "signup" : "signin", destination })}
               className="text-accent hover:text-accent-hover font-semibold transition-colors"
             >
               {isSignIn ? "Sign up" : "Sign in"}

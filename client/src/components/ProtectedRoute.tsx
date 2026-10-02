@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
+import { getAuthDestination, getAuthPath } from "@typesync/shared";
 import { useSession } from "../lib/auth-client";
 
 interface ProtectedRouteProps {
@@ -14,6 +15,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, prefetch }: ProtectedRouteProps) {
   const { data: session, isPending } = useSession();
+  const location = useLocation();
 
   useEffect(() => {
     // A failure here is not actionable: `lazy` retries the import when it
@@ -40,7 +42,8 @@ export function ProtectedRoute({ children, prefetch }: ProtectedRouteProps) {
   }
 
   if (!session?.user.emailVerified) {
-    return <Navigate to="/auth/signin" replace />;
+    const destination = getAuthDestination(location.pathname + location.search + location.hash);
+    return <Navigate to={getAuthPath({ mode: "signin", destination })} replace />;
   }
 
   return <>{children}</>;
