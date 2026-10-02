@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readApiPayload } from "./api-payload";
+import { apiBaseUrl } from "./backend-url";
 import {
   DocumentCollaboratorSchema,
   DocumentCollaboratorWithUserSchema,
@@ -11,8 +12,6 @@ import {
   type ListDocumentsQuery,
   type UpdateDocumentRequest,
 } from "@typesync/shared";
-
-const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
 
 export class ApiError extends Error {
   constructor(
@@ -41,7 +40,7 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${apiBaseUrl}${path}`, {
     credentials: "include",
     ...rest,
     headers,

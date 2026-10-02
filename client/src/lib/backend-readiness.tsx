@@ -9,6 +9,7 @@ import {
   BackendReadinessContext,
   type BackendReadinessStatus,
 } from "./backend-readiness-context";
+import { apiBaseUrl } from "./backend-url";
 
 const PROBE_TIMEOUT_MS = 8_000;
 const RETRY_DELAY_MS = 2_500;
@@ -20,10 +21,7 @@ function readinessStatus(body: unknown): string | undefined {
   return typeof body.status === "string" ? body.status : undefined;
 }
 
-const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
-const readinessUrl = configuredApiUrl
-  ? `${configuredApiUrl}/api/ready`
-  : "/api/ready";
+const readinessUrl = `${apiBaseUrl}/ready`;
 
 export function BackendReadinessProvider({
   children,

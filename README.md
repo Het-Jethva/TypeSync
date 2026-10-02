@@ -77,6 +77,8 @@ Open the client at `http://localhost:5173`. The API runs at `http://localhost:30
 
 ## Environment variables
 
+The client accepts `VITE_API_URL` at build time. Set it to the backend HTTP(S) origin, for example `https://api.example.com`. Whitespace and trailing slashes are normalized. Paths, query strings, fragments, and credentials are rejected. Leave it unset for same-origin requests through the development proxy or a production reverse proxy.
+
 The server reads these values from `server/.env`. See `server/.env.example` for a starter file. See `server/src/config.ts` for validation.
 
 - `DATABASE_URL`. Postgres connection string.

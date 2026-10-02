@@ -1,4 +1,5 @@
 import { io, Socket } from "socket.io-client";
+import { backendOrigin } from "./backend-url";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -8,7 +9,7 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (!socket) {
-    socket = io(import.meta.env.VITE_API_URL || undefined, {
+    socket = io(backendOrigin, {
       withCredentials: true,
       autoConnect: false,
       // Try WebSocket first so the connection skips the long-polling handshake
