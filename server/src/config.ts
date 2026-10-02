@@ -37,6 +37,13 @@ const HttpUrlSchema = requiredString()
     }
   }, "must be a valid HTTP(S) URL");
 
+const ResendApiKeySchema = requiredString().trim().regex(/^re_[A-Za-z0-9_]+$/, "must be a Resend API key");
+const EmailFromSchema = requiredString().trim().refine((value) => {
+  if (/[\r\n]/.test(value)) return false;
+  const address = value.match(/^[^<>]+<([^<>]+)>$/)?.[1] ?? value;
+  return z.email().safeParse(address.trim()).success;
+}, "must be an email address or Name <email@example.com>");
+
 const ProductionConfigSchema = z.object({
   DATABASE_URL: DatabaseUrlSchema,
   BETTER_AUTH_SECRET: requiredString()
@@ -52,6 +59,8 @@ const ProductionConfigSchema = z.object({
     (value) => typeof value === "string" ? value.toLowerCase() : value,
     AuthCookieSameSiteSchema
   ),
+  RESEND_API_KEY: ResendApiKeySchema,
+  EMAIL_FROM: EmailFromSchema,
 });
 
 function readProductionConfig(): z.infer<typeof ProductionConfigSchema> {
@@ -92,4 +101,8 @@ export const config = {
   authCookieSameSite:
     productionConfig?.AUTH_COOKIE_SAME_SITE ?? developmentCookieSameSite,
   isProduction,
+  resendApiKey: productionConfig?.RESEND_API_KEY ??
+    (process.env.RESEND_API_KEY ? ResendApiKeySchema.parse(process.env.RESEND_API_KEY) : undefined),
+  emailFrom: productionConfig?.EMAIL_FROM ??
+    (process.env.EMAIL_FROM ? EmailFromSchema.parse(process.env.EMAIL_FROM) : undefined),
 } as const;

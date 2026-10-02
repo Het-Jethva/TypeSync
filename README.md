@@ -86,6 +86,10 @@ The server reads these values from `server/.env`. See `server/.env.example` for 
 - `PORT`. Server port. Defaults to 3000.
 - `NODE_ENV`. Set to `production` for strict config checks.
 - `AUTH_COOKIE_SAME_SITE`. Use `lax` or `none`.
+- `RESEND_API_KEY`. Resend sending-access key, preferably restricted to the verified sending domain. Required in production; development signup and verification fail closed without mail credentials.
+- `EMAIL_FROM`. Sender on a verified Resend domain, for example `TypeSync <no-reply@mail.hetjethva.tech>`. Required in production.
+
+Email/password accounts must verify their mailbox before signing in or receiving documents shared by email. Signup shows a check-email screen with a resend button. Verification links expire after one hour and return to the client sign-in page. Existing unverified accounts must verify too; existing sessions cannot access documents until verification. Mail delivery errors are surfaced as authentication failures so users can retry with the resend flow. Set the two mail variables in your hosting environment before deploying; the local ignored `server/.env` is not included in builds or deployment.
 
 ## Scripts
 

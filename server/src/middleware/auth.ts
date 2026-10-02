@@ -42,6 +42,11 @@ export async function requireAuth(
       return;
     }
 
+    if (!session.user.emailVerified) {
+      res.status(403).json({ success: false, error: "Verify your email before accessing documents" });
+      return;
+    }
+
     users.set(req, {
       id: session.user.id,
       name: session.user.name,

@@ -72,7 +72,7 @@ async function ensureSocketSession(
   const validation = Promise.resolve()
     .then(() => auth.api.getSession({ headers }))
     .then((session): SocketSessionCheck =>
-      session?.session.id === socket.data.sessionId ? "valid" : "expired"
+      session?.session.id === socket.data.sessionId && session.user.emailVerified ? "valid" : "expired"
     )
     .catch((): SocketSessionCheck => "unavailable");
   socket.data.sessionValidation = validation;
@@ -135,6 +135,7 @@ export function setupSocket(
 
       const session = await auth.api.getSession({ headers });
       if (!session) return next(new Error("Unauthorized"));
+      if (!session.user.emailVerified) return next(new Error("Verify your email before accessing documents"));
 
       socket.data.userId = session.user.id;
       socket.data.userName = session.user.name;

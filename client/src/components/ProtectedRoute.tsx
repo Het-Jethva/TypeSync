@@ -39,7 +39,7 @@ export function ProtectedRoute({ children, prefetch }: ProtectedRouteProps) {
     );
   }
 
-  if (!session) {
+  if (!session?.user.emailVerified) {
     return <Navigate to="/auth/signin" replace />;
   }
 

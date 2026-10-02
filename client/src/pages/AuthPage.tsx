@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, useParams, Link, Navigate } from "react-router";
+import { useNavigate, useParams, useSearchParams, Link, Navigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { signIn, signUp, useSession } from "../lib/auth-client";
+import { signIn, signUp, sendVerificationEmail, useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
 import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
 import { useBackendReadiness } from "../lib/backend-readiness-context";
@@ -10,6 +10,7 @@ import { errorMessage } from "../lib/error-message";
 export default function AuthPage() {
   const navigate = useNavigate();
   const { mode } = useParams();
+  const [searchParams] = useSearchParams();
   const { data: session, isPending: isSessionPending, refetch } = useSession();
   const { status: backendStatus } = useBackendReadiness();
 
@@ -21,6 +22,9 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [verificationResent, setVerificationResent] = useState(false);
+  const pendingEmail = verificationEmail;
 
   // Clear errors on mode change
   useEffect(() => {
@@ -28,6 +32,8 @@ export default function AuthPage() {
     setName("");
     setEmail("");
     setPassword("");
+    setVerificationEmail(null);
+    setVerificationResent(false);
   }, [mode]);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -60,6 +66,9 @@ export default function AuthPage() {
           { disableSignal: true },
         );
         if (result.error) {
+          if (result.error.code === "EMAIL_NOT_VERIFIED") {
+            setVerificationEmail(email);
+          }
           setError(result.error.message || "Invalid credentials");
           return;
         }
@@ -72,12 +81,34 @@ export default function AuthPage() {
           setError(result.error.message || "Sign up failed");
           return;
         }
+        setVerificationEmail(email);
+        setPassword("");
+        return;
       }
 
       await refetch();
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(errorMessage(err, "Authentication failed. Please try again."));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!pendingEmail || !isBackendReady || isLoading) return;
+    setError("");
+    setVerificationResent(false);
+    setIsLoading(true);
+    try {
+      const result = await sendVerificationEmail({ email: pendingEmail });
+      if (result.error) {
+        setError(result.error.message || "Could not send verification email. Try again.");
+        return;
+      }
+      setVerificationResent(true);
+    } catch (err) {
+      setError(errorMessage(err, "Could not send verification email. Try again."));
     } finally {
       setIsLoading(false);
     }
@@ -101,7 +132,7 @@ export default function AuthPage() {
     );
   }
 
-  if (session) {
+  if (session?.user.emailVerified) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -146,6 +177,17 @@ export default function AuthPage() {
             className="mb-4"
           />
 
+          {!pendingEmail && searchParams.has("error") && (
+            <p role="alert" className="mb-4 text-ui text-error">
+              Verification failed. Sign in to request a fresh verification email.
+            </p>
+          )}
+          {!pendingEmail && !searchParams.has("error") && searchParams.get("verified") === "1" && (
+            <p role="status" className="mb-4 text-ui text-text-secondary">
+              Email verified. Sign in to continue.
+            </p>
+          )}
+
           {/* Error */}
           <AnimatePresence>
             {error && (
@@ -162,7 +204,24 @@ export default function AuthPage() {
           </AnimatePresence>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          {pendingEmail ? (
+            <div className="space-y-4">
+              <div role="status" className="text-ui text-text-secondary">
+                <h2 className="font-semibold text-text-primary mb-2">Check your email</h2>
+                <p>Open the verification link sent to {pendingEmail}, then sign in. The link expires in one hour.</p>
+                {verificationResent && <p className="mt-2">Verification email sent again.</p>}
+              </div>
+              <button type="button" onClick={() => void handleResend()}
+                disabled={isLoading || !isBackendReady}
+                className="w-full btn-linear-primary py-2 text-ui">
+                {isLoading ? "Sending…" : "Resend verification email"}
+              </button>
+              <Link to="/auth/signin" onClick={() => setVerificationEmail(null)}
+                className="block text-center text-ui text-accent">
+                Back to sign in
+              </Link>
+            </div>
+          ) : <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <AnimatePresence>
               {!isSignIn && (
                 <motion.div
@@ -243,7 +302,7 @@ export default function AuthPage() {
                 "Create account"
               )}
             </button>
-          </form>
+          </form>}
 
           {/* Toggle */}
           <div className="mt-6 text-center text-ui text-text-muted">

@@ -107,7 +107,7 @@ export class DocumentAccessAuthorizer {
 
     const normalizedEmail = email.toLowerCase();
     const [targetUser] = await db
-      .select({ id: user.id })
+      .select({ id: user.id, emailVerified: user.emailVerified })
       .from(user)
       .where(eq(user.email, normalizedEmail));
     if (!targetUser) {
@@ -118,6 +118,9 @@ export class DocumentAccessAuthorizer {
     }
     if (targetUser.id === currentUserId) {
       throw new AppError(400, "Cannot add yourself as a collaborator");
+    }
+    if (!targetUser.emailVerified) {
+      throw new AppError(400, "This account has not verified its email. Ask them to verify it before sharing.");
     }
 
     return this.serializeAccessChange(documentId, targetUser.id, async () => {

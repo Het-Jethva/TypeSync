@@ -3,6 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "../db/index.js";
 import * as schema from "../db/schema.js";
 import { config } from "../config.js";
+import { sendVerificationEmail } from "./verification-email.js";
 
 export const AUTH_CLIENT_IP_HEADER = "x-typesync-client-ip";
 
@@ -19,6 +20,21 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    autoSignInAfterVerification: false,
+    expiresIn: 60 * 60,
+    async sendVerificationEmail({ user, url }) {
+      const verificationUrl = new URL(url);
+      verificationUrl.searchParams.set(
+        "callbackURL",
+        new URL("/auth/signin?verified=1", config.clientUrl).href,
+      );
+      await sendVerificationEmail({ email: user.email, url: verificationUrl.href });
+    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
