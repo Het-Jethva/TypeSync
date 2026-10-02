@@ -81,9 +81,10 @@ const roomSession = new CollaborativeRoomSession({
   getRoomOccupancy(documentId) {
     return socketServer.current?.sockets.adapter.rooms.get(`doc:${documentId}`)?.size ?? 0;
   },
-  onDocumentSaved({ documentId, updatedAt, revision, epoch }) {
+  onDocumentSaved({ documentId, title, updatedAt, revision, epoch }) {
     const payload = {
       documentId,
+      title,
       updatedAt: updatedAt.toISOString(),
       revision,
       epoch,

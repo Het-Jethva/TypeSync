@@ -10,7 +10,7 @@ import { errorMessage } from "../lib/error-message";
 import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import { useConfirm } from "../lib/confirm-context";
 import { useSession } from "../lib/auth-client";
-import type { DocumentWithRole, ListDocumentsQuery, PresenceIdentity } from "@typesync/shared";
+import type { DocumentWithRole, ListDocumentsQuery, PresenceIdentity, ServerToClientEvents } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import type { DocumentStatus } from "../lib/document-status";
 
@@ -300,7 +300,7 @@ export default function DashboardPage() {
       }
     };
 
-    const handleTitleUpdated = (payload: { documentId: string; title: string; updatedAt: string }) => {
+    const handleTitleUpdated: ServerToClientEvents["doc:title-updated"] = (payload) => {
       setDocuments((current) =>
         current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
@@ -315,22 +315,18 @@ export default function DashboardPage() {
       });
     };
 
-    const handleDocSaved = (payload: {
-      documentId: string;
-      updatedAt: string;
-      revision: number;
-    }) => {
+    const handleDocSaved: ServerToClientEvents["doc:saved"] = (payload) => {
       setDocuments((current) =>
         current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
           if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
-          return { ...doc, updatedAt: payload.updatedAt };
+          return { ...doc, title: payload.title, updatedAt: payload.updatedAt };
         })
       );
       setRouteDocument((current) => {
         if (current?.id !== payload.documentId) return current;
         if (!isNewerOrEqual(payload.updatedAt, current.updatedAt)) return current;
-        return { ...current, updatedAt: payload.updatedAt };
+        return { ...current, title: payload.title, updatedAt: payload.updatedAt };
       });
     };
 

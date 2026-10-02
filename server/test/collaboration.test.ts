@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as Y from "yjs";
-import { createDocumentRuntime } from "../src/socket/document-runtime.ts";
+import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socket/document-runtime.ts";
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 
 test("reconnecting restores remote dependencies before reporting local edits persisted", async () => {
@@ -10,10 +10,11 @@ test("reconnecting restores remote dependencies before reporting local edits per
     loadState: async () => stored,
     saveState: async (_id: string, state: Uint8Array) => {
       stored = state;
-      return new Date();
+      return { title: "Untitled", updatedAt: new Date() };
     },
   };
-  const first = createDocumentRuntime({ repository });
+  const saves: Parameters<NonNullable<DocumentRuntimeOptions["onDocumentSaved"]>>[0][] = [];
+  const first = createDocumentRuntime({ repository, onDocumentSaved: (metadata) => saves.push(metadata) });
   await first.ensureLoaded("document");
   let runtime = first;
   const local = new Y.Doc();
@@ -37,6 +38,10 @@ test("reconnecting restores remote dependencies before reporting local edits per
   manager.setConnected(true);
   local.getText("default").insert(0, "saved");
   await first.flushAll();
+  assert.equal(saves[0]?.title, "Untitled");
+  assert(saves[0]?.updatedAt instanceof Date);
+  assert.equal(saves[0]?.epoch, initial.epoch);
+  assert.equal(saves[0]?.revision, 1);
   manager.notePersisted(initial.epoch, 1);
   assert.equal(manager.getState().syncStatus, "synced");
 
@@ -112,7 +117,7 @@ test("clean viewers send nothing, but acknowledged deletions survive reconnects"
     loadState: async () => stored,
     saveState: async (_id: string, state: Uint8Array) => {
       stored = state;
-      return new Date();
+      return { title: "Untitled", updatedAt: new Date() };
     },
   };
   let runtime = createDocumentRuntime({ repository });
@@ -217,7 +222,7 @@ test("typing during backoff waits for the scheduled retry", (context) => {
 });
 
 test("size checks accept large pastes and shrinking edits without applying rejected updates", async () => {
-  const repository = { loadState: async () => null, saveState: async () => new Date() };
+  const repository = { loadState: async () => null, saveState: async () => ({ title: "Untitled", updatedAt: new Date() }) };
   const large = new Y.Doc();
   const runtime = createDocumentRuntime({ repository });
   try {

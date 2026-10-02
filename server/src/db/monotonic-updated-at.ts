@@ -13,9 +13,10 @@ export const documentMetadata = {
 } as const;
 
 // clock_timestamp() moves during a transaction; now() is frozen at the start.
-// GREATEST against the stored column stays monotonic under READ COMMITTED.
+// Advance at least one stored millisecond so metadata writes remain ordered
+// even when they land within the same clock tick under READ COMMITTED.
 export function monotonicUpdatedAt(): SQL<Date> {
-  return sql<Date>`GREATEST(${document.updatedAt}, clock_timestamp())`;
+  return sql<Date>`GREATEST(${document.updatedAt} + interval '1 millisecond', clock_timestamp())`;
 }
 
 export function saveDocumentStateQuery(
@@ -27,7 +28,7 @@ export function saveDocumentStateQuery(
     .update(document)
     .set({ yDocState: Buffer.from(state), updatedAt: monotonicUpdatedAt() })
     .where(eq(document.id, documentId))
-    .returning({ updatedAt: document.updatedAt });
+    .returning({ title: document.title, updatedAt: document.updatedAt });
 }
 
 export function updateDocumentTitleQuery(

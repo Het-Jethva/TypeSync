@@ -3,9 +3,11 @@ import { db } from "../db/index.js";
 import { saveDocumentStateQuery } from "../db/monotonic-updated-at.js";
 import { document } from "../db/schema.js";
 
+export type SavedDocumentMetadata = Pick<typeof document.$inferSelect, "title" | "updatedAt">;
+
 export interface DocumentStateRepository {
   loadState(documentId: string): Promise<Uint8Array | null>;
-  saveState(documentId: string, state: Uint8Array): Promise<Date | null>;
+  saveState(documentId: string, state: Uint8Array): Promise<SavedDocumentMetadata | null>;
 }
 
 export class DrizzleDocumentStateRepository implements DocumentStateRepository {
@@ -17,8 +19,8 @@ export class DrizzleDocumentStateRepository implements DocumentStateRepository {
     return doc?.yDocState ? new Uint8Array(doc.yDocState) : null;
   }
 
-  async saveState(documentId: string, state: Uint8Array): Promise<Date | null> {
+  async saveState(documentId: string, state: Uint8Array): Promise<SavedDocumentMetadata | null> {
     const [stored] = await saveDocumentStateQuery(db, documentId, state);
-    return stored?.updatedAt ?? null;
+    return stored ?? null;
   }
 }

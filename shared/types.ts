@@ -153,6 +153,7 @@ export interface ServerToClientEvents {
   "doc:title-updated": (payload: { documentId: string; title: string; updatedAt: string }) => void;
   "doc:saved": (payload: {
     documentId: string;
+    title: string;
     updatedAt: string;
     revision: number;
     epoch: string;

@@ -69,6 +69,7 @@ export interface DocumentRuntimeOptions {
   roomOccupancyProvider?: (documentId: string) => number;
   onDocumentSaved?: (payload: {
     documentId: string;
+    title: string;
     updatedAt: Date;
     revision: number;
     epoch: string;
@@ -157,11 +158,11 @@ export function createDocumentRuntime(
         const encodedEpoch = documentEpochs.get(docId);
         const snapshot = Y.encodeStateAsUpdate(ydoc);
         try {
-          const updatedAt = await repository.saveState(docId, snapshot);
+          const metadata = await repository.saveState(docId, snapshot);
           // A delete can remove the row while this write is in flight. Discard
           // already cancelled the runtime, so a missing row is not a failed save.
           if (state.cancelled) continue;
-          if (!updatedAt) throw new Error(`Document ${docId} was not saved`);
+          if (!metadata) throw new Error(`Document ${docId} was not saved`);
           // A replacement runtime must not inherit this snapshot's cursor.
           if (encodedEpoch !== undefined && documentEpochs.get(docId) === encodedEpoch) {
             documentPersistedRevisions.set(docId, encodedRevision);
@@ -170,7 +171,8 @@ export function createDocumentRuntime(
             try {
               onDocumentSavedCallback?.({
                 documentId: docId,
-                updatedAt,
+                title: metadata.title,
+                updatedAt: metadata.updatedAt,
                 revision: encodedRevision,
                 epoch: encodedEpoch,
               });
