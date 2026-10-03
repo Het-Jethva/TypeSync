@@ -93,6 +93,22 @@ The server reads these values from `server/.env`. See `server/.env.example` for 
 
 Email/password accounts must verify their mailbox before signing in or receiving documents shared by email. Signup shows a check-email screen with a resend button. Verification links expire after one hour and return to the client sign-in page. Existing unverified accounts must verify too; existing sessions cannot access documents until verification. Mail delivery errors are surfaced as authentication failures so users can retry with the resend flow. Set the two mail variables in your hosting environment before deploying; the local ignored `server/.env` is not included in builds or deployment.
 
+## Production deployment
+
+The frontend runs on Vercel and the backend runs on Render. These settings live in the hosting dashboards.
+
+| Setting | Value |
+| --- | --- |
+| Vercel frontend domain | `typesync.hetjethva.tech` |
+| DNS record in the `hetjethva.tech` zone | `typesync A 76.76.21.21` |
+| Backend DNS record | `api.typesync CNAME typesync-backend-4gcv.onrender.com` |
+| Render service | `typesync-backend` |
+| Render health-check path | `/api/ready` |
+
+Keep an explicit DNS record for `typesync`. The `api.typesync` child record prevents the zone wildcard from resolving the parent frontend domain. Check the frontend with `vercel domains inspect typesync.hetjethva.tech`; a ready deployment and a verified domain do not establish that DNS resolves.
+
+Render's `/api/ready` check queries PostgreSQL and returns HTTP 503 if the database is unavailable. Set this path in the service's Health Checks settings. `/api/health` checks only that the server responds.
+
 ## Scripts
 
 Run these from the repo root.
