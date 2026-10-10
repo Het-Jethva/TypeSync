@@ -2,7 +2,7 @@ import { Server as HttpServer } from "http";
 import { isIP } from "node:net";
 import { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
-import { DOCUMENT_MAX_UPDATE_BYTES } from "@typesync/shared";
+import { DOCUMENT_MAX_UPDATE_BYTES, AiCreateRequestSchema, AiResolveRequestSchema } from "@typesync/shared";
 import type {
   ClientToServerEvents,
   DocumentJoinResult,
@@ -15,6 +15,8 @@ import { isTrustedWebOrigin } from "../lib/origin.js";
 import { sessionCacheHit, sessionRecheck } from "../lib/session-recheck.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
+import { AiSuggestionService } from "../services/ai-suggestions.js";
+import { DrizzleDocumentStateRepository } from "./repository.js";
 import type {
   SocketData,
   SocketSessionCheck,
@@ -125,6 +127,13 @@ export function setupSocket(
     },
   });
 
+  const ai = new AiSuggestionService({
+    rooms: roomSession,
+    repository: new DrizzleDocumentStateRepository(),
+    emit: (documentId, suggestion) => io.to(`doc:${documentId}`).emit("ai:suggestion", { documentId, suggestion }),
+    emitUpdate: (documentId, update) => io.to(`doc:${documentId}`).emit("doc:update", { documentId, update }),
+  });
+
   io.use(async (socket, next) => {
     try {
       const cookies = socket.handshake.headers.cookie || "";
@@ -158,6 +167,29 @@ export function setupSocket(
     }, SESSION_REVALIDATION_INTERVAL);
     sessionValidationTimer.unref();
     socket.data.sessionValidationTimer = sessionValidationTimer;
+
+    socket.on("ai:list", async (documentId, acknowledge) => {
+      const respond = typeof acknowledge === "function" ? acknowledge : () => {};
+      if (!DocumentIdSchema.safeParse(documentId).success) { respond({ success: false, error: "Invalid document id" }); return; }
+      if (await ensureSocketSession(socket, true) !== "valid") { respond({ success: false, error: "Session check unavailable or expired" }); return; }
+      respond(await ai.list(socket, documentId));
+    });
+
+    socket.on("ai:create", async (documentId, request, acknowledge) => {
+      const respond = typeof acknowledge === "function" ? acknowledge : () => {};
+      const parsed = AiCreateRequestSchema.safeParse(request);
+      if (!DocumentIdSchema.safeParse(documentId).success || !parsed.success) { respond({ success: false, error: "Invalid AI request" }); return; }
+      if (await ensureSocketSession(socket, true) !== "valid") { respond({ success: false, error: "Session check unavailable or expired" }); return; }
+      respond(await ai.create(socket, documentId, parsed.data));
+    });
+
+    socket.on("ai:resolve", async (documentId, request, acknowledge) => {
+      const respond = typeof acknowledge === "function" ? acknowledge : () => {};
+      const parsed = AiResolveRequestSchema.safeParse(request);
+      if (!DocumentIdSchema.safeParse(documentId).success || !parsed.success) { respond({ success: false, error: "Invalid AI request" }); return; }
+      if (await ensureSocketSession(socket, true) !== "valid") { respond({ success: false, error: "Session check unavailable or expired" }); return; }
+      respond(await ai.resolve(socket, documentId, parsed.data));
+    });
 
     socket.on("doc:join", async (
       documentId: string,

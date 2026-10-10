@@ -186,17 +186,13 @@ export default function DashboardPage() {
   }, [confirm, navigationBlocker]);
 
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile((prev) => {
-        if (prev !== mobile) {
-          setSidebarOpen(!mobile);
-        }
-        return mobile;
-      });
+    const breakpoint = window.matchMedia("(max-width: 767px)");
+    const handleBreakpoint = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+      setSidebarOpen(!event.matches);
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    breakpoint.addEventListener("change", handleBreakpoint);
+    return () => breakpoint.removeEventListener("change", handleBreakpoint);
   }, []);
 
   useEffect(() => {

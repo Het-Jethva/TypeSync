@@ -3,7 +3,6 @@ node_modules/
 
 # Environment
 .env
-.env.local
 .env.*.local
 
 # Build output
@@ -29,3 +28,5 @@ npm-debug.log*
 # Local decision logs
 .audit/
 
+.vercel
+.env.local

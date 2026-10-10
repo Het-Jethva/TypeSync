@@ -25,6 +25,7 @@ export interface DocumentRuntime {
   evictIfEmpty(documentId: string): Promise<void>;
   discard(documentId: string): void;
   flushAll(): Promise<{ succeeded: string[]; failed: string[] }>;
+  flushDocument(documentId: string): Promise<void>;
 }
 
 export type DocumentUpdateResult =
@@ -398,6 +399,12 @@ export function createDocumentRuntime(
     },
 
     evictIfEmpty,
+
+    async flushDocument(documentId) {
+      const ydoc = docs.get(documentId);
+      if (!ydoc || !loadedDocs.has(documentId)) throw new Error("Document is not loaded");
+      await flushDocumentNow(documentId, ydoc);
+    },
 
     discard(documentId) {
       discardRuntime(documentId);

@@ -54,6 +54,8 @@ export class CollaborativeRoomSession {
   private readonly pendingJoinWaiters = new Set<() => void>();
   private readonly updateTokens = new Map<string, { tokens: number; lastRefill: number }>();
   private isDraining = false;
+  private readonly lifecycleListeners = new Set<(documentId: string | null) => void>();
+  private readonly aiFlushListeners = new Set<() => Promise<void>>();
 
   private readonly runtime;
   private readonly awarenessManager;
@@ -84,6 +86,31 @@ export class CollaborativeRoomSession {
 
   beginDrain(): void {
     this.isDraining = true;
+    for (const listener of this.lifecycleListeners) listener(null);
+  }
+
+  onAiLifecycle(listener: (documentId: string | null) => void): void {
+    this.lifecycleListeners.add(listener);
+  }
+
+  onAiFlush(listener: () => Promise<void>): void {
+    this.aiFlushListeners.add(listener);
+  }
+
+  aiAccess(socket: TypeSyncSocket, documentId: string, edit = false): string | null {
+    if (this.isDraining) return "Server is shutting down";
+    if (!socket.connected || !socket.rooms.has(`doc:${documentId}`)) return "Not joined to this document";
+    const role = this.getRole(socket.id, documentId);
+    if (!role || (edit && !canEditDocument(role))) return "Unauthorized to edit this document";
+    return null;
+  }
+
+  snapshotForAi(documentId: string): Uint8Array {
+    return this.runtime.snapshotForJoin(documentId).state;
+  }
+
+  flushDocumentForAi(documentId: string): Promise<void> {
+    return this.runtime.flushDocument(documentId);
   }
 
   waitForDrain(): Promise<void> {
@@ -432,6 +459,7 @@ export class CollaborativeRoomSession {
   }
 
   handleDocumentDeleted(documentId: string, userIds: Iterable<string>): void {
+    for (const listener of this.lifecycleListeners) listener(documentId);
     const audience = new Set(userIds);
     for (const socket of this.sockets.values()) {
       const shouldNotify = audience.has(socket.data.userId) || socket.rooms.has(`doc:${documentId}`);
@@ -466,6 +494,7 @@ export class CollaborativeRoomSession {
   }
 
   async flushAll(): Promise<{ succeeded: string[]; failed: string[] }> {
+    await Promise.all([...this.aiFlushListeners].map(flush => flush()));
     return this.runtime.flushAll();
   }
 }

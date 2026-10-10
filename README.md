@@ -90,8 +90,22 @@ The server reads these values from `server/.env`. See `server/.env.example` for 
 - `AUTH_COOKIE_SAME_SITE`. Use `lax` or `none`.
 - `RESEND_API_KEY`. Resend sending-access key, preferably restricted to the verified sending domain. Required in production; development signup and verification fail closed without mail credentials.
 - `EMAIL_FROM`. Sender on a verified Resend domain, for example `TypeSync <no-reply@mail.hetjethva.tech>`. Required in production.
+- `OPENROUTER_API_KEY`. Server-only credential for the AI co-editor. Leave it unset to disable generation.
+- `OPENROUTER_MODEL`. Pinned OpenRouter model ending in `:free`. Defaults to `liquid/lfm-2.5-2.6b:free`. The provider tries `openrouter/free` if the pinned model fails. Both requests limit provider prices to zero.
 
 Email/password accounts must verify their mailbox before signing in or receiving documents shared by email. Signup shows a check-email screen with a resend button. Verification links expire after one hour and return to the client sign-in page. Existing unverified accounts must verify too; existing sessions cannot access documents until verification. Mail delivery errors are surfaced as authentication failures so users can retry with the resend flow. Set the two mail variables in your hosting environment before deploying; the local ignored `server/.env` is not included in builds or deployment.
+
+## AI co-editor
+
+Select text in a document and open **AI co-editor**, or press **Alt+Shift+A**. Choose **Rewrite**, **Shorten**, **Fix grammar**, or **Custom**. For a custom edit, enter an instruction and click **Generate suggestion**.
+
+Every collaborator sees the response stream into a suggestion. The document changes only when an editor or owner clicks **Accept**. **Reject** cancels an active response or dismisses a completed suggestion. Viewers can read suggestions and locate their original text.
+
+Acceptance follows the selected passage through unrelated collaborative edits. If its text, formatting, or underlying selected characters change, the server refuses acceptance. Select the current passage and request a new suggestion. AI replacement text retains the starting text formatting and treats generated content as plain text.
+
+Suggestions and the actual model used remain in shared history across reconnects and server restarts. Server logs emit `ai.provider.model` with the requested and actual model, and `ai.provider.failed` for failed attempts. Free model availability and response quality vary, including the model chosen by the fallback router.
+
+Run database migrations before starting an updated backend. The `0004_ai_suggestions` migration adds suggestion history. Generation accepts up to 12,000 selected characters and 2,000 instruction characters. The server permits two active generations per document, eight globally, and one new request per user every three seconds. History keeps up to 100 suggestions per document.
 
 ## Production deployment
 
@@ -116,7 +130,7 @@ Run these from the repo root.
 - `npm run dev`. Build shared types, then run server and client together.
 - `npm run build`. Build shared, client, and server.
 - `npm run check`. Run lint, typecheck, regression tests, and build.
-- `npm test`. Run the four collaboration regression tests using real Yjs documents.
+- `npm test`. Run collaboration and AI suggestion regression tests using real Yjs documents, plus provider stream checks.
 - `npm run lint`. Run ESLint with zero warnings allowed.
 - `npm run typecheck`. Typecheck shared, client, and server.
 - `npm run db:push -w server`. Push Drizzle schema to Postgres.

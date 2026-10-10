@@ -1,21 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useEditor, useEditorState, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { createContentExtensions } from "@typesync/shared/editor-schema";
 import CharacterCount from "@tiptap/extension-character-count";
 
-import Image from "@tiptap/extension-image";
-import { Table } from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { motion } from "motion/react";
-import { common, createLowlight } from "lowlight";
 import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
 import {
   mountSmoothCollaborationCarets,
@@ -23,11 +14,10 @@ import {
 } from "../lib/smooth-collaboration-carets";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
+import { AiCoEditor } from "./AiCoEditor";
 import { useConfirm } from "../lib/confirm-context";
 import type { DocumentStatus } from "../lib/document-status";
 import { canEditDocument, type PresenceIdentity, type Role } from "@typesync/shared";
-
-const lowlight = createLowlight(common);
 
 interface EditorProps {
   documentId: string;
@@ -89,32 +79,8 @@ export function Editor({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({
-          undoRedo: false,
-          codeBlock: false, // Use CodeBlockLowlight instead
-          link: {
-            openOnClick: false,
-            autolink: true,
-          },
-        }),
+        ...createContentExtensions(),
         CharacterCount,
-        Image.configure({
-          inline: false,
-          allowBase64: false,
-        }),
-        Table.configure({
-          resizable: true,
-        }),
-        TableRow,
-        TableCell,
-        TableHeader,
-        TaskList,
-        TaskItem.configure({
-          nested: true,
-        }),
-        CodeBlockLowlight.configure({
-          lowlight,
-        }),
         Placeholder.configure({
           placeholder: "Start writing… Type / for commands",
         }),
@@ -293,15 +259,17 @@ export function Editor({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="h-full flex flex-col"
+      className="h-full flex flex-col min-h-0"
     >
       <EditorToolbar editor={editor} canEdit={canEdit} />
 
-      <div className="editor-scroll-area relative flex-1 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
-        <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
-          <EditorContent key={ydoc.clientID} editor={editor} />
+      <AiCoEditor key={`${documentId}-${ydoc.clientID}`} documentId={documentId} editor={editor} ydoc={ydoc} role={effectiveRole} syncReady={syncStatus === "synced" && !hasPendingUpdates && !isSyncBlocked}>
+        <div className="editor-scroll-area relative flex-1 min-w-0 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
+          <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
+            <EditorContent key={ydoc.clientID} editor={editor} />
+          </div>
         </div>
-      </div>
+      </AiCoEditor>
 
       {slashMenu.isOpen && editor && (
         <EditorSlashMenu

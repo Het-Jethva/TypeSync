@@ -8,6 +8,7 @@ import {
   customType,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // ─── Custom type for binary data ─────────────────────────
@@ -81,6 +82,7 @@ export const document = pgTable("document", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   yDocState: bytea("y_doc_state"),
+  aiSuggestions: jsonb("ai_suggestions").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 }, (table) => ([

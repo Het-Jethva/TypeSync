@@ -111,6 +111,9 @@ export interface PresenceIdentity {
 
 // ─── Socket Events ───────────────────────────────────────
 export interface ClientToServerEvents {
+  "ai:create": (documentId: string, request: AiCreateRequest, acknowledge: (result: AiResult) => void) => void;
+  "ai:list": (documentId: string, acknowledge: (result: AiListResult) => void) => void;
+  "ai:resolve": (documentId: string, request: AiResolveRequest, acknowledge: (result: AiResult) => void) => void;
   "doc:join": (
     documentId: string,
     acknowledge: (result: DocumentJoinResult) => void
@@ -171,6 +174,7 @@ export type DocumentJoinResult =
     };
 
 export interface ServerToClientEvents {
+  "ai:suggestion": (payload: { documentId: string; suggestion: AiSuggestion }) => void;
   "doc:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "awareness:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
@@ -186,6 +190,51 @@ export interface ServerToClientEvents {
   "doc:size-status": (payload: DocumentSizeStatus) => void;
   "doc:error": (payload: { documentId?: string; message: string }) => void;
 }
+
+export const AiActionSchema = z.enum(["rewrite", "shorten", "grammar", "custom"]);
+export type AiAction = z.infer<typeof AiActionSchema>;
+const AiAnchorSchema = z.array(z.number().int().min(0).max(255)).min(1).max(2048);
+export const AiCreateRequestSchema = z.object({
+  requestId: z.string().uuid(),
+  action: AiActionSchema,
+  instruction: z.string().trim().max(2000).default(""),
+  sourceText: z.string().min(1).max(12000),
+  from: AiAnchorSchema,
+  to: AiAnchorSchema,
+}).refine(value => value.action !== "custom" || value.instruction.length > 0, {
+  message: "Write an instruction for the AI", path: ["instruction"],
+});
+export type AiCreateRequest = z.infer<typeof AiCreateRequestSchema>;
+export const AiResolveRequestSchema = z.object({
+  suggestionId: z.string().uuid(),
+  decision: z.enum(["accept", "reject"]),
+});
+export type AiResolveRequest = z.infer<typeof AiResolveRequestSchema>;
+export const AiSuggestionSchema = z.object({
+  id: z.string().uuid(),
+  requestId: z.string().uuid(),
+  documentId: z.string(),
+  authorId: z.string(),
+  authorName: z.string(),
+  action: AiActionSchema,
+  instruction: z.string(),
+  sourceText: z.string(),
+  replacement: z.string(),
+  from: AiAnchorSchema,
+  to: AiAnchorSchema,
+  model: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).and(z.discriminatedUnion("status", [
+  z.object({ status: z.literal("streaming") }),
+  z.object({ status: z.literal("ready") }),
+  z.object({ status: z.literal("accepted"), resolvedBy: z.string() }),
+  z.object({ status: z.literal("rejected"), resolvedBy: z.string() }),
+  z.object({ status: z.literal("failed"), error: z.string() }),
+]));
+export type AiSuggestion = z.infer<typeof AiSuggestionSchema>;
+export type AiResult = { success: true; suggestion: AiSuggestion } | { success: false; error: string };
+export type AiListResult = { success: true; suggestions: AiSuggestion[]; configured: boolean } | { success: false; error: string };
 
 export interface DocumentSizeStatus {
   documentId: string;

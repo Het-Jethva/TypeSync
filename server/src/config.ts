@@ -88,6 +88,8 @@ const developmentCookieSameSite = configuredCookieSameSite
   : "lax";
 
 export const config = {
+  openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim(),
+  openRouterModel: z.string().regex(/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._:-]+:free$/, "OPENROUTER_MODEL must be a pinned :free model").parse(process.env.OPENROUTER_MODEL ?? "liquid/lfm-2.5-2.6b:free"),
   port: parseListenPort(process.env.PORT),
   clientUrl:
     productionConfig?.VITE_CLIENT_URL ??
