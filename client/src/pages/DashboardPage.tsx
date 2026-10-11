@@ -56,6 +56,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<ListDocumentsQuery["sort"]>("updated");
+  const [documentsQueryNonce, setDocumentsQueryNonce] = useState(0);
   const hasUnpersistedDocumentChanges = needsLeaveProtection(documentStatus);
   const leaveConfirmation = documentStatus?.hasPendingUpdates
     ? PENDING_UPDATES_CONFIRM : AWAITING_PERSISTENCE_CONFIRM;
@@ -70,6 +71,7 @@ export default function DashboardPage() {
   const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
   const documentsAppendRequestGenerationRef = useRef(0);
+  const documentsCursorGenerationRef = useRef<number | null>(null);
   const documentChangesRef = useRef(new Map<string, {
     revision: number;
     pendingMutations: number;
@@ -113,6 +115,12 @@ export default function DashboardPage() {
         ? metadata : previous?.metadata ?? null,
       role: role ?? previous?.role ?? null,
     });
+    documentsRequestGenerationRef.current += 1;
+    documentsAppendRequestGenerationRef.current += 1;
+    documentsCursorGenerationRef.current = null;
+    setNextDocumentsCursor(null);
+    setIsLoadingMoreDocuments(false);
+    setDocumentsQueryNonce(current => current + 1);
   }, []);
 
   const reconcileDocumentSnapshot = useCallback((
@@ -128,7 +136,9 @@ export default function DashboardPage() {
     const currentById = new Map(current.map((document) => [document.id, document]));
     const snapshotIds = new Set(snapshot.map((document) => document.id));
     const localAdditions = current.filter((document) =>
-      !snapshotIds.has(document.id) && changedAfterRequest(document.id)
+      !snapshotIds.has(document.id) &&
+      (documentChangesRef.current.get(document.id)?.pendingMutations ?? 0) > 0 &&
+      !documentChangesRef.current.get(document.id)?.removed
     );
     const reconciled = snapshot.flatMap((document) => {
       if (!changedAfterRequest(document.id)) return [document];
@@ -274,6 +284,7 @@ export default function DashboardPage() {
     const requestGeneration = ++documentsRequestGenerationRef.current;
     const requestRevision = documentChangeRevisionRef.current;
     documentsAppendRequestGenerationRef.current += 1;
+    documentsCursorGenerationRef.current = null;
     setNextDocumentsCursor(null);
     setIsLoadingMoreDocuments(false);
 
@@ -285,6 +296,7 @@ export default function DashboardPage() {
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
       setDocuments((current) => reconcileDocumentSnapshot(res.items, current, requestRevision));
       setNextDocumentsCursor(res.nextCursor);
+      documentsCursorGenerationRef.current = requestGeneration;
       hasLoadedDocumentsRef.current = true;
       setDocumentsError(null);
     } catch (err) {
@@ -304,7 +316,8 @@ export default function DashboardPage() {
   }, [addNotification, debouncedSearch, reconcileDocumentSnapshot, sort]);
 
   const loadMoreDocuments = useCallback(async () => {
-    if (!nextDocumentsCursor || isLoadingMoreDocuments) return;
+    if (!nextDocumentsCursor || isLoadingMoreDocuments ||
+      documentsCursorGenerationRef.current !== documentsRequestGenerationRef.current) return;
 
     const refreshGeneration = documentsRequestGenerationRef.current;
     const appendGeneration = ++documentsAppendRequestGenerationRef.current;
@@ -355,20 +368,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void fetchDocuments();
-  }, [fetchDocuments]);
+  }, [fetchDocuments, documentsQueryNonce]);
 
   useEffect(() => {
     const socket = getSocket();
 
     const handlePermissionUpdated = (payload: { documentId: string; role: "editor" | "viewer" | "owner" }) => {
       markDocumentChanged({ docId: payload.documentId, removed: false, role: payload.role });
-      // The server sends this to every socket of the granted user, including
-      // ones that have never opened the document. A role change on a document
-      // we already list is a local patch; a first-time grant is not in the list
-      // at all, so that case — and only that case — needs the list refetched.
-      const isKnownDocument = documentsRef.current.some(
-        (doc) => doc.id === payload.documentId
-      );
       setDocuments((current) =>
         current.map((doc) =>
           doc.id === payload.documentId ? { ...doc, role: payload.role } : doc
@@ -377,7 +383,6 @@ export default function DashboardPage() {
       setRouteDocument((current) =>
         current?.id === payload.documentId ? { ...current, role: payload.role } : current
       );
-      if (!isKnownDocument) fetchDocuments();
     };
 
     const handlePermissionRevoked = (payload: { documentId: string }) => {
@@ -455,9 +460,6 @@ export default function DashboardPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Mutations resolve the UI from the response they already have instead of
-  // refetching the whole list. A list refetch is a second cross-origin round
-  // trip that the user waits through before anything on screen moves.
   const handleCreateDocument = async () => {
     if (isCreatingDocument) return;
     const confirmedPendingUpdates = hasUnpersistedDocumentChanges;
