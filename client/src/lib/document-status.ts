@@ -22,6 +22,12 @@ export interface DocumentStatus {
 
 export type DocumentStatusTone = "ok" | "busy" | "warning" | "error";
 
+export function needsLeaveProtection(
+  status: Pick<DocumentStatus, "hasPendingUpdates" | "awaitingPersistence"> | null
+): boolean {
+  return !!status && (status.hasPendingUpdates || status.awaitingPersistence);
+}
+
 export function describeDocumentStatus(
   status: DocumentStatus | null,
   isRenaming: boolean

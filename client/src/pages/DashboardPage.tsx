@@ -12,7 +12,7 @@ import { useConfirm } from "../lib/confirm-context";
 import { useSession } from "../lib/auth-client";
 import type { DocumentWithRole, ListDocumentsQuery, PresenceIdentity, ServerToClientEvents } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
-import type { DocumentStatus } from "../lib/document-status";
+import { needsLeaveProtection, type DocumentStatus } from "../lib/document-status";
 
 function isNewerOrEqual(newIso: string, currentIso: string): boolean {
   const newTime = new Date(newIso).getTime();
@@ -28,6 +28,13 @@ const PENDING_UPDATES_CONFIRM = {
     "Some edits have not reached the server yet. If you leave now, those edits will be lost.",
   confirmLabel: "Leave anyway",
   tone: "danger",
+} as const;
+
+const AWAITING_PERSISTENCE_CONFIRM = {
+  ...PENDING_UPDATES_CONFIRM,
+  title: "Leave before saving finishes?",
+  message:
+    "The server has received your edits but has not saved them yet. Leaving removes your recovery copy. If the server fails before saving, those edits may be lost.",
 } as const;
 
 export default function DashboardPage() {
@@ -49,7 +56,9 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<ListDocumentsQuery["sort"]>("updated");
-  const hasPendingDocumentUpdates = documentStatus?.hasPendingUpdates ?? false;
+  const hasUnpersistedDocumentChanges = needsLeaveProtection(documentStatus);
+  const leaveConfirmation = documentStatus?.hasPendingUpdates
+    ? PENDING_UPDATES_CONFIRM : AWAITING_PERSISTENCE_CONFIRM;
   const [routeDocument, setRouteDocument] = useState<DocumentWithRole | null>(null);
   const [isRouteDocumentLoading, setIsRouteDocumentLoading] = useState(false);
   const [routeDocumentError, setRouteDocumentError] = useState<Error | null>(null);
@@ -147,10 +156,10 @@ export default function DashboardPage() {
     }, 5000);
   }, []);
 
-  const confirmLeavingWithPendingUpdates = useCallback(async () => {
-    if (!hasPendingDocumentUpdates) return true;
-    return confirm(PENDING_UPDATES_CONFIRM);
-  }, [confirm, hasPendingDocumentUpdates]);
+  const confirmLeavingWithUnsavedChanges = useCallback(async () => {
+    if (!hasUnpersistedDocumentChanges) return true;
+    return confirm(leaveConfirmation);
+  }, [confirm, hasUnpersistedDocumentChanges, leaveConfirmation]);
 
   const shouldBlockNavigation: BlockerFunction = useCallback(
     ({ currentLocation, nextLocation }) => {
@@ -159,11 +168,11 @@ export default function DashboardPage() {
         return false;
       }
       return (
-        hasPendingDocumentUpdates &&
+        hasUnpersistedDocumentChanges &&
         currentLocation.pathname !== nextLocation.pathname
       );
     },
-    [hasPendingDocumentUpdates]
+    [hasUnpersistedDocumentChanges]
   );
   const navigationBlocker = useBlocker(shouldBlockNavigation);
 
@@ -175,7 +184,7 @@ export default function DashboardPage() {
     if (blockerPromptOpenRef.current) return;
 
     blockerPromptOpenRef.current = true;
-    void confirm(PENDING_UPDATES_CONFIRM).then((accepted) => {
+    void confirm(leaveConfirmation).then((accepted) => {
       blockerPromptOpenRef.current = false;
       if (accepted) {
         navigationBlocker.proceed();
@@ -183,7 +192,7 @@ export default function DashboardPage() {
         navigationBlocker.reset();
       }
     });
-  }, [confirm, navigationBlocker]);
+  }, [confirm, navigationBlocker, leaveConfirmation]);
 
   useEffect(() => {
     const breakpoint = window.matchMedia("(max-width: 767px)");
@@ -439,8 +448,8 @@ export default function DashboardPage() {
   // trip that the user waits through before anything on screen moves.
   const handleCreateDocument = async () => {
     if (isCreatingDocument) return;
-    const confirmedPendingUpdates = hasPendingDocumentUpdates;
-    if (!(await confirmLeavingWithPendingUpdates())) return;
+    const confirmedPendingUpdates = hasUnpersistedDocumentChanges;
+    if (!(await confirmLeavingWithUnsavedChanges())) return;
 
     setIsCreatingDocument(true);
     try {
@@ -464,8 +473,8 @@ export default function DashboardPage() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
-    const confirmedPendingUpdates = documentId === docId && hasPendingDocumentUpdates;
-    if (documentId === docId && !(await confirmLeavingWithPendingUpdates())) return;
+    const confirmedPendingUpdates = documentId === docId && hasUnpersistedDocumentChanges;
+    if (documentId === docId && !(await confirmLeavingWithUnsavedChanges())) return;
     if (deletingDocumentIds.has(docId)) return;
 
     const removedDocument = documents.find((document) => document.id === docId);
@@ -564,8 +573,8 @@ export default function DashboardPage() {
     const userId = session?.user?.id;
     if (!userId) return;
 
-    const confirmedPendingUpdates = documentId === docId && hasPendingDocumentUpdates;
-    if (documentId === docId && !(await confirmLeavingWithPendingUpdates())) return;
+    const confirmedPendingUpdates = documentId === docId && hasUnpersistedDocumentChanges;
+    if (documentId === docId && !(await confirmLeavingWithUnsavedChanges())) return;
 
     const removedDocument = documents.find((document) => document.id === docId);
     const removedIndex = documents.findIndex((document) => document.id === docId);
@@ -708,9 +717,9 @@ export default function DashboardPage() {
                   setSidebarOpen(false);
                 }
               }}
-              onBeforeSignOut={confirmLeavingWithPendingUpdates}
+              onBeforeSignOut={confirmLeavingWithUnsavedChanges}
               onSignedOut={async () => {
-                if (hasPendingDocumentUpdates) {
+                if (hasUnpersistedDocumentChanges) {
                   bypassNextNavigationRef.current = true;
                 }
                 await navigate("/", { flushSync: true });

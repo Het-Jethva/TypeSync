@@ -20,7 +20,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
 import { AiCoEditor } from "./AiCoEditor";
 import { useConfirm } from "../lib/confirm-context";
-import type { DocumentStatus } from "../lib/document-status";
+import { needsLeaveProtection, type DocumentStatus } from "../lib/document-status";
 import { canEditDocument, type PresenceIdentity, type Role } from "@typesync/shared";
 
 interface EditorProps {
@@ -284,7 +284,7 @@ export function Editor({
   }, [onStatusChange]);
 
   useEffect(() => {
-    if (!hasPendingUpdates) return;
+    if (!needsLeaveProtection({ hasPendingUpdates, awaitingPersistence })) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -293,7 +293,7 @@ export function Editor({
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasPendingUpdates]);
+  }, [hasPendingUpdates, awaitingPersistence]);
 
   return (
     <motion.div
