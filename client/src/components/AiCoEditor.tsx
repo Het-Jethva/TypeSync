@@ -6,6 +6,7 @@ import * as Y from "yjs";
 import { z } from "zod";
 import { canEditDocument, type AiAction, type AiCreateRequest, type AiSuggestion, type Role } from "@typesync/shared";
 import { useAiSuggestions } from "../lib/hooks/useAiSuggestions";
+import { selectedText } from "@typesync/shared/editor-schema";
 
 const actions: { value: AiAction; label: string }[] = [
   { value: "rewrite", label: "Rewrite" },
@@ -84,7 +85,7 @@ export function AiCoEditor({ documentId, editor, ydoc, role, syncReady, children
         if (editor.isFocused) setSelection(null);
         return;
       }
-      const sourceText = editor.state.doc.textBetween(from, to, "\n");
+      const sourceText = selectedText(editor.state.doc, from, to);
       if (!sourceText.trim()) return setSelection(null);
       try {
         const fromAnchor = createMappablePosition(from, editor.state).yRelativePosition;
@@ -139,7 +140,7 @@ export function AiCoEditor({ documentId, editor, ydoc, role, syncReady, children
       if (!binding.success) return;
       const from = relativePositionToAbsolutePosition(ydoc, binding.data.type, Y.decodeRelativePosition(Uint8Array.from(suggestion.from)), binding.data.binding.mapping);
       const to = relativePositionToAbsolutePosition(ydoc, binding.data.type, Y.decodeRelativePosition(Uint8Array.from(suggestion.to)), binding.data.binding.mapping);
-      if (from === null || to === null || from < 1 || to <= from || to > editor.state.doc.content.size || editor.state.doc.textBetween(from, to, "\n") !== suggestion.sourceText) {
+      if (from === null || to === null || from < 1 || to <= from || to > editor.state.doc.content.size || selectedText(editor.state.doc, from, to) !== suggestion.sourceText) {
         setLocalError("The source text has changed or was removed. This suggestion cannot safely replace it. Select the current text and ask AI again.");
         return;
       }

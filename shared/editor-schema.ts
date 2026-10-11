@@ -1,4 +1,5 @@
 import { getSchema } from "@tiptap/core";
+import type { Node } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { Table } from "@tiptap/extension-table";
@@ -23,3 +24,9 @@ export function createContentExtensions() {
 }
 
 export const editorSchema = getSchema(createContentExtensions());
+
+export function selectedText(doc: Node, from: number, to: number): string {
+  return doc.textBetween(from, to, "\n", node =>
+    node.type.name === "hardBreak" ? "\n" : ""
+  );
+}

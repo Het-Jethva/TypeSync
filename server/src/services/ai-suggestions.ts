@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Fragment, type Mark } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, relativePositionToAbsolutePosition, updateYFragment } from "@tiptap/y-tiptap";
-import { editorSchema } from "@typesync/shared/editor-schema";
+import { editorSchema, selectedText } from "@typesync/shared/editor-schema";
 import { AiSuggestionSchema, type AiCreateRequest, type AiResolveRequest, type AiResult, type AiListResult, type AiSuggestion } from "@typesync/shared";
 import type { CollaborativeRoomSession } from "../socket/room-session.js";
 import type { DocumentStateRepository } from "../socket/repository.js";
@@ -133,7 +133,7 @@ export class AiSuggestionService {
       for (let position = from; position <= to; position++) {
         identity.update(Y.encodeRelativePosition(absolutePositionToRelativePosition(position, fragment, mapping)));
       }
-      return { clone, fragment, doc, mapping, from, to, text: doc.textBetween(from, to, "\n"), slice: JSON.stringify(doc.slice(from, to).toJSON()), identity: identity.digest("hex") };
+      return { clone, fragment, doc, mapping, from, to, text: selectedText(doc, from, to), slice: JSON.stringify(doc.slice(from, to).toJSON()), identity: identity.digest("hex") };
     } catch (error) { clone.destroy(); throw error; }
   }
 
