@@ -83,6 +83,10 @@ export default function DashboardPage() {
   const documentIdRef = useRef(documentId);
   const documentsRef = useRef(documents);
   const bypassNextNavigationRef = useRef(false);
+  const renamingDocumentIdsRef = useRef(new Set<string>());
+  const [renamingDocumentIds, setRenamingDocumentIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
 
   const markDocumentChanged = useCallback(({
     docId,
@@ -131,20 +135,15 @@ export default function DashboardPage() {
       const latest = currentById.get(document.id);
       const change = documentChangesRef.current.get(document.id);
       if (change?.removed) return [];
-      if (latest) {
-        const snapshotIsNewer = !isNewerOrEqual(latest.updatedAt, document.updatedAt);
-        return [{
-          ...latest,
-          ...(snapshotIsNewer && change?.pendingMutations === 0
-            ? { title: document.title, updatedAt: document.updatedAt } : {}),
-          ...(change?.pendingTitle !== null && change?.pendingTitle !== undefined
-            ? { title: change.pendingTitle } : {}),
-        }];
-      }
+      const local = latest ?? document;
+      const metadata = change?.metadata && isNewerOrEqual(change.metadata.updatedAt, local.updatedAt)
+        ? change.metadata : { title: local.title, updatedAt: local.updatedAt };
+      const snapshotIsNewer = !isNewerOrEqual(metadata.updatedAt, document.updatedAt);
       return [{
-        ...document,
-        ...(change?.metadata && isNewerOrEqual(change.metadata.updatedAt, document.updatedAt)
-          ? change.metadata : {}),
+        ...local,
+        ...metadata,
+        ...(snapshotIsNewer && change?.pendingMutations === 0
+          ? { title: document.title, updatedAt: document.updatedAt } : {}),
         ...(change?.role ? { role: change.role } : {}),
         ...(change?.pendingTitle !== null && change?.pendingTitle !== undefined
           ? { title: change.pendingTitle } : {}),
@@ -539,11 +538,20 @@ export default function DashboardPage() {
   }, []);
 
   const handleRenameDocument = async (docId: string, title: string) => {
-    const previousTitle =
-      documents.find((document) => document.id === docId)?.title ??
-      (routeDocument?.id === docId ? routeDocument.title : undefined);
+    if (renamingDocumentIdsRef.current.has(docId)) {
+      throw new Error("A rename is already in progress");
+    }
+    renamingDocumentIdsRef.current.add(docId);
+    setRenamingDocumentIds(new Set(renamingDocumentIdsRef.current));
+    const previousDocument = documents.find(document => document.id === docId) ??
+      (routeDocument?.id === docId ? routeDocument : undefined);
 
-    markDocumentChanged({ docId, pendingDelta: 1, pendingTitle: title });
+    markDocumentChanged({
+      docId, pendingDelta: 1, pendingTitle: title,
+      ...(previousDocument ? {
+        metadata: { title: previousDocument.title, updatedAt: previousDocument.updatedAt },
+      } : {}),
+    });
     applyDocumentTitle(docId, title);
     try {
       const updated = await api.documents.update(docId, { title });
@@ -560,17 +568,18 @@ export default function DashboardPage() {
       );
     } catch (err) {
       console.error("Failed to rename document:", err);
-      if (previousTitle !== undefined) {
+      const rollbackTitle = documentChangesRef.current.get(docId)?.metadata?.title;
+      if (rollbackTitle !== undefined) {
         setDocuments((current) =>
           current.map((document) =>
             document.id === docId && document.title === title
-              ? { ...document, title: previousTitle }
+              ? { ...document, title: rollbackTitle }
               : document
           )
         );
         setRouteDocument((current) =>
           current?.id === docId && current.title === title
-            ? { ...current, title: previousTitle }
+            ? { ...current, title: rollbackTitle }
             : current
         );
       }
@@ -581,9 +590,10 @@ export default function DashboardPage() {
       markDocumentChanged({
         docId,
         pendingDelta: -1,
-        ...(documentChangesRef.current.get(docId)?.pendingMutations === 1
-          ? { pendingTitle: null } : {}),
+        pendingTitle: null,
       });
+      renamingDocumentIdsRef.current.delete(docId);
+      setRenamingDocumentIds(new Set(renamingDocumentIdsRef.current));
     }
   };
 
@@ -706,6 +716,7 @@ export default function DashboardPage() {
           >
             <Sidebar
               documents={documents}
+              renamingDocumentIds={renamingDocumentIds}
               activeDocId={documentId}
               isLoading={isLoading}
               isCreating={isCreatingDocument}
@@ -772,6 +783,7 @@ export default function DashboardPage() {
               document={currentDoc}
               editor={activeEditor}
               status={documentStatus}
+              isRenaming={renamingDocumentIds.has(currentDoc.id)}
               isCompact={isMobile}
               onRename={(title) => handleRenameDocument(currentDoc.id, title)}
               onDocumentUpdate={fetchDocuments}

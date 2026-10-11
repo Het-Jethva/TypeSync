@@ -29,6 +29,7 @@ type ContextMenuState = {
 
 interface SidebarProps {
   documents: DocumentWithRole[];
+  renamingDocumentIds: ReadonlySet<string>;
   activeDocId?: string;
   isLoading: boolean;
   isCreating?: boolean;
@@ -77,6 +78,7 @@ function formatRelativeTime(dateStr: string | Date): string {
 
 export function Sidebar({
   documents,
+  renamingDocumentIds,
   activeDocId,
   isLoading,
   isCreating = false,
@@ -193,6 +195,7 @@ export function Sidebar({
       items.push({
         id: "rename",
         label: "Rename",
+        disabled: renamingDocumentIds.has(menu.id),
         onSelect: () => beginRename(menu.id, menu.title),
       });
     }

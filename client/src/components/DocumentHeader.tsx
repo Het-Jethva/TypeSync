@@ -15,6 +15,7 @@ interface DocumentHeaderProps {
   document: DocumentWithRole;
   editor: TiptapEditor | null;
   status: DocumentStatus | null;
+  isRenaming: boolean;
   /** Narrow viewport, where secondary actions fold into the menu. */
   isCompact: boolean;
   onRename: (title: string) => Promise<void>;
@@ -26,6 +27,7 @@ export function DocumentHeader({
   document,
   editor,
   status,
+  isRenaming,
   isCompact,
   onRename,
   onDocumentUpdate,
@@ -38,7 +40,6 @@ export function DocumentHeader({
   const [title, setTitle] = useState(document.title);
   const [shareOpen, setShareOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isRenaming, setIsRenaming] = useState(false);
   const menuAnchorRef = useRef<HTMLDivElement>(null);
 
   const isOwner = document.role === "owner";
@@ -92,14 +93,7 @@ export function DocumentHeader({
       return;
     }
 
-    setIsRenaming(true);
-    try {
-      await onRename(trimmedTitle);
-    } catch {
-      setTitle(document.title);
-    } finally {
-      setIsRenaming(false);
-    }
+    await onRename(trimmedTitle).catch(() => {});
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -124,6 +118,7 @@ export function DocumentHeader({
         {isEditing && canEdit ? (
           <input
             type="text"
+            disabled={isRenaming}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={handleBlur}
@@ -133,8 +128,10 @@ export function DocumentHeader({
           />
         ) : canEdit ? (
           <button
+            disabled={isRenaming}
             onClick={() => {
               ignoreTitleBlurRef.current = false;
+              setTitle(document.title);
               setIsEditing(true);
             }}
             className="text-ui font-semibold text-text-primary truncate hover:text-accent transition-colors px-1 min-w-0 sm:max-w-[300px] text-left"
