@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
+import { yXmlFragmentToProsemirrorJSON } from "@tiptap/y-tiptap";
 import { DOCUMENT_MAX_UPDATE_BYTES, type DocumentSizeStatus } from "@typesync/shared";
+import { editorSchema } from "@typesync/shared/editor-schema";
 import type { DocumentStateRepository } from "./repository.js";
 
 interface PersistenceState {
@@ -50,6 +52,20 @@ const defaultDocumentSizeLimits: DocumentSizeLimits = {
 const SAVE_DEBOUNCE_INTERVAL = 5000;
 const SAVE_MAX_WAIT_INTERVAL = 30000;
 const SAVE_RETRY_INTERVAL = 15000;
+
+function validateEditorDocument(doc: Y.Doc): void {
+  // Unresolved updates can hide content until a later dependency arrives.
+  if (doc.store.pendingStructs || doc.store.pendingDs) {
+    throw new Error("Document update has unresolved dependencies");
+  }
+  const fragment = doc.getXmlFragment("default");
+  if ([...fragment._map.values()].some(item => !item.deleted)) {
+    throw new Error("Document root cannot contain map attributes");
+  }
+  // New documents have no content until the editor inserts its first block.
+  if (fragment.length === 0) return;
+  editorSchema.nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment)).check();
+}
 
 function sizeStatus(
   documentId: string,
@@ -120,6 +136,7 @@ export function createDocumentRuntime(
     if (state) {
       try {
         Y.applyUpdate(ydoc, state);
+        validateEditorDocument(ydoc);
       } catch (error) {
         console.error(`Malformed Yjs document state in DB for document ${docId}:`, error);
         throw new Error("Malformed document state in database", { cause: error });
@@ -370,6 +387,7 @@ export function createDocumentRuntime(
         const before = Y.encodeStateAsUpdate(ydoc);
         Y.applyUpdate(candidate, before);
         Y.applyUpdate(candidate, update);
+        validateEditorDocument(candidate);
         const after = Y.encodeStateAsUpdate(candidate);
         const previousStatus = sizeStatus(documentId, before.byteLength, limits);
         const nextStatus = sizeStatus(documentId, after.byteLength, limits);

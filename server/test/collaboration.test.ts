@@ -1,10 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as Y from "yjs";
+
 import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socket/document-runtime.ts";
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 import { CollaborativeRoomSession, type SessionAccess } from "../src/socket/room-session.ts";
 import type { TypeSyncSocket } from "../src/socket/types.ts";
+
+function editorText(doc: Y.Doc): Y.XmlText {
+  const fragment = doc.getXmlFragment("default");
+  if (fragment.length === 0) {
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText()]);
+    fragment.insert(0, [paragraph]);
+  }
+  const paragraph = fragment.get(0);
+  assert(paragraph instanceof Y.XmlElement);
+  const text = paragraph.get(0);
+  assert(text instanceof Y.XmlText);
+  return text;
+}
+
+function insertEditorText(doc: Y.Doc, index: number, text: string): void {
+  doc.transact(() => editorText(doc).insert(index, text));
+}
 
 for (const scenario of ["rejoin", "superseded join"]) {
   test(`${scenario} cannot restore editor authority after a viewer downgrade`, async () => {
@@ -101,7 +120,7 @@ test("reconnecting restores remote dependencies before reporting local edits per
   manager.noteServerPersistence(initial.epoch, initial.persistedRevision);
   manager.setDocumentRole("owner");
   manager.setConnected(true);
-  local.getText("default").insert(0, "saved");
+  insertEditorText(local, 0, "saved");
   await first.flushAll();
   assert.equal(saves[0]?.title, "Untitled");
   assert(saves[0]?.updatedAt instanceof Date);
@@ -113,11 +132,11 @@ test("reconnecting restores remote dependencies before reporting local edits per
   const collaborator = new Y.Doc();
   Y.applyUpdate(collaborator, first.snapshotForJoin("document").state);
   const vector = Y.encodeStateVector(collaborator);
-  collaborator.getText("default").insert(5, "A");
+  insertEditorText(collaborator, 5, "A");
   const remoteUpdate = Y.encodeStateAsUpdate(collaborator, vector);
   assert.equal(first.applyUpdate("document", remoteUpdate).kind, "accepted");
   Y.applyUpdate(local, remoteUpdate, "remote");
-  local.getText("default").insert(6, "B");
+  insertEditorText(local, 6, "B");
   collaborator.destroy();
 
   const unsaved = first.snapshotForJoin("document");
@@ -133,7 +152,7 @@ test("reconnecting restores remote dependencies before reporting local edits per
   manager.cancelDeliveryAttempt();
   manager.setConnected(false);
   first.discard("document");
-  local.getText("default").insert(7, " offline edit");
+  insertEditorText(local, 7, " offline edit");
   runtime = createDocumentRuntime({ repository });
   try {
     await runtime.ensureLoaded("document");
@@ -149,7 +168,7 @@ test("reconnecting restores remote dependencies before reporting local edits per
     try {
       assert(stored);
       Y.applyUpdate(database, stored);
-      assert.equal(database.getText("default").toString(), "saved");
+      assert.equal(editorText(database).toString(), "saved");
     } finally {
       database.destroy();
     }
@@ -161,8 +180,8 @@ test("reconnecting restores remote dependencies before reporting local edits per
     try {
       assert(stored);
       Y.applyUpdate(reopened, stored);
-      assert.equal(reopened.getText("default").toString(), "savedAB offline edit");
-      assert.equal(reopened.getText("default").toString(), local.getText("default").toString());
+      assert.equal(editorText(reopened).toString(), "savedAB offline edit");
+      assert.equal(editorText(reopened).toString(), editorText(local).toString());
     } finally {
       reopened.destroy();
     }
@@ -175,8 +194,8 @@ test("reconnecting restores remote dependencies before reporting local edits per
 
 test("clean viewers send nothing, but acknowledged deletions survive reconnects", async () => {
   const local = new Y.Doc();
-  local.getText("default").insert(0, "abc");
-  local.getText("default").delete(0, 1);
+  insertEditorText(local, 0, "abc");
+  editorText(local).delete(0, 1);
   let stored = Y.encodeStateAsUpdate(local);
   const repository = {
     loadState: async () => stored,
@@ -214,14 +233,14 @@ test("clean viewers send nothing, but acknowledged deletions survive reconnects"
     local.on("update", (update: Uint8Array, origin: unknown) => {
       if (origin !== "remote") manager.enqueueDocumentUpdate(update);
     });
-    local.getText("default").delete(0, 1);
+    editorText(local).delete(0, 1);
     assert.equal(sends, 1);
     assert.equal(manager.getState().hasPendingUpdates, false);
     const collaborator = new Y.Doc();
     try {
       Y.applyUpdate(collaborator, runtime.snapshotForJoin("document").state);
       const vector = Y.encodeStateVector(collaborator);
-      collaborator.getText("default").delete(0, 1);
+      editorText(collaborator).delete(0, 1);
       const deletion = Y.encodeStateAsUpdate(collaborator, vector);
       assert.equal(runtime.applyUpdate("document", deletion).kind, "accepted");
       Y.applyUpdate(local, deletion, "remote");
@@ -247,7 +266,7 @@ test("clean viewers send nothing, but acknowledged deletions survive reconnects"
     const database = new Y.Doc();
     try {
       Y.applyUpdate(database, stored);
-      assert.equal(database.getText("default").toString(), "");
+      assert.equal(editorText(database).toString(), "");
     } finally {
       database.destroy();
     }
@@ -274,8 +293,8 @@ test("typing during backoff waits for the scheduled retry", (context) => {
     manager.setDocumentRole("owner");
     manager.setConnected(true);
     local.on("update", (update: Uint8Array) => manager.enqueueDocumentUpdate(update));
-    local.getText("default").insert(0, "a");
-    local.getText("default").insert(1, "b");
+    insertEditorText(local, 0, "a");
+    insertEditorText(local, 1, "b");
     assert.equal(sends, 1);
     assert.equal(manager.getState().retrying, true);
     context.mock.timers.tick(1000);
@@ -292,7 +311,7 @@ test("size checks accept large pastes and shrinking edits without applying rejec
   const runtime = createDocumentRuntime({ repository });
   try {
     await runtime.ensureLoaded("large");
-    large.getText("default").insert(0, "x".repeat(1_100_000));
+    insertEditorText(large, 0, "x".repeat(1_100_000));
     assert.equal(runtime.applyUpdate("large", Y.encodeStateAsUpdate(large)).kind, "accepted");
   } finally {
     large.destroy();
@@ -300,7 +319,7 @@ test("size checks accept large pastes and shrinking edits without applying rejec
   }
 
   const local = new Y.Doc();
-  local.getText("default").insert(0, "x".repeat(1000));
+  insertEditorText(local, 0, "x".repeat(1000));
   const stored = Y.encodeStateAsUpdate(local);
   const full = createDocumentRuntime({
     repository: { ...repository, loadState: async () => stored },
@@ -314,13 +333,13 @@ test("size checks accept large pastes and shrinking edits without applying rejec
     await full.ensureLoaded("full");
     assert.equal(full.snapshotForJoin("full").sizeStatus?.level, "limit");
     const vector = Y.encodeStateVector(local);
-    local.getText("default").insert(1000, "growth");
+    insertEditorText(local, 1000, "growth");
     assert.equal(full.applyUpdate("full", Y.encodeStateAsUpdate(local, vector)).kind, "document-too-large");
     assert.deepEqual(full.snapshotForJoin("full").state, stored);
     assert.equal(full.applyUpdate("full", new Uint8Array([255])).kind, "invalid");
     assert.deepEqual(full.snapshotForJoin("full").state, stored);
 
-    local.getText("default").delete(0, local.getText("default").length);
+    editorText(local).delete(0, editorText(local).length);
     const deletion = full.applyUpdate("full", Y.encodeStateAsUpdate(local, vector));
     assert.equal(deletion.kind, "accepted");
     if (deletion.kind === "accepted") assert.equal(deletion.status?.level, "ok");
@@ -328,5 +347,92 @@ test("size checks accept large pastes and shrinking edits without applying rejec
   } finally {
     full.discard("full");
     local.destroy();
+  }
+});
+
+
+test("editor schema validation rejects corrupt updates and stored states without changing the document", async (context) => {
+  context.mock.method(console, "error", () => {});
+  let stored: Uint8Array | null = null;
+  let writes = 0;
+  const runtime = createDocumentRuntime({ repository: {
+    loadState: async () => stored,
+    saveState: async (_id, state) => {
+      stored = state;
+      writes += 1;
+      return { title: "Untitled", updatedAt: new Date() };
+    },
+  } });
+  const valid = new Y.Doc();
+  const corrupt = [new Y.Doc(), new Y.Doc(), new Y.Doc(), new Y.Doc(), new Y.Doc()];
+  try {
+    await runtime.ensureLoaded("document");
+    assert.equal(runtime.applyUpdate("document", Y.encodeStateAsUpdate(valid)).kind, "accepted");
+    insertEditorText(valid, 0, "saved");
+    const accepted = runtime.applyUpdate("document", Y.encodeStateAsUpdate(valid));
+    assert.equal(accepted.kind, "accepted");
+    if (accepted.kind === "accepted") assert.equal(accepted.revision, 1);
+    await runtime.flushDocument("document");
+    const before = runtime.snapshotForJoin("document");
+    assert.equal(writes, 1);
+    assert.equal(before.persistedRevision, 1);
+
+    const [rootText, unknownNode, invalidNesting, rootMap, textEmbed] = corrupt;
+    assert(rootText && unknownNode && invalidNesting && rootMap && textEmbed);
+    rootText.getText("default").insert(0, "not XML");
+    unknownNode.getXmlFragment("default").insert(0, [new Y.XmlElement("unknown")]);
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlElement("paragraph")]);
+    invalidNesting.getXmlFragment("default").insert(0, [paragraph]);
+    rootMap.getMap("default").set("unexpected", "map content");
+    insertEditorText(textEmbed, 0, "text");
+    editorText(textEmbed).insertEmbed(0, { unexpected: "embed" });
+
+    for (const doc of corrupt) {
+      const update = Y.encodeStateAsUpdate(doc);
+      assert.equal(runtime.applyUpdate("document", update).kind, "invalid");
+      assert.deepEqual(runtime.snapshotForJoin("document"), before);
+      await runtime.flushDocument("document");
+      assert.equal(writes, 1);
+      assert.deepEqual(stored, before.state);
+      const loaded = createDocumentRuntime({ repository: {
+        loadState: async () => update,
+        saveState: async () => { throw new Error("Corrupt state must not be saved"); },
+      } });
+      await assert.rejects(loaded.ensureLoaded("corrupt"), /Malformed document state in database/);
+      assert.throws(() => loaded.snapshotForJoin("corrupt"), /not loaded/);
+    }
+
+    const vector = Y.encodeStateVector(valid);
+    insertEditorText(valid, 5, " edit");
+    const incomplete = createDocumentRuntime({ repository: {
+      loadState: async () => null,
+      saveState: async () => { throw new Error("Unresolved content must not be saved"); },
+    } });
+    try {
+      await incomplete.ensureLoaded("incomplete");
+      const empty = incomplete.snapshotForJoin("incomplete");
+      assert.equal(incomplete.applyUpdate("incomplete", Y.encodeStateAsUpdate(valid, vector)).kind, "invalid");
+      assert.deepEqual(incomplete.snapshotForJoin("incomplete"), empty);
+    } finally {
+      incomplete.discard("incomplete");
+    }
+    const edited = runtime.applyUpdate("document", Y.encodeStateAsUpdate(valid, vector));
+    assert.equal(edited.kind, "accepted");
+    if (edited.kind === "accepted") assert.equal(edited.revision, 2);
+    await runtime.flushDocument("document");
+    assert.equal(writes, 2);
+    const reopened = new Y.Doc();
+    try {
+      assert(stored);
+      Y.applyUpdate(reopened, stored);
+      assert.equal(editorText(reopened).toString(), "saved edit");
+    } finally {
+      reopened.destroy();
+    }
+  } finally {
+    runtime.discard("document");
+    valid.destroy();
+    corrupt.forEach(doc => doc.destroy());
   }
 });
