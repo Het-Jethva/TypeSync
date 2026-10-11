@@ -205,3 +205,85 @@ for (const decision of ["accept", "reject"] as const) {
     });
   }
 }
+
+for (const outcome of ["success", "failure", "delete", "drain"] as const) {
+  test(`initial AI save ${outcome} keeps duplicate requests private until committed`, async () => {
+    let generations = 0;
+    const f = await fixture(async ({ onDelta }) => { generations++; onDelta("Hi"); });
+    let existing: AiSuggestion | undefined;
+    if (outcome === "failure") {
+      const created = await f.ai.create(f.editor, f.documentId, f.request());
+      assert(created.success);
+      [existing] = await settled(f.ai, f.viewer, f.documentId);
+      generations = 0;
+      f.events.length = 0;
+    }
+    const saveHistory = f.repository.saveAiSuggestions;
+    const started = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<void>();
+    let provisionalId = "";
+    let firstWrite = true;
+    f.repository.saveAiSuggestions = async (...args) => {
+      if (firstWrite) {
+        firstWrite = false;
+        const entries = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(args[1]);
+        provisionalId = entries.at(-1)?.suggestion.id ?? "";
+        started.resolve();
+        await held.promise;
+      }
+      await saveHistory(...args);
+    };
+    try {
+      const request = f.request();
+      const original = f.ai.create(f.owner, f.documentId, request);
+      await started.promise;
+      let duplicateSettled = false;
+      const duplicate = f.ai.create(f.owner, f.documentId, request).then(result => { duplicateSettled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(duplicateSettled, false);
+      assert.equal((await f.ai.create(f.editor, f.documentId, request)).success, false);
+      const listed = await f.ai.list(f.viewer, f.documentId);
+      assert(listed.success); assert.deepEqual(listed.suggestions, existing ? [existing] : []);
+      assert.equal((await f.ai.resolve(f.owner, f.documentId, { suggestionId: provisionalId, decision: "reject" })).success, false);
+      const resolving = existing ? f.ai.resolve(f.owner, f.documentId, { suggestionId: existing.id, decision: "reject" }) : undefined;
+      if (outcome === "delete") f.rooms.handleDocumentDeleted(f.documentId, []);
+      if (outcome === "drain") f.rooms.beginDrain();
+      const flushing = f.ai.flush();
+      if (outcome === "failure") held.reject(new Error("Injected initial save failure"));
+      else held.resolve();
+      const [first, second] = await Promise.all([original, duplicate]);
+      if (resolving) assert((await resolving).success);
+      await flushing;
+      if (outcome === "success") {
+        assert(first.success); assert(second.success);
+        assert.equal(first.suggestion.id, second.suggestion.id);
+        await settled(f.ai, f.viewer, f.documentId);
+        assert.equal(generations, 1);
+        const history = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+        assert.equal(history.length, 1);
+        assert.equal(history[0]?.suggestion.status, "ready");
+      } else {
+        assert.equal(generations, 0);
+        assert.equal(f.events.some(entry => entry.status === "streaming"), false);
+        if (outcome === "failure") {
+          assert.deepEqual(first, { success: false, error: "Could not save AI suggestion" });
+          assert.deepEqual(second, first);
+          const history = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+          assert.equal(history.length, 1);
+          assert.equal(history[0]?.suggestion.id, existing?.id);
+          assert.equal(history[0]?.suggestion.status, "rejected");
+        } else if (outcome === "delete") {
+          assert.equal(first.success, false); assert.equal(second.success, false);
+          assert.deepEqual(f.events, []);
+        } else {
+          const history = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+          assert.equal(history[0]?.suggestion.status, "failed");
+        }
+      }
+    } finally {
+      held.resolve();
+      f.repository.saveAiSuggestions = saveHistory;
+      await f.cleanup();
+    }
+  });
+}

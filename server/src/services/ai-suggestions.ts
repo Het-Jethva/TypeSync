@@ -21,7 +21,8 @@ export class AiSuggestionService {
   private readonly writes = new Map<string, Promise<void>>();
   private readonly dirtyHistories = new Map<string, number>();
   private historyRevision = 0;
-  private readonly active = new Map<string, { documentId: string; controller: AbortController }>();
+  private readonly active = new Map<string, { documentId: string; controller: AbortController; entry: Entry }>();
+  private readonly creates = new Map<string, { documentId: string; authorId: string; result: Promise<AiResult> }>();
   private readonly lastRequests = new Map<string, number>();
   private readonly deleted = new Set<string>();
   private readonly pendingAcceptances = new Map<string, AiSuggestion>();
@@ -41,11 +42,13 @@ export class AiSuggestionService {
           run.controller.abort();
           this.active.delete(id);
           if (documentId === null) {
-            const entry = this.histories.get(run.documentId)?.find(item => item.suggestion.id === id);
-            if (entry?.suggestion.status === "streaming") {
+            const entry = run.entry;
+            if (entry.suggestion.status === "streaming") {
               entry.suggestion = { ...entry.suggestion, status: "failed", error: "Generation interrupted by server shutdown. Try again." };
-              this.changed(entry);
-              void this.persist(run.documentId).catch(() => {});
+              if (this.histories.get(run.documentId)?.includes(entry)) {
+                this.changed(entry);
+                void this.persist(run.documentId).catch(() => {});
+              }
             }
           }
         }
@@ -79,7 +82,7 @@ export class AiSuggestionService {
       }
       if (this.histories.size >= 64) {
         for (const [id] of this.histories) {
-          if (!this.writes.has(id) && !this.dirtyHistories.has(id) && ![...this.active.values()].some(run => run.documentId === id) &&
+          if (!this.writes.has(id) && !this.dirtyHistories.has(id) && ![...this.creates.values()].some(run => run.documentId === id) && ![...this.active.values()].some(run => run.documentId === id) &&
             ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === id)) {
             this.histories.delete(id);
             break;
@@ -94,17 +97,29 @@ export class AiSuggestionService {
     try { return await operation; } finally { this.loads.delete(documentId); }
   }
 
-  private persist(documentId: string): Promise<void> {
+  private persist(documentId: string, newEntry?: Entry): Promise<void> {
     if (this.deleted.has(documentId)) return Promise.resolve();
     const revision = ++this.historyRevision;
     this.dirtyHistories.set(documentId, revision);
-    const snapshot = structuredClone((this.histories.get(documentId) ?? []).map(entry => ({
-      ...entry, suggestion: this.pendingAcceptances.get(entry.suggestion.id) ?? entry.suggestion,
-    })));
     const previous = this.writes.get(documentId) ?? Promise.resolve();
     const write = previous.catch(() => {}).then(async () => {
       if (!this.deleted.has(documentId)) {
+        const entries = this.histories.get(documentId) ?? [];
+        const next = [...entries];
+        if (newEntry) {
+          if (next.length >= 100) {
+            const oldest = next.findIndex(entry => !["streaming", "ready"].includes(entry.suggestion.status));
+            if (oldest < 0) throw new Error("Resolve existing suggestions before creating more");
+            next.splice(oldest, 1);
+          }
+          next.push(newEntry);
+        }
+        const snapshot = structuredClone(next.map(entry => ({
+          ...entry, suggestion: this.pendingAcceptances.get(entry.suggestion.id) ?? entry.suggestion,
+        })));
         await this.options.repository.saveAiSuggestions?.(documentId, snapshot);
+        if (this.deleted.has(documentId)) return;
+        if (newEntry) entries.splice(0, entries.length, ...next);
         if (this.dirtyHistories.get(documentId) === revision &&
           ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === documentId)) {
           this.dirtyHistories.delete(documentId);
@@ -162,6 +177,22 @@ export class AiSuggestionService {
   }
 
   async create(socket: TypeSyncSocket, documentId: string, request: AiCreateRequest): Promise<AiResult> {
+    const error = this.options.rooms.aiAccess(socket, documentId, true);
+    if (error) return { success: false, error };
+    const key = JSON.stringify([documentId, request.requestId]);
+    const pending = this.creates.get(key);
+    if (pending) {
+      if (pending.authorId !== socket.data.userId) return { success: false, error: "Request id already used" };
+      const result = await pending.result;
+      const currentError = this.options.rooms.aiAccess(socket, documentId, true);
+      return currentError ? { success: false, error: currentError } : result;
+    }
+    const result = this.createSuggestion(socket, documentId, request);
+    this.creates.set(key, { documentId, authorId: socket.data.userId, result });
+    try { return await result; } finally { this.creates.delete(key); }
+  }
+
+  private async createSuggestion(socket: TypeSyncSocket, documentId: string, request: AiCreateRequest): Promise<AiResult> {
     try {
       let error = this.options.rooms.aiAccess(socket, documentId, true);
       if (error) return { success: false, error };
@@ -187,7 +218,6 @@ export class AiSuggestionService {
       if (entries.length >= 100) {
         const oldest = entries.findIndex(entry => !["streaming", "ready"].includes(entry.suggestion.status));
         if (oldest < 0) return { success: false, error: "Resolve existing suggestions before creating more" };
-        entries.splice(oldest, 1);
       }
       const now = new Date().toISOString();
       const entry: Entry = { sourceSlice, sourceIdentity, suggestion: {
@@ -195,20 +225,23 @@ export class AiSuggestionService {
         replacement: "", model: null, createdAt: now, updatedAt: now, status: "streaming",
       } };
       const controller = new AbortController();
-      this.active.set(entry.suggestion.id, { documentId, controller });
+      this.active.set(entry.suggestion.id, { documentId, controller, entry });
       this.lastRequests.set(socket.data.userId, Date.now());
       for (const [userId, timestamp] of this.lastRequests) {
         if (Date.now() - timestamp > 60_000) this.lastRequests.delete(userId);
       }
-      entries.push(entry);
-      try { await this.persist(documentId); } catch {
+      try { await this.persist(documentId, entry); } catch {
         this.active.delete(entry.suggestion.id);
-        entries.splice(entries.indexOf(entry), 1);
         return { success: false, error: "Could not save AI suggestion" };
       }
+      if (this.deleted.has(documentId)) return { success: false, error: "Document no longer exists" };
       this.changed(entry);
       if (!controller.signal.aborted) void this.generate(entry, controller);
-      else this.active.delete(entry.suggestion.id);
+      else {
+        this.active.delete(entry.suggestion.id);
+        await this.persist(documentId);
+        return { success: false, error: this.options.rooms.aiAccess(socket, documentId, true) ?? "Generation interrupted" };
+      }
       return { success: true, suggestion: entry.suggestion };
     } catch { return { success: false, error: "Could not generate a suggestion for this selection" }; }
   }
@@ -318,6 +351,7 @@ export class AiSuggestionService {
   }
 
   async flush(): Promise<void> {
+    await Promise.all([...this.creates.values()].map(run => run.result));
     while (this.pendingAcceptances.size || this.dirtyHistories.size) {
       for (const [id, suggestion] of this.pendingAcceptances) {
         if (this.deleted.has(suggestion.documentId)) { this.pendingAcceptances.delete(id); continue; }
