@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { z } from "zod";
-import { Fragment } from "@tiptap/pm/model";
+import { Fragment, type Mark } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, relativePositionToAbsolutePosition, updateYFragment } from "@tiptap/y-tiptap";
 import { editorSchema } from "@typesync/shared/editor-schema";
@@ -268,7 +268,15 @@ export class AiSuggestionService {
         try {
           if (selected.text !== entry.suggestion.sourceText || selected.slice !== entry.sourceSlice || selected.identity !== entry.sourceIdentity) return { success: false, error: "Selected text changed since this suggestion. Reject it and generate a new one." };
           const vector = Y.encodeStateVector(selected.clone);
-          const marks = selected.doc.resolve(selected.from).marks();
+          let marks: readonly Mark[] = [];
+          let foundText = false;
+          selected.doc.nodesBetween(selected.from, selected.to, node => {
+            if (foundText) return false;
+            if (node.isText) {
+              marks = node.marks;
+              foundText = true;
+            }
+          });
           const nodes = selected.doc.resolve(selected.from).parent.type.spec.code
             ? [editorSchema.text(entry.suggestion.replacement)]
             : entry.suggestion.replacement.split("\n").flatMap((line, index) => [
