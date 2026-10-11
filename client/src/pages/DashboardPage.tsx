@@ -236,8 +236,6 @@ export default function DashboardPage() {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  // Mirrors the list for socket handlers, which must distinguish a role change
-  // on a document already listed from a first-time grant that is not.
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
