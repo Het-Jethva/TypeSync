@@ -97,6 +97,7 @@ export default function DashboardPage() {
     removed,
     metadata,
     role,
+    refresh = true,
   }: {
     docId: string;
     pendingDelta?: number;
@@ -104,10 +105,11 @@ export default function DashboardPage() {
     removed?: boolean;
     metadata?: Pick<DocumentWithRole, "title" | "updatedAt">;
     role?: DocumentWithRole["role"];
+    refresh?: boolean;
   }) => {
     const previous = documentChangesRef.current.get(docId);
     documentChangesRef.current.set(docId, {
-      revision: ++documentChangeRevisionRef.current,
+      revision: refresh ? ++documentChangeRevisionRef.current : previous?.revision ?? documentChangeRevisionRef.current,
       pendingMutations: (previous?.pendingMutations ?? 0) + pendingDelta,
       pendingTitle: pendingTitle !== undefined ? pendingTitle : previous?.pendingTitle ?? null,
       removed: removed ?? previous?.removed ?? false,
@@ -115,6 +117,7 @@ export default function DashboardPage() {
         ? metadata : previous?.metadata ?? null,
       role: role ?? previous?.role ?? null,
     });
+    if (!refresh) return;
     documentsRequestGenerationRef.current += 1;
     documentsAppendRequestGenerationRef.current += 1;
     documentsCursorGenerationRef.current = null;
@@ -141,9 +144,12 @@ export default function DashboardPage() {
       !documentChangesRef.current.get(document.id)?.removed
     );
     const reconciled = snapshot.flatMap((document) => {
-      if (!changedAfterRequest(document.id)) return [document];
-      const latest = currentById.get(document.id);
       const change = documentChangesRef.current.get(document.id);
+      if (!changedAfterRequest(document.id)) {
+        return [change?.metadata && isNewerOrEqual(change.metadata.updatedAt, document.updatedAt)
+          ? { ...document, ...change.metadata } : document];
+      }
+      const latest = currentById.get(document.id);
       if (change?.removed) return [];
       const local = latest ?? document;
       const metadata = change?.metadata && isNewerOrEqual(change.metadata.updatedAt, local.updatedAt)
@@ -161,6 +167,20 @@ export default function DashboardPage() {
     });
     return [...localAdditions, ...reconciled];
   }, []);
+
+  const orderDocuments = useCallback((items: DocumentWithRole[]) => {
+    const matching = debouncedSearch
+      ? items.filter(document => document.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
+      : [...items];
+    return matching.sort((left, right) => {
+      if (sort === "alphabetical") {
+        return left.title.localeCompare(right.title) || left.id.localeCompare(right.id);
+      }
+      const dateKey = sort === "created" ? "createdAt" : "updatedAt";
+      return new Date(right[dateKey]).getTime() - new Date(left[dateKey]).getTime() ||
+        right.id.localeCompare(left.id);
+    });
+  }, [debouncedSearch, sort]);
 
   // Confirmations can expire on their own; failures cannot. An error that
   // disappears after five seconds is an error the reader may never have seen.
@@ -292,7 +312,7 @@ export default function DashboardPage() {
         ...(debouncedSearch ? { q: debouncedSearch } : {}),
       });
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
-      setDocuments((current) => reconcileDocumentSnapshot(res.items, current, requestRevision));
+      setDocuments((current) => orderDocuments(reconcileDocumentSnapshot(res.items, current, requestRevision)));
       setNextDocumentsCursor(res.nextCursor);
       documentsCursorGenerationRef.current = requestGeneration;
       hasLoadedDocumentsRef.current = true;
@@ -311,7 +331,7 @@ export default function DashboardPage() {
         setIsLoading(false);
       }
     }
-  }, [addNotification, debouncedSearch, reconcileDocumentSnapshot, sort]);
+  }, [addNotification, debouncedSearch, orderDocuments, reconcileDocumentSnapshot, sort]);
 
   const loadMoreDocuments = useCallback(async () => {
     if (!nextDocumentsCursor || isLoadingMoreDocuments ||
@@ -336,7 +356,7 @@ export default function DashboardPage() {
         const loadedIds = new Set(current.map((document) => document.id));
         const newItems = reconcileDocumentSnapshot(res.items, current, requestRevision)
           .filter((document) => !loadedIds.has(document.id));
-        return [...current, ...newItems];
+        return orderDocuments([...current, ...newItems]);
       });
       setNextDocumentsCursor(res.nextCursor);
     } catch (err) {
@@ -355,7 +375,7 @@ export default function DashboardPage() {
         setIsLoadingMoreDocuments(false);
       }
     }
-  }, [addNotification, debouncedSearch, isLoadingMoreDocuments, nextDocumentsCursor, reconcileDocumentSnapshot, sort]);
+  }, [addNotification, debouncedSearch, isLoadingMoreDocuments, nextDocumentsCursor, orderDocuments, reconcileDocumentSnapshot, sort]);
 
   // The socket outlives any individual query, so its lifecycle is kept apart
   // from fetching. Tying the two together reconnected it on every keystroke.
@@ -395,36 +415,18 @@ export default function DashboardPage() {
       }
     };
 
-    const handleTitleUpdated: ServerToClientEvents["doc:title-updated"] = (payload) => {
+    const handleMetadataUpdated: ServerToClientEvents["doc:title-updated"] = (payload) => {
       markDocumentChanged({
         docId: payload.documentId,
         metadata: { title: payload.title, updatedAt: payload.updatedAt },
+        refresh: false,
       });
       setDocuments((current) =>
-        current.map((doc) => {
+        orderDocuments(current.map((doc) => {
           if (doc.id !== payload.documentId) return doc;
           if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
           return { ...doc, title: payload.title, updatedAt: payload.updatedAt };
-        })
-      );
-      setRouteDocument((current) => {
-        if (current?.id !== payload.documentId) return current;
-        if (!isNewerOrEqual(payload.updatedAt, current.updatedAt)) return current;
-        return { ...current, title: payload.title, updatedAt: payload.updatedAt };
-      });
-    };
-
-    const handleDocSaved: ServerToClientEvents["doc:saved"] = (payload) => {
-      markDocumentChanged({
-        docId: payload.documentId,
-        metadata: { title: payload.title, updatedAt: payload.updatedAt },
-      });
-      setDocuments((current) =>
-        current.map((doc) => {
-          if (doc.id !== payload.documentId) return doc;
-          if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
-          return { ...doc, title: payload.title, updatedAt: payload.updatedAt };
-        })
+        }))
       );
       setRouteDocument((current) => {
         if (current?.id !== payload.documentId) return current;
@@ -435,16 +437,16 @@ export default function DashboardPage() {
 
     socket.on("doc:permission-updated", handlePermissionUpdated);
     socket.on("doc:permission-revoked", handlePermissionRevoked);
-    socket.on("doc:title-updated", handleTitleUpdated);
-    socket.on("doc:saved", handleDocSaved);
+    socket.on("doc:title-updated", handleMetadataUpdated);
+    socket.on("doc:saved", handleMetadataUpdated);
 
     return () => {
       socket.off("doc:permission-updated", handlePermissionUpdated);
       socket.off("doc:permission-revoked", handlePermissionRevoked);
-      socket.off("doc:title-updated", handleTitleUpdated);
-      socket.off("doc:saved", handleDocSaved);
+      socket.off("doc:title-updated", handleMetadataUpdated);
+      socket.off("doc:saved", handleMetadataUpdated);
     };
-  }, [documentId, fetchDocuments, markDocumentChanged, navigate]);
+  }, [documentId, fetchDocuments, markDocumentChanged, navigate, orderDocuments]);
 
   // Keyboard shortcut for sidebar toggle
   useEffect(() => {
@@ -547,7 +549,7 @@ export default function DashboardPage() {
       (routeDocument?.id === docId ? routeDocument : undefined);
 
     markDocumentChanged({
-      docId, pendingDelta: 1, pendingTitle: title,
+      docId, pendingDelta: 1, pendingTitle: title, refresh: false,
       ...(previousDocument ? {
         metadata: { title: previousDocument.title, updatedAt: previousDocument.updatedAt },
       } : {}),
@@ -557,11 +559,11 @@ export default function DashboardPage() {
       const updated = await api.documents.update(docId, { title });
       if (!updated) return;
       const metadata = { title: updated.title, updatedAt: updated.updatedAt };
-      markDocumentChanged({ docId, metadata });
-      setDocuments((current) => current.map((document) =>
+      markDocumentChanged({ docId, metadata, refresh: false });
+      setDocuments((current) => orderDocuments(current.map((document) =>
         document.id === docId && isNewerOrEqual(updated.updatedAt, document.updatedAt)
           ? { ...document, ...metadata } : document
-      ));
+      )));
       setRouteDocument((current) =>
         current?.id === docId && isNewerOrEqual(updated.updatedAt, current.updatedAt)
           ? { ...current, ...metadata } : current
@@ -591,6 +593,7 @@ export default function DashboardPage() {
         docId,
         pendingDelta: -1,
         pendingTitle: null,
+        refresh: false,
       });
       renamingDocumentIdsRef.current.delete(docId);
       setRenamingDocumentIds(new Set(renamingDocumentIdsRef.current));
