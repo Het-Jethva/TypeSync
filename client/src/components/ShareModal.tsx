@@ -79,6 +79,8 @@ export function ShareModal({
     targetEmail: string,
     newRole: "editor" | "viewer",
   ) => {
+    if (isLoading) return;
+    setIsLoading(true);
     try {
       setError("");
       setSuccess("");
@@ -90,10 +92,14 @@ export function ShareModal({
       onUpdate();
     } catch (err) {
       setError(errorMessage(err, "Failed to update collaborator role"));
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRemoveCollaborator = async (userId: string) => {
+    if (isLoading) return;
+    setIsLoading(true);
     try {
       setError("");
       setSuccess("");
@@ -102,11 +108,14 @@ export function ShareModal({
       onUpdate();
     } catch (err) {
       setError(errorMessage(err, "Failed to remove collaborator"));
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
     setSuccess("");
 
@@ -209,7 +218,7 @@ export function ShareModal({
           disabled={isLoading}
           className="w-full btn-linear-primary text-ui"
         >
-          {isLoading ? "Adding collaborator…" : "Add collaborator"}
+          {isLoading ? "Saving changes…" : "Add collaborator"}
         </button>
       </form>
 
@@ -260,6 +269,7 @@ export function ShareModal({
 
                 <div className="flex items-center gap-2">
                   <Select
+                    disabled={isLoading}
                     value={collab.role}
                     onChange={(e) => {
                       const parsedRole = AddCollaboratorSchema.shape.role.safeParse(
@@ -279,6 +289,7 @@ export function ShareModal({
 
                   <button
                     type="button"
+                    disabled={isLoading}
                     onClick={() => handleRemoveCollaborator(collab.user.id)}
                     aria-label={`Remove ${collab.user.name}`}
                     className="touch-target p-1 rounded text-text-muted hover:text-error hover:bg-error/10 transition-colors"
