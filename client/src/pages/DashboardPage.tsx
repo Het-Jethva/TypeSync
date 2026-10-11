@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const documentChangesRef = useRef(new Map<string, {
     revision: number;
     pendingMutations: number;
+    pendingTitle: string | null;
     removed: boolean;
     metadata: Pick<DocumentWithRole, "title" | "updatedAt"> | null;
     role: DocumentWithRole["role"] | null;
@@ -86,12 +87,14 @@ export default function DashboardPage() {
   const markDocumentChanged = useCallback(({
     docId,
     pendingDelta = 0,
+    pendingTitle,
     removed,
     metadata,
     role,
   }: {
     docId: string;
     pendingDelta?: number;
+    pendingTitle?: string | null;
     removed?: boolean;
     metadata?: Pick<DocumentWithRole, "title" | "updatedAt">;
     role?: DocumentWithRole["role"];
@@ -100,6 +103,7 @@ export default function DashboardPage() {
     documentChangesRef.current.set(docId, {
       revision: ++documentChangeRevisionRef.current,
       pendingMutations: (previous?.pendingMutations ?? 0) + pendingDelta,
+      pendingTitle: pendingTitle !== undefined ? pendingTitle : previous?.pendingTitle ?? null,
       removed: removed ?? previous?.removed ?? false,
       metadata: metadata && (!previous?.metadata || isNewerOrEqual(metadata.updatedAt, previous.metadata.updatedAt))
         ? metadata : previous?.metadata ?? null,
@@ -126,20 +130,24 @@ export default function DashboardPage() {
       if (!changedAfterRequest(document.id)) return [document];
       const latest = currentById.get(document.id);
       const change = documentChangesRef.current.get(document.id);
+      if (change?.removed) return [];
       if (latest) {
         const snapshotIsNewer = !isNewerOrEqual(latest.updatedAt, document.updatedAt);
         return [{
           ...latest,
           ...(snapshotIsNewer && change?.pendingMutations === 0
             ? { title: document.title, updatedAt: document.updatedAt } : {}),
+          ...(change?.pendingTitle !== null && change?.pendingTitle !== undefined
+            ? { title: change.pendingTitle } : {}),
         }];
       }
-      if (change?.removed) return [];
       return [{
         ...document,
         ...(change?.metadata && isNewerOrEqual(change.metadata.updatedAt, document.updatedAt)
           ? change.metadata : {}),
         ...(change?.role ? { role: change.role } : {}),
+        ...(change?.pendingTitle !== null && change?.pendingTitle !== undefined
+          ? { title: change.pendingTitle } : {}),
       }];
     });
     return [...localAdditions, ...reconciled];
@@ -227,6 +235,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const requestGeneration = ++routeDocumentRequestGenerationRef.current;
+    const requestRevision = documentChangeRevisionRef.current;
     setRouteDocument(null);
     setRouteDocumentError(null);
 
@@ -242,7 +251,11 @@ export default function DashboardPage() {
           requestGeneration !== routeDocumentRequestGenerationRef.current ||
           documentIdRef.current !== documentId
         ) return;
-        setRouteDocument(response);
+        setRouteDocument(
+          reconcileDocumentSnapshot(
+            [response], documentsRef.current.filter(doc => doc.id === response.id), requestRevision
+          )[0] ?? null
+        );
         setIsRouteDocumentLoading(false);
       },
       (error: unknown) => {
@@ -256,7 +269,7 @@ export default function DashboardPage() {
         setIsRouteDocumentLoading(false);
       }
     );
-  }, [documentId, routeDocumentRequestNonce]);
+  }, [documentId, routeDocumentRequestNonce, reconcileDocumentSnapshot]);
 
   const fetchDocuments = useCallback(async () => {
     const requestGeneration = ++documentsRequestGenerationRef.current;
@@ -530,7 +543,7 @@ export default function DashboardPage() {
       documents.find((document) => document.id === docId)?.title ??
       (routeDocument?.id === docId ? routeDocument.title : undefined);
 
-    markDocumentChanged({ docId, pendingDelta: 1 });
+    markDocumentChanged({ docId, pendingDelta: 1, pendingTitle: title });
     applyDocumentTitle(docId, title);
     try {
       const updated = await api.documents.update(docId, { title });
@@ -565,7 +578,12 @@ export default function DashboardPage() {
       addNotification(`Failed to rename document: ${msg}`, "error");
       throw err;
     } finally {
-      markDocumentChanged({ docId, pendingDelta: -1 });
+      markDocumentChanged({
+        docId,
+        pendingDelta: -1,
+        ...(documentChangesRef.current.get(docId)?.pendingMutations === 1
+          ? { pendingTitle: null } : {}),
+      });
     }
   };
 
