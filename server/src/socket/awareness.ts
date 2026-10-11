@@ -228,7 +228,7 @@ export function createAwarenessManager(): AwarenessManager {
 
     const state = {
       ...parsedState,
-      user: presenceIdentity(socket, role),
+      user: { ...presenceIdentity(socket, role), clientId },
     };
     return {
       update: encodeAwarenessEntry(clientId, clock, state),

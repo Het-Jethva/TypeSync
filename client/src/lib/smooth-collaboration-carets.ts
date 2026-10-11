@@ -1,4 +1,5 @@
 const DEFAULT_CARET_COLOR = "#5a6b7c";
+let nextMarkerId = 0;
 
 interface AwarenessEvents {
   on(event: "update", handler: () => void): void;
@@ -10,16 +11,15 @@ function safeUserValue(value: unknown, fallback: string): string {
 }
 
 export function renderCollaborationCaretMarker(
-  user: Record<string, unknown>,
-  clientId?: number
+  user: Record<string, unknown>
 ): HTMLElement {
   const marker = document.createElement("span");
   const name = safeUserValue(user.name, "Collaborator");
   const color = safeUserValue(user.color, DEFAULT_CARET_COLOR);
   const identity =
-    clientId !== undefined
-      ? String(clientId)
-      : safeUserValue(user.userId, `${name}-${color}`);
+    typeof user.clientId === "number" && Number.isSafeInteger(user.clientId)
+      ? `client-${user.clientId}`
+      : `marker-${nextMarkerId++}`;
 
   marker.classList.add("collaboration-carets__marker");
   marker.dataset.collaborationCaretId = identity;
