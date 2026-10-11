@@ -28,7 +28,7 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
-  console.error("Error:", err);
+  console.error("Request failed", { name: err.name });
 
   if (err instanceof z.ZodError) {
     return res.status(400).json({
