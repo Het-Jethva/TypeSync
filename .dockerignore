@@ -4,8 +4,8 @@ client/*
 **/dist
 .git
 .gitignore
-.env
-.env.example
+**/.env
+**/.env.*
 README.md
 docker-compose.yml
 *.tsbuildinfo
