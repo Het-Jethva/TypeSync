@@ -11,6 +11,7 @@ import type {
 import { CollaborativeSyncManager, type SyncState } from "../sync-manager";
 import { joinFailureAction } from "../join-failure";
 import { presenceIdentityFromAwareness } from "../presence";
+import { aiAcceptanceOrigin } from "../ai-acceptance";
 
 export function useCollaborativeDocument(
   documentId: string,
@@ -39,6 +40,17 @@ export function useCollaborativeDocument(
   }, [documentId, reloadKey]);
   const awareness = useMemo(() => new awarenessProtocol.Awareness(ydoc), [ydoc]);
   const resourceVersionsRef = useRef(new Map<Y.Doc, number>());
+  const acceptanceHandlerRef = useRef<{
+    ydoc: Y.Doc;
+    apply: (update: Uint8Array) => boolean;
+  } | null>(null);
+  const registerAcceptanceHandler = useCallback((apply: (update: Uint8Array) => boolean) => {
+    const handler = { ydoc, apply };
+    acceptanceHandlerRef.current = handler;
+    return () => {
+      if (acceptanceHandlerRef.current === handler) acceptanceHandlerRef.current = null;
+    };
+  }, [ydoc]);
 
   const onCollaboratorsChangeRef = useRef(onCollaboratorsChange);
   useEffect(() => {
@@ -75,9 +87,13 @@ export function useCollaborativeDocument(
 
     const unsubscribe = syncManager.subscribe(setSyncState);
 
-    const handleUpdate = (payload: { documentId: string; update: Uint8Array }) => {
+    const handleUpdate: ServerToClientEvents["doc:update"] = (payload) => {
       if (payload.documentId !== documentId) return;
-      Y.applyUpdate(ydoc, new Uint8Array(payload.update), "remote");
+      const update = new Uint8Array(payload.update);
+      const handler = acceptanceHandlerRef.current;
+      if (payload.source.kind === "ai-acceptance" && payload.source.socketId === socket.id &&
+        handler?.ydoc === ydoc && handler.apply(update)) return;
+      Y.applyUpdate(ydoc, update, "remote");
     };
 
     const handleAwarenessUpdate = (payload: { documentId: string; update: Uint8Array }) => {
@@ -214,7 +230,7 @@ export function useCollaborativeDocument(
     }
 
     const updateHandler = (update: Uint8Array, origin: unknown) => {
-      if (origin !== "remote") {
+      if (origin !== "remote" && origin !== aiAcceptanceOrigin) {
         syncManager.enqueueDocumentUpdate(update);
       }
     };
@@ -311,5 +327,6 @@ export function useCollaborativeDocument(
     retrying: syncState.retrying,
     sessionRole,
     recover,
+    registerAcceptanceHandler,
   };
 }

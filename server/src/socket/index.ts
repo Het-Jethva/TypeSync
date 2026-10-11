@@ -131,7 +131,7 @@ export function setupSocket(
     rooms: roomSession,
     repository: new DrizzleDocumentStateRepository(),
     emit: (documentId, suggestion) => io.to(`doc:${documentId}`).emit("ai:suggestion", { documentId, suggestion }),
-    emitUpdate: (documentId, update) => io.to(`doc:${documentId}`).emit("doc:update", { documentId, update }),
+    emitUpdate: (documentId, update, socketId) => io.to(`doc:${documentId}`).emit("doc:update", { documentId, update, source: { kind: "ai-acceptance", socketId } }),
   });
 
   io.use(async (socket, next) => {
@@ -292,7 +292,7 @@ export function setupSocket(
         io.to(roomName).emit("doc:size-status", result.sizeStatus);
       }
 
-      socket.to(roomName).emit("doc:update", { documentId: docId, update });
+      socket.to(roomName).emit("doc:update", { documentId: docId, update, source: { kind: "edit" } });
       respond({ success: true, revision: result.revision, epoch: result.epoch });
     });
 

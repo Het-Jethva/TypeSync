@@ -175,7 +175,11 @@ export type DocumentJoinResult =
 
 export interface ServerToClientEvents {
   "ai:suggestion": (payload: { documentId: string; suggestion: AiSuggestion }) => void;
-  "doc:update": (payload: { documentId: string; update: Uint8Array }) => void;
+  "doc:update": (payload: {
+    documentId: string;
+    update: Uint8Array;
+    source: { kind: "edit" } | { kind: "ai-acceptance"; socketId: string };
+  }) => void;
   "awareness:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
   "doc:permission-revoked": (payload: { documentId: string }) => void;

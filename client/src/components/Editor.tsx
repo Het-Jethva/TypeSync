@@ -6,6 +6,10 @@ import CharacterCount from "@tiptap/extension-character-count";
 import Placeholder from "@tiptap/extension-placeholder";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import { yUndoPluginKey } from "@tiptap/y-tiptap";
+import * as Y from "yjs";
+import { z } from "zod";
+import { aiAcceptanceOrigin, applyAiAcceptance } from "../lib/ai-acceptance";
 import { motion } from "motion/react";
 import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
 import {
@@ -30,6 +34,8 @@ interface EditorProps {
   onEditorChange?: (editor: TiptapEditor | null) => void;
 }
 
+const UndoStateSchema = z.object({ undoManager: z.instanceof(Y.UndoManager) });
+
 export function Editor({
   documentId,
   role,
@@ -39,6 +45,7 @@ export function Editor({
   onEditorChange,
 }: EditorProps) {
   const confirm = useConfirm();
+  const [acceptanceEditor, setAcceptanceEditor] = useState<TiptapEditor | null>(null);
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
     position: { top: number; left: number };
@@ -58,6 +65,7 @@ export function Editor({
     retrying,
     sessionRole,
     recover,
+    registerAcceptanceHandler,
   } = useCollaborativeDocument(documentId, onCollaboratorsChange, onAccessLost);
   const effectiveRole = sessionRole ?? role;
   const canEdit = canEditDocument(effectiveRole) && !isSyncBlocked;
@@ -162,6 +170,39 @@ export function Editor({
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
 
+  useEffect(() => {
+    if (!editor) return;
+    let unregister: (() => void) | undefined;
+    const attach = () => {
+      if (editor.isDestroyed || unregister) return;
+      const state = UndoStateSchema.safeParse(yUndoPluginKey.getState(editor.state));
+      if (!state.success) return;
+      const { undoManager } = state.data;
+      undoManager.addTrackedOrigin(aiAcceptanceOrigin);
+      unregister = registerAcceptanceHandler(update => {
+        if (editor.isDestroyed) return false;
+        applyAiAcceptance(ydoc, update, undoManager);
+        return true;
+      });
+      setAcceptanceEditor(editor);
+    };
+    const detach = () => {
+      unregister?.();
+      unregister = undefined;
+      setAcceptanceEditor(null);
+    };
+    attach();
+    editor.on("create", attach);
+    editor.on("mount", attach);
+    editor.on("unmount", detach);
+    return () => {
+      editor.off("create", attach);
+      editor.off("mount", attach);
+      editor.off("unmount", detach);
+      detach();
+    };
+  }, [editor, ydoc, registerAcceptanceHandler]);
+
   const counts = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -263,7 +304,7 @@ export function Editor({
     >
       <EditorToolbar editor={editor} canEdit={canEdit} />
 
-      <AiCoEditor key={`${documentId}-${ydoc.clientID}`} documentId={documentId} editor={editor} ydoc={ydoc} role={effectiveRole} syncReady={syncStatus === "synced" && !hasPendingUpdates && !isSyncBlocked}>
+      <AiCoEditor key={`${documentId}-${ydoc.clientID}`} documentId={documentId} editor={editor} ydoc={ydoc} role={effectiveRole} syncReady={acceptanceEditor === editor && editor !== null && syncStatus === "synced" && !hasPendingUpdates && !isSyncBlocked}>
         <div className="editor-scroll-area relative flex-1 min-w-0 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
           <div className="w-full max-w-2xl bg-bg-elevated min-h-[calc(100vh-10rem)] h-fit">
             <EditorContent key={ydoc.clientID} editor={editor} />

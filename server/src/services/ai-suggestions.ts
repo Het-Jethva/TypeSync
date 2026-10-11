@@ -28,7 +28,7 @@ export class AiSuggestionService {
     rooms: CollaborativeRoomSession;
     repository: DocumentStateRepository;
     emit: (documentId: string, suggestion: AiSuggestion) => void;
-    emitUpdate: (documentId: string, update: Uint8Array) => void;
+    emitUpdate: (documentId: string, update: Uint8Array, socketId: string) => void;
     provider?: Provider;
     configured?: () => boolean;
   }) {
@@ -291,7 +291,7 @@ export class AiSuggestionService {
           if (!applied.success) return { success: false, error: applied.error };
           this.pendingAcceptances.set(entry.suggestion.id, entry.suggestion);
           entry.suggestion = { ...entry.suggestion, status: "accepted", resolvedBy: socket.data.userName };
-          this.options.emitUpdate(documentId, update);
+          this.options.emitUpdate(documentId, update, socket.id);
         } finally { selected.clone.destroy(); }
       }
       this.changed(entry);
