@@ -22,6 +22,18 @@ export function validationErrorMessage(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Validation error";
 }
 
+const JsonParserErrorSchema = z.union([
+  z.object({
+    type: z.enum(["entity.parse.failed", "request.aborted", "request.size.invalid"]),
+    status: z.literal(400),
+  }),
+  z.object({ type: z.literal("entity.too.large"), status: z.literal(413) }),
+  z.object({
+    type: z.enum(["charset.unsupported", "encoding.unsupported"]),
+    status: z.literal(415),
+  }),
+]);
+
 export const errorHandler = (
   err: Error,
   _req: Request,
@@ -41,6 +53,18 @@ export const errorHandler = (
     return res.status(err.statusCode).json({
       success: false,
       error: err.message,
+    });
+  }
+
+  const parserError = JsonParserErrorSchema.safeParse(err);
+  if (parserError.success) {
+    return res.status(parserError.data.status).json({
+      success: false,
+      error: parserError.data.type === "entity.parse.failed"
+        ? "Invalid JSON body"
+        : parserError.data.status === 413 ? "Request body is too large"
+        : parserError.data.status === 415 ? "Unsupported request body encoding"
+        : "Invalid request body",
     });
   }
 
