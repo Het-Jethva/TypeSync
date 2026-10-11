@@ -3,6 +3,71 @@ import { test } from "node:test";
 import * as Y from "yjs";
 import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socket/document-runtime.ts";
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
+import { CollaborativeRoomSession, type SessionAccess } from "../src/socket/room-session.ts";
+import type { TypeSyncSocket } from "../src/socket/types.ts";
+
+for (const scenario of ["rejoin", "superseded join"]) {
+  test(`${scenario} cannot restore editor authority after a viewer downgrade`, async () => {
+    const rooms = new CollaborativeRoomSession({ repository: {
+      loadState: async () => null,
+      saveState: async () => ({ title: "Untitled", updatedAt: new Date() }),
+    } });
+    const roomNames = new Set<string>();
+    const socket = {
+      id: "socket", connected: true, data: { userId: "user", userName: "User" }, rooms: roomNames,
+      join: (name: string) => { roomNames.add(name); },
+      leave: (name: string) => { roomNames.delete(name); },
+      emit: () => {},
+    } as unknown as TypeSyncSocket;
+    rooms.initializeSocket(socket);
+    const editor = { hasAccess: true, role: "editor" } satisfies SessionAccess;
+    const join = (authorize: () => Promise<SessionAccess>, checkSession = async () => "valid" as const) =>
+      rooms.joinSession({ socket, documentId: "document", checkSession, authorize });
+    const oldSession = Promise.withResolvers<"valid">();
+    let oldJoin: ReturnType<typeof join> | undefined;
+    if (scenario === "rejoin") {
+      assert.equal((await join(async () => editor)).success, true);
+    } else {
+      oldJoin = join(async () => editor, () => oldSession.promise);
+    }
+    const finalRead = Promise.withResolvers<SessionAccess>();
+    const reading = Promise.withResolvers<void>();
+    let accessReads = 0;
+    const pendingJoin = join(async () => {
+      if (++accessReads === 2) {
+        reading.resolve();
+        return finalRead.promise;
+      }
+      return editor;
+    });
+    try {
+      await reading.promise;
+      rooms.reconcileAccessChange("document", "user", "viewer");
+      if (oldJoin) {
+        oldSession.resolve("valid");
+        assert.deepEqual(await oldJoin, {
+          success: false, code: "cancelled", error: "Document join was cancelled",
+        });
+      } else {
+        assert.equal(rooms.aiAccess(socket, "document", true), "Unauthorized to edit this document");
+      }
+      finalRead.resolve(editor);
+      const joined = await pendingJoin;
+      assert(joined.success);
+      assert.equal(joined.role, "viewer");
+      assert.equal(joined.presence.role, "viewer");
+      assert.equal(rooms.aiAccess(socket, "document", true), "Unauthorized to edit this document");
+      assert.deepEqual(rooms.applyUpdate({ socket, documentId: "document", update: new Uint8Array() }), {
+        success: false, code: "forbidden", error: "Unauthorized to edit this document",
+      });
+    } finally {
+      oldSession.resolve("valid");
+      finalRead.resolve(editor);
+      await Promise.all([oldJoin, pendingJoin]);
+      rooms.handleDocumentDeleted("document", []);
+    }
+  });
+}
 
 test("reconnecting restores remote dependencies before reporting local edits persisted", async () => {
   let stored: Uint8Array | null = null;

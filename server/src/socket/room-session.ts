@@ -46,8 +46,7 @@ export interface CollaborativeRoomSessionOptions extends DocumentRuntimeOptions 
 
 export class CollaborativeRoomSession {
   private readonly socketRoles = new Map<string, Map<string, Role>>();
-  /** Role written while join is past its access read and not in the room yet. */
-  private readonly joinRoleOverrides = new Map<string, Map<string, Role>>();
+  private readonly joinRoleOverrides = new Map<string, Map<string, { generation: number; role: Role }>>();
   private readonly socketJoinGenerations = new Map<string, Map<string, number>>();
   private readonly sockets = new Map<string, TypeSyncSocket>();
   private readonly pendingJoinCounts = new Map<string, number>();
@@ -172,8 +171,9 @@ export class CollaborativeRoomSession {
     roles.set(documentId, role);
   }
 
-  private clearJoinRoleOverride(socketId: string, documentId: string): void {
+  private clearJoinRoleOverride(socketId: string, documentId: string, generation?: number): void {
     const overrides = this.joinRoleOverrides.get(socketId);
+    if (generation !== undefined && overrides?.get(documentId)?.generation !== generation) return;
     overrides?.delete(documentId);
     if (overrides?.size === 0) this.joinRoleOverrides.delete(socketId);
   }
@@ -184,18 +184,21 @@ export class CollaborativeRoomSession {
   }
 
   private setJoinRoleOverride(socketId: string, documentId: string, role: Role): void {
+    const generation = this.socketJoinGenerations.get(socketId)?.get(documentId);
+    if (generation === undefined) return;
     let overrides = this.joinRoleOverrides.get(socketId);
     if (!overrides) {
       overrides = new Map();
       this.joinRoleOverrides.set(socketId, overrides);
     }
-    overrides.set(documentId, role);
+    overrides.set(documentId, { generation, role });
   }
 
-  private takeJoinRoleOverride(socketId: string, documentId: string): Role | undefined {
-    const role = this.joinRoleOverrides.get(socketId)?.get(documentId);
-    this.clearJoinRoleOverride(socketId, documentId);
-    return role;
+  private takeJoinRoleOverride(socketId: string, documentId: string, generation: number): Role | undefined {
+    const override = this.joinRoleOverrides.get(socketId)?.get(documentId);
+    if (override?.generation !== generation) return undefined;
+    this.clearJoinRoleOverride(socketId, documentId, generation);
+    return override.role;
   }
 
   async joinSession(params: {
@@ -214,6 +217,7 @@ export class CollaborativeRoomSession {
       (this.pendingJoinCounts.get(documentId) ?? 0) + 1
     );
     const joinGeneration = this.advanceJoinGeneration(socket.id, documentId);
+    this.clearJoinRoleOverride(socket.id, documentId);
     let appliedJoinRole = false;
 
     try {
@@ -256,7 +260,7 @@ export class CollaborativeRoomSession {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
-      const role = this.takeJoinRoleOverride(socket.id, documentId) ?? currentAccess.role;
+      const role = this.takeJoinRoleOverride(socket.id, documentId, joinGeneration) ?? currentAccess.role;
       const presence = this.awarenessManager.presenceFor(socket, role);
 
       const snapshot = this.runtime.snapshotForJoin(documentId);
@@ -278,7 +282,7 @@ export class CollaborativeRoomSession {
       console.error(`Failed to join document ${documentId}:`, error);
       return rejectedJoin("load-failed", "Failed to load document");
     } finally {
-      if (!appliedJoinRole) this.clearJoinRoleOverride(socket.id, documentId);
+      if (!appliedJoinRole) this.clearJoinRoleOverride(socket.id, documentId, joinGeneration);
       const remaining = (this.pendingJoinCounts.get(documentId) ?? 1) - 1;
       if (remaining > 0) {
         this.pendingJoinCounts.set(documentId, remaining);
@@ -402,10 +406,8 @@ export class CollaborativeRoomSession {
       if (role) {
         if (inRoom) {
           this.setRole(socket.id, documentId, role);
-          this.clearJoinRoleOverride(socket.id, documentId);
-        } else {
-          this.setJoinRoleOverride(socket.id, documentId, role);
         }
+        this.setJoinRoleOverride(socket.id, documentId, role);
         this.notifySocket(socket, () => socket.emit("doc:permission-updated", { documentId, role }));
         continue;
       }
