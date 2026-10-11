@@ -19,6 +19,8 @@ export class AiSuggestionService {
   private readonly histories = new Map<string, Entry[]>();
   private readonly loads = new Map<string, Promise<Entry[]>>();
   private readonly writes = new Map<string, Promise<void>>();
+  private readonly dirtyHistories = new Map<string, number>();
+  private historyRevision = 0;
   private readonly active = new Map<string, { documentId: string; controller: AbortController }>();
   private readonly lastRequests = new Map<string, number>();
   private readonly deleted = new Set<string>();
@@ -51,6 +53,7 @@ export class AiSuggestionService {
       if (documentId !== null) {
         this.deleted.add(documentId);
         this.histories.delete(documentId);
+        this.dirtyHistories.delete(documentId);
         const cleanup = setTimeout(() => this.deleted.delete(documentId), 300_000);
         cleanup.unref();
       }
@@ -76,7 +79,7 @@ export class AiSuggestionService {
       }
       if (this.histories.size >= 64) {
         for (const [id] of this.histories) {
-          if (!this.writes.has(id) && ![...this.active.values()].some(run => run.documentId === id) &&
+          if (!this.writes.has(id) && !this.dirtyHistories.has(id) && ![...this.active.values()].some(run => run.documentId === id) &&
             ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === id)) {
             this.histories.delete(id);
             break;
@@ -92,12 +95,21 @@ export class AiSuggestionService {
   }
 
   private persist(documentId: string): Promise<void> {
+    if (this.deleted.has(documentId)) return Promise.resolve();
+    const revision = ++this.historyRevision;
+    this.dirtyHistories.set(documentId, revision);
     const snapshot = structuredClone((this.histories.get(documentId) ?? []).map(entry => ({
       ...entry, suggestion: this.pendingAcceptances.get(entry.suggestion.id) ?? entry.suggestion,
     })));
     const previous = this.writes.get(documentId) ?? Promise.resolve();
     const write = previous.catch(() => {}).then(async () => {
-      if (!this.deleted.has(documentId)) await this.options.repository.saveAiSuggestions?.(documentId, snapshot);
+      if (!this.deleted.has(documentId)) {
+        await this.options.repository.saveAiSuggestions?.(documentId, snapshot);
+        if (this.dirtyHistories.get(documentId) === revision &&
+          ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === documentId)) {
+          this.dirtyHistories.delete(documentId);
+        }
+      }
     });
     this.writes.set(documentId, write);
     void write.finally(() => { if (this.writes.get(documentId) === write) this.writes.delete(documentId); }).catch(() => {});
@@ -105,6 +117,7 @@ export class AiSuggestionService {
   }
 
   private changed(entry: Entry): void {
+    this.dirtyHistories.set(entry.suggestion.documentId, ++this.historyRevision);
     entry.suggestion.updatedAt = new Date(Math.max(Date.now(), Date.parse(entry.suggestion.updatedAt) + 1)).toISOString();
     this.options.emit(entry.suggestion.documentId, entry.suggestion);
   }
@@ -255,8 +268,8 @@ export class AiSuggestionService {
         if (this.pendingAcceptances.has(entry.suggestion.id)) {
           await this.options.rooms.flushDocumentForAi(documentId);
           this.pendingAcceptances.delete(entry.suggestion.id);
-          await this.persist(documentId);
         }
+        await this.persist(documentId);
         return { success: true, suggestion: entry.suggestion };
       }
       if (request.decision === "reject") {
@@ -305,11 +318,13 @@ export class AiSuggestionService {
   }
 
   async flush(): Promise<void> {
-    for (const [id, suggestion] of this.pendingAcceptances) {
-      if (this.deleted.has(suggestion.documentId)) { this.pendingAcceptances.delete(id); continue; }
-      await this.options.rooms.flushDocumentForAi(suggestion.documentId);
-      this.pendingAcceptances.delete(id);
-      await this.persist(suggestion.documentId);
+    while (this.pendingAcceptances.size || this.dirtyHistories.size) {
+      for (const [id, suggestion] of this.pendingAcceptances) {
+        if (this.deleted.has(suggestion.documentId)) { this.pendingAcceptances.delete(id); continue; }
+        await this.options.rooms.flushDocumentForAi(suggestion.documentId);
+        this.pendingAcceptances.delete(id);
+      }
+      await Promise.all([...this.dirtyHistories.keys()].map(documentId => this.persist(documentId)));
     }
     await Promise.all(this.writes.values());
   }

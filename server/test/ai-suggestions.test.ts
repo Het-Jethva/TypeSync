@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import * as Y from "yjs";
+import { z } from "zod";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, prosemirrorJSONToYDoc, updateYFragment } from "@tiptap/y-tiptap";
 import { Transform } from "@tiptap/pm/transform";
 import { editorSchema } from "@typesync/shared/editor-schema";
-import type { AiCreateRequest, AiSuggestion, Role } from "@typesync/shared";
+import { AiSuggestionSchema, type AiCreateRequest, type AiSuggestion, type Role } from "@typesync/shared";
 import { AiSuggestionService } from "../src/services/ai-suggestions.ts";
 import { CollaborativeRoomSession } from "../src/socket/room-session.ts";
 import type { TypeSyncSocket } from "../src/socket/types.ts";
@@ -167,3 +168,40 @@ test("accept fits selections across paragraphs and rejects replacing selected te
     assert.equal(stale.content().firstChild?.textContent, "Hello world");
   } finally { await stale.cleanup(); }
 });
+
+for (const decision of ["accept", "reject"] as const) {
+  for (const recovery of ["retry", "flush"] as const) {
+    test(`${decision} history save failures recover through ${recovery} without applying text twice`, async () => {
+      const f = await fixture(async ({ onDelta }) => onDelta("Hi everyone"));
+      const saveHistory = f.repository.saveAiSuggestions;
+      try {
+        const created = await f.ai.create(f.owner, f.documentId, f.request());
+        assert(created.success);
+        await settled(f.ai, f.owner, f.documentId);
+        let fail = true;
+        const writes: string[] = [];
+        const saveState = f.repository.saveState;
+        f.repository.saveState = async (...args) => { writes.push("document"); return saveState(...args); };
+        f.repository.saveAiSuggestions = async (...args) => {
+          writes.push("history");
+          if (fail) throw new Error("Injected history save failure");
+          await saveHistory(...args);
+        };
+        const request = { suggestionId: created.suggestion.id, decision };
+        assert.equal((await f.ai.resolve(f.owner, f.documentId, request)).success, false);
+        if (decision === "accept") assert.deepEqual(writes, ["document", "history"]);
+        await assert.rejects(f.ai.flush(), /Injected history save failure/);
+        fail = false;
+        if (recovery === "retry") assert((await f.ai.resolve(f.owner, f.documentId, request)).success);
+        else { f.rooms.beginDrain(); await f.rooms.flushAll(); }
+        const restored = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+        assert.equal(restored[0]?.suggestion.status, decision === "accept" ? "accepted" : "rejected");
+        assert.equal(f.content().firstChild?.textContent, decision === "accept" ? "Hi everyone" : "Hello world");
+        assert.equal(f.updates.length, decision === "accept" ? 1 : 0);
+      } finally {
+        f.repository.saveAiSuggestions = saveHistory;
+        await f.cleanup();
+      }
+    });
+  }
+}
