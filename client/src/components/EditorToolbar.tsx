@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useEditorState, type Editor as TiptapEditor } from "@tiptap/react";
 import { AnimatePresence } from "motion/react";
 import { ToolbarUrlPopover } from "./ToolbarUrlPopover";
@@ -55,9 +55,25 @@ function Divider() {
 export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
   const [openPopover, setOpenPopover] = useState<"link" | "image" | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [isEditable, setIsEditable] = useState(editor?.isEditable ?? false);
   const linkAnchorRef = useRef<HTMLDivElement>(null);
   const imageAnchorRef = useRef<HTMLDivElement>(null);
   const overflowAnchorRef = useRef<HTMLDivElement>(null);
+  const canEditRef = useRef(canEdit);
+
+  useLayoutEffect(() => {
+    canEditRef.current = canEdit;
+    const syncEditability = () => {
+      setIsEditable(editor?.isEditable ?? false);
+      if (!canEdit || !editor?.isEditable) {
+        setOpenPopover(null);
+        setOverflowOpen(false);
+      }
+    };
+    syncEditability();
+    editor?.on("update", syncEditability);
+    return () => { editor?.off("update", syncEditability); };
+  }, [editor, canEdit]);
   const marks = useEditorState({
     editor,
     selector: ({ editor: current }) => {
@@ -84,9 +100,13 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
 
   if (!editor || !marks) return null;
 
+  const runEditable = (action: () => void) => {
+    if (canEditRef.current && editor.isEditable) action();
+  };
+
   const closePopover = () => {
     setOpenPopover(null);
-    editor.chain().focus().run();
+    runEditable(() => editor.chain().focus().run());
   };
 
   // The blocks people reach for least often, kept off the main row so it stays
@@ -95,31 +115,31 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
     {
       id: "task-list",
       label: "Task list",
-      disabled: !canEdit,
-      onSelect: () => editor.chain().focus().toggleTaskList().run(),
+      disabled: !canEdit || !isEditable,
+      onSelect: () => runEditable(() => editor.chain().focus().toggleTaskList().run()),
     },
     {
       id: "code-block",
       label: "Code block",
-      disabled: !canEdit,
-      onSelect: () => editor.chain().focus().toggleCodeBlock().run(),
+      disabled: !canEdit || !isEditable,
+      onSelect: () => runEditable(() => editor.chain().focus().toggleCodeBlock().run()),
     },
     {
       id: "table",
       label: "Table",
-      disabled: !canEdit,
-      onSelect: () =>
+      disabled: !canEdit || !isEditable,
+      onSelect: () => runEditable(() =>
         editor
           .chain()
           .focus()
           .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-          .run(),
+          .run()),
     },
     {
       id: "divider",
       label: "Divider",
-      disabled: !canEdit,
-      onSelect: () => editor.chain().focus().setHorizontalRule().run(),
+      disabled: !canEdit || !isEditable,
+      onSelect: () => runEditable(() => editor.chain().focus().setHorizontalRule().run()),
     },
   ];
 
@@ -127,9 +147,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
     <div className="scroll-row flex items-center gap-1 px-4 py-1.5 border-b border-border bg-bg-secondary/40">
       {/* History */}
       <ToolbarButton
-        onClick={() => editor.chain().focus().undo().run()}
+        onClick={() => runEditable(() => editor.chain().focus().undo().run())}
         title="Undo (Ctrl+Z)"
-        disabled={!canEdit || !marks.canUndo}
+        disabled={!canEdit || !isEditable || !marks.canUndo}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
           <path d="M9 14L4 9l5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -138,9 +158,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       </ToolbarButton>
 
       <ToolbarButton
-        onClick={() => editor.chain().focus().redo().run()}
+        onClick={() => runEditable(() => editor.chain().focus().redo().run())}
         title="Redo (Ctrl+Shift+Z)"
-        disabled={!canEdit || !marks.canRedo}
+        disabled={!canEdit || !isEditable || !marks.canRedo}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
           <path d="M15 14l5-5-5-5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -153,36 +173,36 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Text style */}
       <ToolbarButton
         isActive={marks.bold}
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleBold().run())}
         title="Bold (Ctrl+B)"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <span className="text-title font-bold">B</span>
       </ToolbarButton>
 
       <ToolbarButton
         isActive={marks.italic}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleItalic().run())}
         title="Italic (Ctrl+I)"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <span className="text-title italic font-semibold">I</span>
       </ToolbarButton>
 
       <ToolbarButton
         isActive={marks.underline}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleUnderline().run())}
         title="Underline (Ctrl+U)"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <span className="text-title underline font-semibold">U</span>
       </ToolbarButton>
 
       <ToolbarButton
         isActive={marks.strike}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleStrike().run())}
         title="Strikethrough"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <span className="text-title line-through">S</span>
       </ToolbarButton>
@@ -193,9 +213,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
         <ToolbarButton
           key={level}
           isActive={level === 1 ? marks.h1 : level === 2 ? marks.h2 : marks.h3}
-          onClick={() => editor.chain().focus().toggleHeading({ level }).run()}
+          onClick={() => runEditable(() => editor.chain().focus().toggleHeading({ level }).run())}
           title={`Heading ${level}`}
-          disabled={!canEdit}
+          disabled={!canEdit || !isEditable}
         >
           <span className="text-ui font-bold">H{level}</span>
         </ToolbarButton>
@@ -206,9 +226,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Lists */}
       <ToolbarButton
         isActive={marks.bulletList}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleBulletList().run())}
         title="Bullet list"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
           <circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none" />
@@ -220,9 +240,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
 
       <ToolbarButton
         isActive={marks.orderedList}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleOrderedList().run())}
         title="Numbered list"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
           <path d="M10 7h11M10 12h11M10 17h11" strokeWidth="1.5" strokeLinecap="round" />
@@ -237,9 +257,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Block elements */}
       <ToolbarButton
         isActive={marks.blockquote}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() => runEditable(() => editor.chain().focus().toggleBlockquote().run())}
         title="Blockquote"
-        disabled={!canEdit}
+        disabled={!canEdit || !isEditable}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
           <path d="M3 6h18M3 12h18M3 18h12" strokeWidth="1.5" strokeLinecap="round" />
@@ -252,9 +272,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       <div ref={linkAnchorRef}>
         <ToolbarButton
           isActive={marks.link}
-          onClick={() => setOpenPopover((current) => (current === "link" ? null : "link"))}
+          onClick={() => runEditable(() => setOpenPopover((current) => (current === "link" ? null : "link")))}
           title={marks.link ? "Edit link" : "Insert link"}
-          disabled={!canEdit}
+          disabled={!canEdit || !isEditable}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeWidth="1.5" strokeLinecap="round" />
@@ -262,7 +282,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
           </svg>
         </ToolbarButton>
         <AnimatePresence>
-          {openPopover === "link" && (
+          {canEdit && isEditable && openPopover === "link" && (
             <AnchoredPortal anchorRef={linkAnchorRef}>
             <ToolbarUrlPopover
               label={marks.link ? "Edit link" : "Link address"}
@@ -272,17 +292,17 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
               removeLabel="Remove link"
               onRemove={
                 marks.link
-                  ? () =>
-                      editor.chain().focus().extendMarkRange("link").unsetLink().run()
+                  ? () => runEditable(() =>
+                      editor.chain().focus().extendMarkRange("link").unsetLink().run())
                   : undefined
               }
-              onSubmit={(url) =>
+              onSubmit={(url) => runEditable(() =>
                 editor
                   .chain()
                   .focus()
                   .extendMarkRange("link")
                   .setLink({ href: url })
-                  .run()
+                  .run())
               }
               onClose={closePopover}
             />
@@ -294,9 +314,9 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Image */}
       <div ref={imageAnchorRef}>
         <ToolbarButton
-          onClick={() => setOpenPopover((current) => (current === "image" ? null : "image"))}
+          onClick={() => runEditable(() => setOpenPopover((current) => (current === "image" ? null : "image")))}
           title="Insert image"
-          disabled={!canEdit}
+          disabled={!canEdit || !isEditable}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
             <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="1.5" />
@@ -305,13 +325,13 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
           </svg>
         </ToolbarButton>
         <AnimatePresence>
-          {openPopover === "image" && (
+          {canEdit && isEditable && openPopover === "image" && (
             <AnchoredPortal anchorRef={imageAnchorRef}>
               <ToolbarUrlPopover
                 label="Image address"
                 placeholder="example.com/photo.jpg"
                 submitLabel="Insert image"
-                onSubmit={(url) => editor.chain().focus().setImage({ src: url }).run()}
+                onSubmit={(url) => runEditable(() => editor.chain().focus().setImage({ src: url }).run())}
                 onClose={closePopover}
               />
             </AnchoredPortal>
@@ -324,9 +344,10 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Overflow */}
       <div ref={overflowAnchorRef}>
         <ToolbarButton
-          onClick={() => setOverflowOpen((current) => !current)}
+          onClick={() => runEditable(() => setOverflowOpen((current) => !current))}
           title="More blocks"
           isActive={overflowOpen}
+          disabled={!canEdit || !isEditable}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
             <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
@@ -335,7 +356,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
           </svg>
         </ToolbarButton>
         <AnimatePresence>
-          {overflowOpen && (
+          {canEdit && isEditable && overflowOpen && (
             <AnchoredPortal anchorRef={overflowAnchorRef} align="right">
               <DropdownMenu
                 label="More blocks"

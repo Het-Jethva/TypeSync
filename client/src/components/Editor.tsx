@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useEditor, useEditorState, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import { createContentExtensions } from "@typesync/shared/editor-schema";
 import CharacterCount from "@tiptap/extension-character-count";
@@ -112,6 +112,7 @@ export function Editor({
         handleTextInput(view, from, to, text) {
           const { selection } = view.state;
           const isEmptyTextBlock =
+            view.editable &&
             text === "/" &&
             from === to &&
             selection.empty &&
@@ -135,6 +136,7 @@ export function Editor({
       onUpdate({ editor }) {
         const { selection } = editor.state;
         const slashIsStillActive =
+          editor.isEditable &&
           selection.empty &&
           selection.$from.parent.isTextblock &&
           selection.$from.parent.textContent === "/" &&
@@ -147,6 +149,7 @@ export function Editor({
       onSelectionUpdate({ editor }) {
         const { selection } = editor.state;
         const slashIsStillActive =
+          editor.isEditable &&
           selection.empty &&
           selection.$from.parent.isTextblock &&
           selection.$from.parent.textContent === "/" &&
@@ -166,8 +169,11 @@ export function Editor({
     [documentId, ydoc, awareness]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     editor?.setEditable(canEdit);
+    if (!canEdit) {
+      setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    }
   }, [editor, canEdit]);
 
   useEffect(() => {
@@ -312,7 +318,7 @@ export function Editor({
         </div>
       </AiCoEditor>
 
-      {slashMenu.isOpen && editor && (
+      {canEdit && slashMenu.isOpen && editor?.isEditable && (
         <EditorSlashMenu
           editor={editor}
           position={slashMenu.position}

@@ -83,6 +83,15 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
+  useEffect(() => {
+    const closeReadOnlyMenu = () => {
+      if (!editor.isEditable) onClose();
+    };
+    closeReadOnlyMenu();
+    editor.on("update", closeReadOnlyMenu);
+    return () => { editor.off("update", closeReadOnlyMenu); };
+  }, [editor, onClose]);
+
   // Bounds checking logic for menu placement
   useEffect(() => {
     if (menuRef.current) {
@@ -132,6 +141,10 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!editor.isEditable) {
+        onClose();
+        return;
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
@@ -203,6 +216,10 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
           onMouseDown={(event) => event.preventDefault()}
           onMouseEnter={() => setSelectedIndex(idx)}
           onClick={() => {
+            if (!editor.isEditable) {
+              onClose();
+              return;
+            }
             const { selection } = editor.state;
             editor.chain().focus().deleteRange({ from: selection.from - 1, to: selection.from }).run();
             item.action(editor);
