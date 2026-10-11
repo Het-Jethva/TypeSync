@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
   type RefObject,
@@ -26,46 +27,52 @@ export function AnchoredPortal({
   offset = 6,
   children,
 }: AnchoredPortalProps) {
-  const [position, setPosition] = useState<{ top: number; left?: number; right?: number } | null>(
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(
     null
   );
 
   const measure = useCallback(() => {
     const anchor = anchorRef.current;
-    if (!anchor) return;
+    const panel = panelRef.current;
+    if (!anchor || !panel) return;
 
     const rect = anchor.getBoundingClientRect();
-    setPosition(
-      align === "right"
-        ? {
-            top: rect.bottom + offset,
-            right: Math.max(window.innerWidth - rect.right, 8),
-          }
-        : { top: rect.bottom + offset, left: Math.max(rect.left, 8) }
-    );
+    const width = Math.max(panel.getBoundingClientRect().width, panel.scrollWidth);
+    const desiredLeft = align === "right" ? rect.right - width : rect.left;
+    setPosition({
+      top: rect.bottom + offset,
+      left: Math.max(8, Math.min(desiredLeft, document.documentElement.clientWidth - width - 8)),
+    });
   }, [align, anchorRef, offset]);
 
   useLayoutEffect(measure, [measure]);
 
   useEffect(() => {
+    const observer = new ResizeObserver(measure);
+    if (panelRef.current) observer.observe(panelRef.current);
+    if (panelRef.current?.firstElementChild) observer.observe(panelRef.current.firstElementChild);
     window.addEventListener("resize", measure);
     // Capture phase, so scrolling of any ancestor repositions the panel.
     window.addEventListener("scroll", measure, true);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
   }, [measure]);
 
-  if (!position) return null;
-
   return createPortal(
     <div
+      ref={panelRef}
+      className="[&>*]:max-w-[calc(100vw-16px)]"
       style={{
         position: "fixed",
-        top: position.top,
-        left: position.left,
-        right: position.right,
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        visibility: position ? "visible" : "hidden",
+        width: "max-content",
+        maxWidth: "calc(100vw - 16px)",
         zIndex: 50,
       }}
     >
