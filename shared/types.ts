@@ -149,6 +149,7 @@ export type DocumentUpdateResult =
 
 export type DocumentJoinErrorCode =
   | "invalid-id"
+  | "rate-limited"
   | "session-expired"
   | "unavailable"
   | "cancelled"

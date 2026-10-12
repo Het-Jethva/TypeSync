@@ -13,6 +13,16 @@ import type { SocketSessionCheck, TypeSyncSocket } from "./types.js";
 
 const DOCUMENT_UPDATES_PER_SECOND = 30;
 const DOCUMENT_UPDATE_BURST_SIZE = 60;
+const MAX_PENDING_JOINS_PER_SOCKET = 8;
+
+interface PendingJoin {
+  roleOverride?: Role;
+}
+
+interface SocketJoinState {
+  current: Map<string, PendingJoin>;
+  inFlight: number;
+}
 
 export type SessionAccess =
   | { hasAccess: true; role: Role }
@@ -46,8 +56,7 @@ export interface CollaborativeRoomSessionOptions extends DocumentRuntimeOptions 
 
 export class CollaborativeRoomSession {
   private readonly socketRoles = new Map<string, Map<string, Role>>();
-  private readonly joinRoleOverrides = new Map<string, Map<string, { generation: number; role: Role }>>();
-  private readonly socketJoinGenerations = new Map<string, Map<string, number>>();
+  private readonly socketJoins = new Map<string, SocketJoinState>();
   private readonly sockets = new Map<string, TypeSyncSocket>();
   private readonly pendingJoinCounts = new Map<string, number>();
   private readonly pendingJoinWaiters = new Set<() => void>();
@@ -82,7 +91,7 @@ export class CollaborativeRoomSession {
   initializeSocket(socket: TypeSyncSocket): PresenceIdentity {
     this.sockets.set(socket.id, socket);
     this.socketRoles.set(socket.id, new Map());
-    this.socketJoinGenerations.set(socket.id, new Map());
+    this.socketJoins.set(socket.id, { current: new Map(), inFlight: 0 });
     this.updateTokens.set(socket.id, {
       tokens: DOCUMENT_UPDATE_BURST_SIZE,
       lastRefill: Date.now(),
@@ -135,19 +144,9 @@ export class CollaborativeRoomSession {
     this.pendingJoinWaiters.clear();
   }
 
-  private advanceJoinGeneration(socketId: string, documentId: string): number {
-    let generations = this.socketJoinGenerations.get(socketId);
-    if (!generations) {
-      generations = new Map();
-      this.socketJoinGenerations.set(socketId, generations);
-    }
-    const generation = (generations.get(documentId) ?? 0) + 1;
-    generations.set(documentId, generation);
-    return generation;
-  }
-
-  private isCurrentJoin(socketId: string, documentId: string, generation: number): boolean {
-    return this.socketJoinGenerations.get(socketId)?.get(documentId) === generation;
+  private isCurrentJoin(socket: TypeSyncSocket, documentId: string, state: SocketJoinState, join: PendingJoin): boolean {
+    return socket.connected && this.sockets.get(socket.id) === socket &&
+      this.socketJoins.get(socket.id) === state && state.current.get(documentId) === join;
   }
 
   private consumeUpdateToken(socketId: string): boolean {
@@ -183,34 +182,13 @@ export class CollaborativeRoomSession {
     roles.set(documentId, role);
   }
 
-  private clearJoinRoleOverride(socketId: string, documentId: string, generation?: number): void {
-    const overrides = this.joinRoleOverrides.get(socketId);
-    if (generation !== undefined && overrides?.get(documentId)?.generation !== generation) return;
-    overrides?.delete(documentId);
-    if (overrides?.size === 0) this.joinRoleOverrides.delete(socketId);
-  }
-
   private clearRole(socketId: string, documentId: string): void {
     this.socketRoles.get(socketId)?.delete(documentId);
-    this.clearJoinRoleOverride(socketId, documentId);
   }
 
   private setJoinRoleOverride(socketId: string, documentId: string, role: Role): void {
-    const generation = this.socketJoinGenerations.get(socketId)?.get(documentId);
-    if (generation === undefined) return;
-    let overrides = this.joinRoleOverrides.get(socketId);
-    if (!overrides) {
-      overrides = new Map();
-      this.joinRoleOverrides.set(socketId, overrides);
-    }
-    overrides.set(documentId, { generation, role });
-  }
-
-  private takeJoinRoleOverride(socketId: string, documentId: string, generation: number): Role | undefined {
-    const override = this.joinRoleOverrides.get(socketId)?.get(documentId);
-    if (override?.generation !== generation) return undefined;
-    this.clearJoinRoleOverride(socketId, documentId, generation);
-    return override.role;
+    const join = this.socketJoins.get(socketId)?.current.get(documentId);
+    if (join) join.roleOverride = role;
   }
 
   async joinSession(params: {
@@ -224,16 +202,24 @@ export class CollaborativeRoomSession {
       return rejectedJoin("server-draining", "Server is shutting down");
     }
 
+    const joins = this.socketJoins.get(socket.id);
+    if (!socket.connected || this.sockets.get(socket.id) !== socket || !joins) {
+      return rejectedJoin("cancelled", "Document join was cancelled");
+    }
+    if (joins.inFlight >= MAX_PENDING_JOINS_PER_SOCKET) {
+      return rejectedJoin("rate-limited", "Too many pending document joins");
+    }
+    const join: PendingJoin = {};
+    joins.current.set(documentId, join);
+    joins.inFlight += 1;
+
     this.pendingJoinCounts.set(
       documentId,
       (this.pendingJoinCounts.get(documentId) ?? 0) + 1
     );
-    const joinGeneration = this.advanceJoinGeneration(socket.id, documentId);
-    this.clearJoinRoleOverride(socket.id, documentId);
-    let appliedJoinRole = false;
 
     try {
-      if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
+      if (!this.isCurrentJoin(socket, documentId, joins, join)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
@@ -244,7 +230,7 @@ export class CollaborativeRoomSession {
       if (session === "unavailable") {
         return rejectedJoin("unavailable", "Session check unavailable");
       }
-      if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
+      if (!this.isCurrentJoin(socket, documentId, joins, join)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
@@ -252,10 +238,13 @@ export class CollaborativeRoomSession {
       if (!initialAccess.hasAccess) {
         return rejectedJoin("forbidden", "Access denied");
       }
+      if (!this.isCurrentJoin(socket, documentId, joins, join)) {
+        return rejectedJoin("cancelled", "Document join was cancelled");
+      }
 
       await this.runtime.ensureLoaded(documentId);
 
-      if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
+      if (!this.isCurrentJoin(socket, documentId, joins, join)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
@@ -264,21 +253,16 @@ export class CollaborativeRoomSession {
         return rejectedJoin("forbidden", "Access denied");
       }
 
-      if (!socket.connected || !this.isCurrentJoin(socket.id, documentId, joinGeneration)) {
+      if (!this.isCurrentJoin(socket, documentId, joins, join)) {
         return rejectedJoin("cancelled", "Document join was cancelled");
       }
 
-      if (!this.sockets.has(socket.id)) {
-        return rejectedJoin("cancelled", "Document join was cancelled");
-      }
-
-      const role = this.takeJoinRoleOverride(socket.id, documentId, joinGeneration) ?? currentAccess.role;
+      const role = join.roleOverride ?? currentAccess.role;
       const presence = this.awarenessManager.presenceFor(socket, role);
 
       const snapshot = this.runtime.snapshotForJoin(documentId);
       socket.join(`doc:${documentId}`);
       this.setRole(socket.id, documentId, role);
-      appliedJoinRole = true;
 
       return {
         success: true,
@@ -295,20 +279,28 @@ export class CollaborativeRoomSession {
       console.error(`Failed to join document ${documentId}:`, error);
       return rejectedJoin("load-failed", "Failed to load document");
     } finally {
-      if (!appliedJoinRole) this.clearJoinRoleOverride(socket.id, documentId, joinGeneration);
+      if (joins.current.get(documentId) === join) joins.current.delete(documentId);
       const remaining = (this.pendingJoinCounts.get(documentId) ?? 1) - 1;
       if (remaining > 0) {
         this.pendingJoinCounts.set(documentId, remaining);
       } else {
         this.pendingJoinCounts.delete(documentId);
-        await this.evictIfEmpty(documentId);
+      }
+      try {
+        if (remaining === 0) await this.evictIfEmpty(documentId);
+      } finally {
+        joins.inFlight -= 1;
         this.resolvePendingJoinWaiters();
       }
     }
   }
 
   async leaveSession(socket: TypeSyncSocket, documentId: string): Promise<void> {
-    this.advanceJoinGeneration(socket.id, documentId);
+    if (this.sockets.get(socket.id) !== socket) return;
+    const joins = this.socketJoins.get(socket.id);
+    if (!joins?.current.has(documentId) && !this.getRole(socket.id, documentId) &&
+      !socket.rooms.has(`doc:${documentId}`)) return;
+    joins?.current.delete(documentId);
     this.awarenessManager.releaseBinding(socket, documentId);
     socket.leave(`doc:${documentId}`);
     this.clearRole(socket.id, documentId);
@@ -397,9 +389,7 @@ export class CollaborativeRoomSession {
     documentId: string
   ): void {
     const roomName = `doc:${documentId}`;
-    if (this.socketJoinGenerations.get(socket.id)?.has(documentId)) {
-      this.advanceJoinGeneration(socket.id, documentId);
-    }
+    this.socketJoins.get(socket.id)?.current.delete(documentId);
     this.awarenessManager.releaseBinding(socket, documentId);
     socket.leave(roomName);
     this.clearRole(socket.id, documentId);
@@ -489,6 +479,7 @@ export class CollaborativeRoomSession {
   }
 
   async handleDisconnect(socket: TypeSyncSocket): Promise<void> {
+    if (this.sockets.get(socket.id) !== socket) return;
     const documentIds = [...(this.socketRoles.get(socket.id)?.keys() ?? [])];
     for (const documentId of documentIds) {
       this.awarenessManager.releaseBinding(socket, documentId);
@@ -496,8 +487,7 @@ export class CollaborativeRoomSession {
     }
     this.awarenessManager.forgetSocket(socket.id);
     this.socketRoles.delete(socket.id);
-    this.joinRoleOverrides.delete(socket.id);
-    this.socketJoinGenerations.delete(socket.id);
+    this.socketJoins.delete(socket.id);
     this.sockets.delete(socket.id);
     this.updateTokens.delete(socket.id);
 

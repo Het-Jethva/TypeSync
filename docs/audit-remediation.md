@@ -17,7 +17,7 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 2. [x] AI selection safety for images and other non-text content. Shared guard rejects unsafe generation and acceptance; client clears unsafe previews. Multiline text remains supported.
 3. [x] Table span and logical grid limits. Incoming and stored documents allow at most 200 rows, 100 logical columns and 10,000 grid slots per table, with 50,000 slots across nested document tables.
 4. [x] Independent document saves after AI shutdown failures. Ordinary saves run alongside AI flushes; combined failures remain observable, and retry timers do not keep shutdown alive.
-5. Bounded socket join cancellation state.
+5. [x] Bounded socket join cancellation state. Pending joins use temporary identity tokens and an eight-operation cap; completed joins and ignored leaves retain no cancellation entries.
 6. Dashboard membership and cursor refresh on metadata changes.
 7. Dashboard refresh failure and retry state.
 8. Share dialog dismissal during reads.

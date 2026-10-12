@@ -9,6 +9,7 @@ export function joinFailureAction(code: DocumentJoinErrorCode): JoinFailureActio
     case "forbidden":
       return "access-lost";
     case "load-failed":
+    case "rate-limited":
     case "unavailable":
       return "retry";
     case "invalid-id":

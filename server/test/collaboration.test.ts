@@ -8,6 +8,91 @@ import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socke
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 import { CollaborativeRoomSession, type SessionAccess } from "../src/socket/room-session.ts";
 import type { TypeSyncSocket } from "../src/socket/types.ts";
+import { joinFailureAction } from "../../client/src/lib/join-failure.ts";
+
+test("pending joins retain bounded state and stale completion cannot clear a replacement join", async () => {
+  let loads = 0;
+  const rooms = new CollaborativeRoomSession({ repository: {
+    loadState: async () => { loads++; return null; },
+    saveState: async () => ({ title: "Untitled", updatedAt: new Date() }),
+  } });
+  const roomNames = new Set<string>();
+  const socket = {
+    id: "socket", connected: true, data: { userId: "user", userName: "User" }, rooms: roomNames,
+    join: (name: string) => { roomNames.add(name); },
+    leave: (name: string) => { roomNames.delete(name); },
+    emit: () => {},
+  } as unknown as TypeSyncSocket;
+  rooms.initializeSocket(socket);
+  const states = Reflect.get(rooms, "socketJoins");
+  assert(states instanceof Map);
+  const state = states.get(socket.id);
+  const editor = { hasAccess: true, role: "editor" } satisfies SessionAccess;
+  const join = (documentId: string, checkSession = async () => "valid" as const,
+    authorize: () => Promise<SessionAccess> = async () => editor) =>
+    rooms.joinSession({ socket, documentId, checkSession, authorize });
+  for (let index = 0; index < 100; index++) {
+    await rooms.leaveSession(socket, `unknown-${index}`);
+    assert.equal((await join(`forbidden-${index}`, undefined, async () => ({ hasAccess: false }))).success, false);
+  }
+  assert.deepEqual(state, { current: new Map(), inFlight: 0 });
+  assert.equal(loads, 0);
+
+  const gates = Array.from({ length: 8 }, () => Promise.withResolvers<"valid">());
+  const pending = gates.map(gate => join("document", () => gate.promise));
+  let checks = 0;
+  let reads = 0;
+  const limitedJoin = () => join("document", async () => { checks++; return "valid"; }, async () => { reads++; return editor; });
+  assert.deepEqual(await limitedJoin(), { success: false, code: "rate-limited", error: "Too many pending document joins" });
+  await rooms.leaveSession(socket, "document");
+  assert.deepEqual(state, { current: new Map(), inFlight: 8 });
+  assert.equal((await limitedJoin()).success, false);
+  assert.equal(checks, 0);
+  assert.equal(reads, 0);
+  gates.slice(0, 7).forEach(gate => gate.resolve("valid"));
+  for (const result of await Promise.all(pending.slice(0, 7))) {
+    assert.deepEqual(result, { success: false, code: "cancelled", error: "Document join was cancelled" });
+  }
+
+  const finalRead = Promise.withResolvers<SessionAccess>();
+  const reading = Promise.withResolvers<void>();
+  let accessReads = 0;
+  const replacement = join("document", undefined, async () => {
+    if (++accessReads === 2) { reading.resolve(); return finalRead.promise; }
+    return editor;
+  });
+  await reading.promise;
+  rooms.reconcileAccessChange("document", "user", "viewer");
+  gates[7]?.resolve("valid");
+  assert.equal((await pending[7])?.success, false);
+  finalRead.resolve(editor);
+  const result = await replacement;
+  assert(result.success);
+  assert.equal(result.role, "viewer");
+  assert.deepEqual(state, { current: new Map(), inFlight: 0 });
+  assert.equal(rooms.aiAccess(socket, "document", true), "Unauthorized to edit this document");
+  assert.equal(joinFailureAction("rate-limited"), "retry");
+
+  const oldSession = Promise.withResolvers<"valid">();
+  const disconnectedJoin = join("document", () => oldSession.promise);
+  await rooms.handleDisconnect(socket);
+  rooms.initializeSocket(socket);
+  const replacementState = states.get(socket.id);
+  assert.notEqual(replacementState, state);
+  const newSession = Promise.withResolvers<"valid">();
+  const newJoin = join("document", () => newSession.promise);
+  oldSession.resolve("valid");
+  assert.equal((await disconnectedJoin).success, false);
+  assert.equal(replacementState.inFlight, 1);
+  assert.equal(replacementState.current.size, 1);
+  newSession.resolve("valid");
+  assert.equal((await newJoin).success, true);
+  assert.deepEqual(replacementState, { current: new Map(), inFlight: 0 });
+  await rooms.waitForDrain();
+  await rooms.leaveSession(socket, "document");
+  await rooms.handleDisconnect(socket);
+  assert.equal(states.size, 0);
+});
 
 test("shutdown saves unrelated documents while AI listeners settle and reports every failure", async () => {
   const stored = new Map<string, Uint8Array>();
