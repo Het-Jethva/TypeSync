@@ -61,10 +61,10 @@ docker compose up -d
 cp server/.env.example server/.env
 ```
 
-4. Push the schema to the database.
+4. Initialize the database with the committed migrations.
 
 ```bash
-npm run db:push -w server
+npm run db:migrate -w server
 ```
 
 5. Run the app in dev mode.
@@ -133,10 +133,11 @@ Run these from the repo root.
 - `npm test`. Run collaboration and AI suggestion regression tests using real Yjs documents, plus provider stream checks.
 - `npm run lint`. Run ESLint with zero warnings allowed.
 - `npm run typecheck`. Typecheck shared, client, and server.
-- `npm run db:push -w server`. Push Drizzle schema to Postgres.
+- `npm run db:push -w server`. Push the schema to a disposable database for experiments. This command does not record migration history.
 - `npm run db:studio -w server`. Open Drizzle Studio.
 - `npm run db:generate -w server`. Generate migrations from the schema.
-- `npm run db:migrate -w server`. Apply generated migrations.
+- `npm run db:migrate -w server`. Initialize a fresh database or apply pending committed migrations. Use this command before local startup and after schema updates.
+- `npm run migrate -w server`. Apply committed migrations with the compiled server. Build the server first. Docker runs this command before startup.
 - `npm run docker:up`. Start Postgres in the background.
 - `npm run docker:down`. Stop Postgres.
 
