@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Fragment, type Mark } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, relativePositionToAbsolutePosition, updateYFragment } from "@tiptap/y-tiptap";
-import { editorSchema, selectedText } from "@typesync/shared/editor-schema";
+import { editorSchema, isTextOnlySelection, selectedText, unsafeAiSelectionReason } from "@typesync/shared/editor-schema";
 import { AiSuggestionSchema, type AiCreateRequest, type AiResolveRequest, type AiResult, type AiListResult, type AiSuggestion } from "@typesync/shared";
 import type { CollaborativeRoomSession } from "../socket/room-session.js";
 import type { DocumentStateRepository } from "../socket/repository.js";
@@ -14,6 +14,10 @@ import { streamEdit, isAiConfigured } from "./openrouter.js";
 const EntrySchema = z.object({ suggestion: AiSuggestionSchema, sourceSlice: z.string(), sourceIdentity: z.string() });
 type Entry = z.infer<typeof EntrySchema>;
 type Provider = typeof streamEdit;
+
+class UnsafeAiSelectionError extends Error {
+  constructor() { super(unsafeAiSelectionReason); }
+}
 
 export class AiSuggestionService {
   private readonly histories = new Map<string, Entry[]>();
@@ -195,6 +199,7 @@ export class AiSuggestionService {
       const to = relativePositionToAbsolutePosition(clone, fragment, endAnchor, mapping);
       if (from === null || to === null || from < 0 || to <= from || to > doc.content.size) throw new Error("Invalid text selection");
       if (to - from > 24000) throw new Error("Selected range is too large");
+      if (!isTextOnlySelection(doc, from, to)) throw new UnsafeAiSelectionError();
       const identity = createHash("sha256");
       for (let position = from; position <= to; position++) {
         identity.update(Y.encodeRelativePosition(absolutePositionToRelativePosition(position, fragment, mapping)));
@@ -281,7 +286,7 @@ export class AiSuggestionService {
         return { success: false, error: this.options.rooms.aiAccess(socket, documentId, true) ?? "Generation interrupted" };
       }
       return { success: true, suggestion: entry.suggestion };
-    } catch { return { success: false, error: "Could not generate a suggestion for this selection" }; }
+    } catch (error) { return { success: false, error: error instanceof UnsafeAiSelectionError ? error.message : "Could not generate a suggestion for this selection" }; }
   }
 
   private async generate(entry: Entry, controller: AbortController): Promise<void> {
@@ -385,7 +390,7 @@ export class AiSuggestionService {
       }
       await this.persist(documentId);
       return { success: true, suggestion: entry.suggestion };
-    } catch { return { success: false, error: "Could not resolve AI suggestion" }; }
+    } catch (error) { return { success: false, error: error instanceof UnsafeAiSelectionError ? error.message : "Could not resolve AI suggestion" }; }
   }
 
   async flush(): Promise<void> {

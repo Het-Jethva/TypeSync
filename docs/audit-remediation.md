@@ -14,7 +14,7 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 ## Fix queue
 
 1. [x] AI acceptance durability and sync status. Automatic document/history retries, acceptance and join persistence cursors, and recovery bytes are covered by focused regression tests.
-2. AI selection safety for images and other non-text content.
+2. [x] AI selection safety for images and other non-text content. Shared guard rejects unsafe generation and acceptance; client clears unsafe previews. Multiline text remains supported.
 3. Table span and logical grid limits.
 4. Independent document saves after AI shutdown failures.
 5. Bounded socket join cancellation state.
@@ -27,5 +27,6 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 12. Shutdown deadlines and documented container grace.
 
 Production configuration observations will be evaluated after source fixes. Missing DMARC and Neon branch retention were observations, not demonstrated defects. No deployment or push is part of this run.
+
 
 

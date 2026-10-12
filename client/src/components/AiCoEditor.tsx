@@ -6,7 +6,7 @@ import * as Y from "yjs";
 import { z } from "zod";
 import { canEditDocument, type AiAction, type AiCreateRequest, type AiSuggestion, type Role } from "@typesync/shared";
 import { useAiSuggestions } from "../lib/hooks/useAiSuggestions";
-import { selectedText } from "@typesync/shared/editor-schema";
+import { isTextOnlySelection, selectedText, unsafeAiSelectionReason } from "@typesync/shared/editor-schema";
 
 const actions: { value: AiAction; label: string }[] = [
   { value: "rewrite", label: "Rewrite" },
@@ -15,6 +15,7 @@ const actions: { value: AiAction; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 type Selection = Pick<AiCreateRequest, "sourceText" | "from" | "to">;
+type CapturedSelection = { kind: "safe"; selection: Selection } | { kind: "unsafe" };
 const CollaborationBindingSchema = z.object({ type: z.instanceof(Y.XmlFragment), binding: z.instanceof(ProsemirrorBinding) });
 const buttonClass = "rounded-md border border-border px-3 py-2 text-ui font-medium text-text-primary hover:bg-bg-hover disabled:opacity-45 disabled:cursor-not-allowed transition-colors";
 
@@ -29,7 +30,8 @@ interface AiCoEditorProps {
 
 export function AiCoEditor({ documentId, editor, ydoc, role, syncReady, children }: AiCoEditorProps) {
   const [open, setOpen] = useState(false);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const [capturedSelection, setCapturedSelection] = useState<CapturedSelection | null>(null);
+  const selection = capturedSelection?.kind === "safe" ? capturedSelection.selection : null;
   const [instruction, setInstruction] = useState("");
   const [action, setAction] = useState<AiAction>("rewrite");
   const [request, setRequest] = useState<AiCreateRequest | null>(null);
@@ -46,6 +48,7 @@ export function AiCoEditor({ documentId, editor, ydoc, role, syncReady, children
     : !ready ? "Waiting for the document to sync. AI actions need a live connection."
     : configured === false ? "AI is not configured on this server."
     : configured === null ? "Loading AI availability…"
+    : capturedSelection?.kind === "unsafe" ? unsafeAiSelectionReason
     : !selection ? "Select text in the document to ask AI."
     : selection.sourceText.length > 12000 ? "Select no more than 12,000 characters."
     : action === "custom" && !instruction.trim() ? "Write an instruction for the AI."
@@ -82,18 +85,23 @@ export function AiCoEditor({ documentId, editor, ydoc, role, syncReady, children
       if (editor.isDestroyed) return;
       const { from, to, empty } = editor.state.selection;
       if (empty) {
-        if (editor.isFocused) setSelection(null);
+        if (editor.isFocused) setCapturedSelection(null);
+        return;
+      }
+      if (!isTextOnlySelection(editor.state.doc, from, to)) {
+        setCapturedSelection({ kind: "unsafe" });
+        setRequest(null);
         return;
       }
       const sourceText = selectedText(editor.state.doc, from, to);
-      if (!sourceText.trim()) return setSelection(null);
+      if (!sourceText.trim()) return setCapturedSelection(null);
       try {
         const fromAnchor = createMappablePosition(from, editor.state).yRelativePosition;
         const toAnchor = createMappablePosition(to, editor.state).yRelativePosition;
-        if (!fromAnchor || !toAnchor) return;
-        setSelection({ sourceText, from: Array.from(Y.encodeRelativePosition(fromAnchor)), to: Array.from(Y.encodeRelativePosition(toAnchor)) });
+        if (!fromAnchor || !toAnchor) return setCapturedSelection(null);
+        setCapturedSelection({ kind: "safe", selection: { sourceText, from: Array.from(Y.encodeRelativePosition(fromAnchor)), to: Array.from(Y.encodeRelativePosition(toAnchor)) } });
       } catch {
-        setSelection(null);
+        setCapturedSelection(null);
       }
     };
     editor.on("selectionUpdate", capture);

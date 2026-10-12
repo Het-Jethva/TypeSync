@@ -25,6 +25,20 @@ export function createContentExtensions() {
 
 export const editorSchema = getSchema(createContentExtensions());
 
+export const unsafeAiSelectionReason = "Select text only. AI cannot replace a selection containing images or other non-text content.";
+
+export function isTextOnlySelection(doc: Node, from: number, to: number): boolean {
+  let safe = true;
+  doc.nodesBetween(from, to, node => {
+    if (!safe) return false;
+    if (!node.isText && (node.isLeaf || node.isAtom) && node.type.name !== "hardBreak") {
+      safe = false;
+      return false;
+    }
+  });
+  return safe;
+}
+
 export function selectedText(doc: Node, from: number, to: number): string {
   return doc.textBetween(from, to, "\n", node =>
     node.type.name === "hardBreak" ? "\n" : ""

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import * as Y from "yjs";
 import { z } from "zod";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, prosemirrorJSONToYDoc, updateYFragment } from "@tiptap/y-tiptap";
 import { Transform } from "@tiptap/pm/transform";
-import { editorSchema } from "@typesync/shared/editor-schema";
+import { editorSchema, isTextOnlySelection, selectedText, unsafeAiSelectionReason } from "@typesync/shared/editor-schema";
 import { AiSuggestionSchema, type AiCreateRequest, type AiSuggestion, type Role } from "@typesync/shared";
 import { AiSuggestionService } from "../src/services/ai-suggestions.ts";
 import { CollaborativeRoomSession } from "../src/socket/room-session.ts";
@@ -49,7 +49,7 @@ async function fixture(provider: Provider) {
     Y.applyUpdate(doc, rooms.snapshotForAi(documentId));
     const fragment = doc.getXmlFragment("default");
     const mapped = initProseMirrorDoc(fragment, editorSchema);
-    const result = { requestId: randomUUID(), action: "rewrite" as const, instruction: "", sourceText: mapped.doc.textBetween(from, to, "\n"),
+    const result = { requestId: randomUUID(), action: "rewrite" as const, instruction: "", sourceText: selectedText(mapped.doc, from, to),
       from: Array.from(Y.encodeRelativePosition(absolutePositionToRelativePosition(from, fragment, mapped.mapping))),
       to: Array.from(Y.encodeRelativePosition(absolutePositionToRelativePosition(to, fragment, mapped.mapping))),
     };
@@ -192,13 +192,16 @@ test("reject cancels a live stream and late chunks cannot revive it; retry ids d
 
 
 test("accept fits selections across paragraphs and rejects replacing selected text with identical characters", async () => {
-  const f = await fixture(async ({ onDelta }) => onDelta("One paragraph"));
+  const f = await fixture(async ({ onDelta }) => onDelta("One\nparagraph"));
   try {
-    const created = await f.ai.create(f.owner, f.documentId, f.request(1, 24)); assert(created.success, JSON.stringify(created));
+    f.mutate(transform => transform.insert(6, editorSchema.node("hardBreak")));
+    const created = await f.ai.create(f.owner, f.documentId, f.request(1, 25)); assert(created.success, JSON.stringify(created));
     await settled(f.ai, f.viewer, f.documentId);
     const result = await f.ai.resolve(f.editor, f.documentId, { suggestionId: created.suggestion.id, decision: "accept" });
     assert(result.success, JSON.stringify(result));
-    assert.equal(f.content().textContent, "One paragraph");
+    assert.equal(selectedText(f.content(), 0, f.content().content.size), "One\nparagraph");
+    assert.equal(f.content().firstChild?.child(1).type.name, "hardBreak");
+    assert.equal(f.content().firstChild?.firstChild?.marks[0]?.type.name, "bold");
   } finally { await f.cleanup(); }
   const stale = await fixture(async ({ onDelta }) => onDelta("Hi"));
   try {
@@ -210,6 +213,53 @@ test("accept fits selections across paragraphs and rejects replacing selected te
     assert(!result.success); assert.match(result.error, /changed/);
     assert.equal(stale.content().firstChild?.textContent, "Hello world");
   } finally { await stale.cleanup(); }
+});
+
+test("AI rejects image-spanning generation and restored ready acceptance without changing the document", async () => {
+  let generations = 0;
+  const f = await fixture(async ({ onDelta }) => { generations++; onDelta("Replacement"); });
+  try {
+    f.mutate(transform => transform.insert(13, editorSchema.node("image", { src: "https://example.com/image.png" })));
+    const from = 1;
+    const to = f.content().content.size - 1;
+    const request = f.request(from, to);
+    assert.equal(request.sourceText, "Hello world\nKeep this.");
+    assert.equal(isTextOnlySelection(f.content(), from, to), false);
+    assert.equal(isTextOnlySelection(f.content(), 1, 12), true);
+    const code = editorSchema.node("doc", null, [editorSchema.node("codeBlock", null, editorSchema.text("first\nsecond"))]);
+    assert.equal(isTextOnlySelection(code, 1, code.content.size - 1), true);
+    const before = f.rooms.snapshotForAi(f.documentId);
+    assert.deepEqual(await f.ai.create(f.owner, f.documentId, request), { success: false, error: unsafeAiSelectionReason });
+    assert.equal(generations, 0);
+    assert.deepEqual(await f.repository.loadAiSuggestions(), []);
+
+    const clone = new Y.Doc();
+    Y.applyUpdate(clone, before);
+    const fragment = clone.getXmlFragment("default");
+    const mapped = initProseMirrorDoc(fragment, editorSchema);
+    const identity = createHash("sha256");
+    for (let position = from; position <= to; position++) {
+      identity.update(Y.encodeRelativePosition(absolutePositionToRelativePosition(position, fragment, mapped.mapping)));
+    }
+    const now = new Date().toISOString();
+    const suggestion = { ...request, id: randomUUID(), documentId: f.documentId, authorId: f.owner.data.userId, authorName: "owner",
+      replacement: "Replacement", model: null, createdAt: now, updatedAt: now, status: "ready" } satisfies AiSuggestion;
+    await f.repository.saveAiSuggestions(f.documentId, [{ suggestion,
+      sourceSlice: JSON.stringify(mapped.doc.slice(from, to).toJSON()), sourceIdentity: identity.digest("hex"),
+    }]);
+    clone.destroy();
+    const restored = new AiSuggestionService({ rooms: f.rooms, repository: f.repository, configured: () => true,
+      emit: () => {}, emitUpdate: (_id, update) => f.updates.push(update),
+    });
+    assert.deepEqual(await restored.resolve(f.editor, f.documentId, { suggestionId: suggestion.id, decision: "accept" }),
+      { success: false, error: unsafeAiSelectionReason });
+    assert.deepEqual(f.rooms.snapshotForAi(f.documentId), before);
+    assert.equal(f.content().child(1).type.name, "image");
+    assert.equal(f.updates.length, 0);
+    const listed = await restored.list(f.owner, f.documentId);
+    assert(listed.success);
+    assert.equal(listed.suggestions[0]?.status, "ready");
+  } finally { await f.cleanup(); }
 });
 
 for (const decision of ["accept", "reject"] as const) {
