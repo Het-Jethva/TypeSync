@@ -68,7 +68,6 @@ export default function DashboardPage() {
   const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(
     () => new Set()
   );
-  const hasLoadedDocumentsRef = useRef(false);
   const documentsRequestGenerationRef = useRef(0);
   const documentsAppendRequestGenerationRef = useRef(0);
   const documentsCursorGenerationRef = useRef<number | null>(null);
@@ -300,6 +299,8 @@ export default function DashboardPage() {
   }, [documentId, routeDocumentRequestNonce, reconcileDocumentSnapshot]);
 
   const fetchDocuments = useCallback(async () => {
+    setIsLoading(true);
+    setDocumentsError(null);
     const requestGeneration = ++documentsRequestGenerationRef.current;
     const requestRevision = documentChangeRevisionRef.current;
     documentsAppendRequestGenerationRef.current += 1;
@@ -316,23 +317,18 @@ export default function DashboardPage() {
       setDocuments((current) => orderDocuments(reconcileDocumentSnapshot(res.items, current, requestRevision)));
       setNextDocumentsCursor(res.nextCursor);
       documentsCursorGenerationRef.current = requestGeneration;
-      hasLoadedDocumentsRef.current = true;
       setDocumentsError(null);
     } catch (err) {
       if (requestGeneration !== documentsRequestGenerationRef.current) return;
       console.error("Failed to fetch documents:", err);
       const message = errorMessage(err, "Failed to load documents");
-      if (hasLoadedDocumentsRef.current) {
-        addNotification(`Failed to refresh documents: ${message}`, "error");
-      } else {
-        setDocumentsError(message);
-      }
+      setDocumentsError(message);
     } finally {
       if (requestGeneration === documentsRequestGenerationRef.current) {
         setIsLoading(false);
       }
     }
-  }, [addNotification, debouncedSearch, orderDocuments, reconcileDocumentSnapshot, sort]);
+  }, [debouncedSearch, orderDocuments, reconcileDocumentSnapshot, sort]);
 
   const loadMoreDocuments = useCallback(async () => {
     if (!nextDocumentsCursor || isLoadingMoreDocuments ||
