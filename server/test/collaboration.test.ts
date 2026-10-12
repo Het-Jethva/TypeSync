@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as Y from "yjs";
+import { prosemirrorJSONToYDoc } from "@tiptap/y-tiptap";
+import { editorSchema } from "@typesync/shared/editor-schema";
 
 import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socket/document-runtime.ts";
 import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
@@ -448,6 +450,67 @@ test("size checks accept large pastes and shrinking edits without applying rejec
   }
 });
 
+
+test("table resource validation rejects unsafe updates and stored states and accepts merged content", async context => {
+  context.mock.method(console, "error", () => {});
+  const paragraph = editorSchema.node("paragraph", null, [editorSchema.text("line one"), editorSchema.node("hardBreak"), editorSchema.text("line two")]);
+  const cell = (attrs: Record<string, unknown> = {}, content = [paragraph], type = "tableCell") => editorSchema.node(type, attrs, content);
+  const row = (cells = [cell()]) => editorSchema.node("tableRow", null, cells);
+  const table = (rows = 1, colspan = 1) => editorSchema.node("table", null, Array.from({ length: rows }, () => row([cell({ colspan })])));
+  const oversizedNested = editorSchema.node("table", null, [row([cell({ colspan: 100 }, [paragraph, table()])]), ...Array.from({ length: 99 }, () => row([cell({ colspan: 100 })]))]);
+  const cases = [
+    ...[1_000_000, 0, -1, 1.5, NaN, Infinity, "2"].map(colspan => [editorSchema.node("table", null, [row([cell({ colspan })])])]),
+    ...[0, -1, 1.5, Infinity, "2", 2, 201].map(rowspan => [editorSchema.node("table", null, [row([cell({ rowspan })])])]),
+    ...[[], [1, 2], [-1], [Infinity], [NaN], [10_001], ["10"], "10"].map(colwidth => [editorSchema.node("table", null, [row([cell({ colwidth }, [paragraph], "tableHeader")])])]),
+    [table(201)],
+    [editorSchema.node("table", null, [row([cell({ colspan: 51 }), cell({ colspan: 50 })])])],
+    [editorSchema.node("table", null, [row([cell({ colspan: 60, rowspan: 2 })]), row([cell({ colspan: 41 })])])],
+    [table(101, 100)],
+    [oversizedNested, ...Array.from({ length: 4 }, () => table(100, 100))],
+    Array.from({ length: 6 }, () => table(100, 100)),
+  ];
+  let writes = 0;
+  const runtime = createDocumentRuntime({ repository: {
+    loadState: async () => null,
+    saveState: async () => { writes++; return { title: "Test", updatedAt: new Date() }; },
+  } });
+  try {
+    await runtime.ensureLoaded("document");
+    const before = runtime.snapshotForJoin("document");
+    for (const tables of cases) {
+      const source = prosemirrorJSONToYDoc(editorSchema, editorSchema.node("doc", null, tables).toJSON(), "default");
+      const update = Y.encodeStateAsUpdate(source);
+      source.destroy();
+      assert.equal(runtime.applyUpdate("document", update).kind, "invalid");
+      assert.deepEqual(runtime.snapshotForJoin("document"), before);
+      await runtime.flushDocument("document");
+      assert.equal(writes, 0);
+      const loaded = createDocumentRuntime({ repository: {
+        loadState: async () => update,
+        saveState: async () => { throw new Error("Unsafe tables must not be saved"); },
+      } });
+      await assert.rejects(loaded.ensureLoaded("unsafe"), /Malformed document state in database/);
+      assert.throws(() => loaded.snapshotForJoin("unsafe"), /not loaded/);
+    }
+    const merged = editorSchema.node("table", null, [
+      row([cell({ colspan: 2, rowspan: 2, colwidth: [100, 120] }, [paragraph, table()], "tableHeader"), cell()]),
+      row([cell()]),
+    ]);
+    const valid = prosemirrorJSONToYDoc(editorSchema, editorSchema.node("doc", null, [merged, ...Array.from({ length: 4 }, () => table(100, 100))]).toJSON(), "default");
+    try {
+      assert.equal(runtime.applyUpdate("document", Y.encodeStateAsUpdate(valid)).kind, "accepted");
+      await runtime.flushDocument("document");
+      assert.equal(writes, 1);
+      const state = runtime.snapshotForJoin("document").state;
+      const loaded = createDocumentRuntime({ repository: {
+        loadState: async () => state,
+        saveState: async () => { throw new Error("Loading must not save"); },
+      } });
+      try { await loaded.ensureLoaded("valid"); assert.deepEqual(loaded.snapshotForJoin("valid").state, state); }
+      finally { loaded.discard("valid"); }
+    } finally { valid.destroy(); }
+  } finally { runtime.discard("document"); }
+});
 
 test("editor schema validation rejects corrupt updates and stored states without changing the document", async (context) => {
   context.mock.method(console, "error", () => {});

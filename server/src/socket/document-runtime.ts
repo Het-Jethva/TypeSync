@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { yXmlFragmentToProsemirrorJSON } from "@tiptap/y-tiptap";
 import { DOCUMENT_MAX_UPDATE_BYTES, type DocumentSizeStatus } from "@typesync/shared";
-import { editorSchema } from "@typesync/shared/editor-schema";
+import { editorSchema, validateTableResources } from "@typesync/shared/editor-schema";
 import type { DocumentStateRepository } from "./repository.js";
 
 interface PersistenceState {
@@ -65,7 +65,9 @@ function validateEditorDocument(doc: Y.Doc): void {
   }
   // New documents have no content until the editor inserts its first block.
   if (fragment.length === 0) return;
-  editorSchema.nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment)).check();
+  const content = editorSchema.nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment));
+  content.check();
+  validateTableResources(content);
 }
 
 function sizeStatus(

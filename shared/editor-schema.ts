@@ -25,6 +25,55 @@ export function createContentExtensions() {
 
 export const editorSchema = getSchema(createContentExtensions());
 
+export function validateTableResources(doc: Node): void {
+  let documentGridSize = 0;
+  doc.descendants(table => {
+    if (table.type.spec.tableRole !== "table") return;
+    const rows = table.childCount;
+    if (rows > 200) throw new Error("Table exceeds 200 rows");
+    const expiredSpans = new Array<number>(rows + 1).fill(0);
+    let activeSpans = 0;
+    let width = 0;
+    table.forEach((row, _offset, rowIndex) => {
+      activeSpans -= expiredSpans[rowIndex] ?? 0;
+      let rowWidth = activeSpans;
+      row.forEach(cell => {
+        const colspan: unknown = cell.attrs.colspan;
+        const rowspan: unknown = cell.attrs.rowspan;
+        const colwidth: unknown = cell.attrs.colwidth;
+        if (typeof colspan !== "number" || !Number.isInteger(colspan) || colspan < 1 || colspan > 100) {
+          throw new Error("Table cell colspan must be an integer between 1 and 100");
+        }
+        if (typeof rowspan !== "number" || !Number.isInteger(rowspan) || rowspan < 1 || rowspan > rows - rowIndex) {
+          throw new Error("Table cell rowspan must be a positive integer within the remaining rows");
+        }
+        if (colwidth !== null) {
+          if (!Array.isArray(colwidth) || colwidth.length !== colspan) {
+            throw new Error("Table cell colwidth must match colspan");
+          }
+          for (const value of colwidth) {
+            if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 10_000) {
+              throw new Error("Table cell widths must be finite numbers between 0 and 10000");
+            }
+          }
+        }
+        rowWidth += colspan;
+        if (rowWidth > 100) throw new Error("Table exceeds 100 columns");
+        if (rowspan > 1) {
+          activeSpans += colspan;
+          const endRow = rowIndex + rowspan;
+          expiredSpans[endRow] = (expiredSpans[endRow] ?? 0) + colspan;
+        }
+      });
+      width = Math.max(width, rowWidth);
+    });
+    const gridSize = rows * width;
+    if (gridSize > 10_000) throw new Error("Table exceeds 10000 grid slots");
+    documentGridSize += gridSize;
+    if (documentGridSize > 50_000) throw new Error("Document tables exceed 50000 grid slots");
+  });
+}
+
 export const unsafeAiSelectionReason = "Select text only. AI cannot replace a selection containing images or other non-text content.";
 
 export function isTextOnlySelection(doc: Node, from: number, to: number): boolean {
