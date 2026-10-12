@@ -125,7 +125,7 @@ httpServer.listen(config.port, () => {
 let shuttingDown = false;
 // Stop waiting for drain (including joins blocked in authorize/ensureLoaded).
 // Not a deadline for the flush itself.
-const SHUTDOWN_TIMEOUT_MS = 30_000;
+const SHUTDOWN_TIMEOUT_MS = 20_000;
 // If the forced flush never settles, exit anyway so shutdown cannot stick.
 const FORCED_FLUSH_BOUND_MS = 5_000;
 

@@ -59,3 +59,9 @@ Use Node.js 24 or later, npm, and Docker.
 Open [localhost:5173](http://localhost:5173), create an account, and verify your email before signing in. The backend runs on port 3000.
 
 Run `npm run check` for lint, type checks, regression tests, and a production build.
+
+## Deployment shutdown
+
+Give the server at least 30 seconds after SIGTERM before forcibly killing it. At 20 seconds, the server allows its document flush up to five more seconds before forcing exit, leaving five seconds of margin with a 30-second host grace. It starts the flush if draining has not finished or reuses an existing flush. Failed or timed-out shutdowns exit with a nonzero status.
+
+[Render's default shutdown delay](https://render.com/docs/deploys#graceful-shutdown) is 30 seconds. Keep it at 30 seconds or longer. For Docker, set `docker run --stop-timeout 30` when creating the server container, or `stop_grace_period: 30s` for a Compose server service. [Docker's default for Linux containers](https://docs.docker.com/reference/cli/docker/container/run/#stop-timeout) is only 10 seconds. The Compose file in this repository starts PostgreSQL only.
