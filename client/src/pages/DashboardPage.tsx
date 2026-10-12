@@ -169,10 +169,7 @@ export default function DashboardPage() {
   }, []);
 
   const orderDocuments = useCallback((items: DocumentWithRole[]) => {
-    const matching = debouncedSearch
-      ? items.filter(document => document.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
-      : [...items];
-    return matching.sort((left, right) => {
+    return [...items].sort((left, right) => {
       if (sort === "alphabetical") {
         return left.title.localeCompare(right.title) || left.id.localeCompare(right.id);
       }
@@ -180,7 +177,11 @@ export default function DashboardPage() {
       return new Date(right[dateKey]).getTime() - new Date(left[dateKey]).getTime() ||
         right.id.localeCompare(left.id);
     });
-  }, [debouncedSearch, sort]);
+  }, [sort]);
+
+  const visibleDocuments = debouncedSearch
+    ? documents.filter(document => document.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
+    : documents;
 
   // Confirmations can expire on their own; failures cannot. An error that
   // disappears after five seconds is an error the reader may never have seen.
@@ -718,7 +719,7 @@ export default function DashboardPage() {
                 })}
           >
             <Sidebar
-              documents={documents}
+              documents={visibleDocuments}
               renamingDocumentIds={renamingDocumentIds}
               activeDocId={documentId}
               isLoading={isLoading}
