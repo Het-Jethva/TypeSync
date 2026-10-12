@@ -3,7 +3,8 @@ node_modules/
 
 # Environment
 .env
-.env.*.local
+.env.*
+!.env.example
 
 # Build output
 client/dist/
@@ -29,4 +30,3 @@ npm-debug.log*
 .audit/
 
 .vercel
-.env.local

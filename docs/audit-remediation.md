@@ -23,7 +23,7 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 8. [x] Share dialog dismissal during reads. Close and Escape remain available during initial and post-mutation collaborator reads.
 9. [x] Share list error state and retry. Loading, loaded and failed reads are distinct; only successful empty reads claim exclusive access.
 10. [x] Bare hostname URLs with ports. Dotted hosts with numeric ports receive HTTPS; unsupported explicit schemes and invalid ports remain rejected.
-11. Environment file ignore patterns.
+11. [x] Environment file ignore patterns. All .env variants are ignored in every directory, with .env.example templates explicitly trackable.
 12. Shutdown deadlines and documented container grace.
 
 Production configuration observations will be evaluated after source fixes. Missing DMARC and Neon branch retention were observations, not demonstrated defects. No deployment or push is part of this run.
