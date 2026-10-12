@@ -253,7 +253,7 @@ export function ShareModal({
                 key={collab.user.id}
                 className="flex items-center justify-between gap-3 text-ui"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex flex-1 items-center gap-2 min-w-0">
                   <div className="w-5.5 h-5.5 rounded bg-bg-secondary border border-border-strong flex items-center justify-center text-micro font-medium text-text-primary shrink-0">
                     {collab.user.name?.charAt(0).toUpperCase() || "U"}
                   </div>
@@ -267,7 +267,7 @@ export function ShareModal({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <Select
                     disabled={isLoading}
                     value={collab.role}
