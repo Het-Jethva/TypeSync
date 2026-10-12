@@ -88,7 +88,7 @@ export function ShareModal({
         email: targetEmail,
         role: newRole,
       });
-      await fetchCollaborators();
+      void fetchCollaborators();
       onUpdate();
     } catch (err) {
       setError(errorMessage(err, "Failed to update collaborator role"));
@@ -104,7 +104,7 @@ export function ShareModal({
       setError("");
       setSuccess("");
       await api.documents.removeCollaborator(documentId, userId);
-      await fetchCollaborators();
+      void fetchCollaborators();
       onUpdate();
     } catch (err) {
       setError(errorMessage(err, "Failed to remove collaborator"));
@@ -132,7 +132,7 @@ export function ShareModal({
       );
       setEmail("");
       onUpdate();
-      await fetchCollaborators();
+      void fetchCollaborators();
     } catch (err) {
       setError(errorMessage(err, "Failed to add collaborator"));
     } finally {
@@ -146,7 +146,7 @@ export function ShareModal({
       onClose={onClose}
       title="Share document"
       describedById={statusId}
-      busy={isLoading || isFetching}
+      busy={isLoading}
       initialFocusRef={emailInputRef}
     >
       <form onSubmit={handleSubmit} className="space-y-4">

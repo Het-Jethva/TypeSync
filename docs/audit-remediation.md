@@ -20,7 +20,7 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 5. [x] Bounded socket join cancellation state. Pending joins use temporary identity tokens and an eight-operation cap; completed joins and ignored leaves retain no cancellation entries.
 6. [x] Dashboard membership and cursor refresh on metadata changes. Remote metadata and local rename completion restart page one with the current search and sort.
 7. [x] Dashboard refresh failure and retry state. Pending requests hide prior-query rows; failed initial or refresh reads expose persistent retry and successful retry restores pagination.
-8. Share dialog dismissal during reads.
+8. [x] Share dialog dismissal during reads. Close and Escape remain available during initial and post-mutation collaborator reads.
 9. Share list error state and retry.
 10. Bare hostname URLs with ports.
 11. Environment file ignore patterns.
