@@ -22,6 +22,7 @@ export interface DocumentRuntime {
     sizeStatus: DocumentSizeStatus | null;
     epoch: string;
     persistedRevision: number;
+    currentRevision: number;
   };
   applyUpdate(documentId: string, update: Uint8Array): DocumentUpdateResult;
   evictIfEmpty(documentId: string): Promise<void>;
@@ -200,6 +201,7 @@ export function createDocumentRuntime(
           }
         } catch (error) {
           state.dirty = true;
+          scheduleRetry(docId, ydoc, state);
           throw error;
         }
       }
@@ -362,6 +364,7 @@ export function createDocumentRuntime(
         sizeStatus: sizeStatus(documentId, state.byteLength, limits),
         epoch: assignPersistenceEpoch(documentId),
         persistedRevision: documentPersistedRevisions.get(documentId) ?? 0,
+        currentRevision: documentRevisions.get(documentId) ?? 0,
       };
     },
 

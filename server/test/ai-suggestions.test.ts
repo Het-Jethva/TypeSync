@@ -84,6 +84,49 @@ async function settled(ai: AiSuggestionService, socket: TypeSyncSocket, document
   throw new Error("Suggestion did not finish");
 }
 
+test("failed AI acceptance saves retry the document and then finalize history", async context => {
+  const f = await fixture(async ({ onDelta }) => onDelta("Hi everyone"));
+  try {
+    const created = await f.ai.create(f.owner, f.documentId, f.request());
+    assert(created.success);
+    await settled(f.ai, f.owner, f.documentId);
+    context.mock.timers.enable({ apis: ["setTimeout"] });
+    const saveState = f.repository.saveState;
+    const saveHistory = f.repository.saveAiSuggestions;
+    let documentAttempts = 0;
+    let historyAttempts = 0;
+    f.repository.saveState = async (id, state) => {
+      documentAttempts++;
+      if (documentAttempts === 1) {
+        f.mutate(transform => transform.insert(transform.doc.content.size - 1, editorSchema.text(" later edit")));
+      }
+      if (documentAttempts === 2) throw new Error("database unavailable");
+      return saveState(id, state);
+    };
+    f.repository.saveAiSuggestions = async (id, history) => {
+      if (++historyAttempts === 1) throw new Error("history unavailable");
+      return saveHistory(id, history);
+    };
+    assert.equal((await f.ai.resolve(f.editor, f.documentId, { suggestionId: created.suggestion.id, decision: "accept" })).success, false);
+    assert.equal(f.content().firstChild?.textContent, "Hi everyone");
+    const persistedStatus = async () => {
+      const raw = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+      return raw[0]?.suggestion.status;
+    };
+    assert.equal(await persistedStatus(), "ready");
+    context.mock.timers.tick(15_000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(documentAttempts, 3);
+    assert.equal(historyAttempts, 1);
+    assert.equal(await persistedStatus(), "ready");
+    context.mock.timers.tick(15_000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(historyAttempts, 2);
+    assert.equal(await persistedStatus(), "accepted");
+    assert.equal(f.updates.length, 1);
+  } finally { await f.cleanup(); }
+});
+
 test("streaming remains separate from document, viewers can read and only editors resolve", async () => {
   const f = await fixture(async ({ onDelta, onModel }) => { onModel("test/free-model"); onDelta("Hi "); onDelta("everyone"); });
   try {

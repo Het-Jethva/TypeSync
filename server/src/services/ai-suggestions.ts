@@ -25,17 +25,30 @@ export class AiSuggestionService {
   private readonly creates = new Map<string, { documentId: string; authorId: string; result: Promise<AiResult> }>();
   private readonly lastRequests = new Map<string, number>();
   private readonly deleted = new Set<string>();
-  private readonly pendingAcceptances = new Map<string, AiSuggestion>();
+  private readonly pendingAcceptances = new Map<string, { suggestion: AiSuggestion; epoch: string; revision: number }>();
+  private readonly historyRetryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly acceptanceFlushes = new Map<string, number>();
 
   constructor(private readonly options: {
     rooms: CollaborativeRoomSession;
     repository: DocumentStateRepository;
     emit: (documentId: string, suggestion: AiSuggestion) => void;
-    emitUpdate: (documentId: string, update: Uint8Array, socketId: string) => void;
+    emitUpdate: (documentId: string, update: Uint8Array, socketId: string, cursor: { epoch: string; revision: number }) => void;
     provider?: Provider;
     configured?: () => boolean;
   }) {
     options.rooms.onAiFlush(() => this.flush());
+    options.rooms.onDocumentSaved(({ documentId, epoch, revision }) => {
+      if (this.acceptanceFlushes.has(documentId)) return;
+      let finalized = false;
+      for (const [id, acceptance] of this.pendingAcceptances) {
+        if (acceptance.suggestion.documentId === documentId && acceptance.epoch === epoch && acceptance.revision <= revision) {
+          this.pendingAcceptances.delete(id);
+          finalized = true;
+        }
+      }
+      if (finalized) void this.persist(documentId).catch(() => {});
+    });
     options.rooms.onAiLifecycle(documentId => {
       for (const [id, run] of this.active) {
         if (documentId === null || documentId === run.documentId) {
@@ -57,6 +70,12 @@ export class AiSuggestionService {
         this.deleted.add(documentId);
         this.histories.delete(documentId);
         this.dirtyHistories.delete(documentId);
+        const retryTimer = this.historyRetryTimers.get(documentId);
+        if (retryTimer) clearTimeout(retryTimer);
+        this.historyRetryTimers.delete(documentId);
+        for (const [id, acceptance] of this.pendingAcceptances) {
+          if (acceptance.suggestion.documentId === documentId) this.pendingAcceptances.delete(id);
+        }
         const cleanup = setTimeout(() => this.deleted.delete(documentId), 300_000);
         cleanup.unref();
       }
@@ -83,7 +102,7 @@ export class AiSuggestionService {
       if (this.histories.size >= 64) {
         for (const [id] of this.histories) {
           if (!this.writes.has(id) && !this.dirtyHistories.has(id) && ![...this.creates.values()].some(run => run.documentId === id) && ![...this.active.values()].some(run => run.documentId === id) &&
-            ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === id)) {
+            ![...this.pendingAcceptances.values()].some(acceptance => acceptance.suggestion.documentId === id)) {
             this.histories.delete(id);
             break;
           }
@@ -115,18 +134,27 @@ export class AiSuggestionService {
           next.push(newEntry);
         }
         const snapshot = structuredClone(next.map(entry => ({
-          ...entry, suggestion: this.pendingAcceptances.get(entry.suggestion.id) ?? entry.suggestion,
+          ...entry, suggestion: this.pendingAcceptances.get(entry.suggestion.id)?.suggestion ?? entry.suggestion,
         })));
         await this.options.repository.saveAiSuggestions?.(documentId, snapshot);
         if (this.deleted.has(documentId)) return;
         if (newEntry) entries.splice(0, entries.length, ...next);
         if (this.dirtyHistories.get(documentId) === revision &&
-          ![...this.pendingAcceptances.values()].some(suggestion => suggestion.documentId === documentId)) {
+          ![...this.pendingAcceptances.values()].some(acceptance => acceptance.suggestion.documentId === documentId)) {
           this.dirtyHistories.delete(documentId);
         }
       }
     });
     this.writes.set(documentId, write);
+    void write.catch(() => {
+      if (this.deleted.has(documentId) || this.historyRetryTimers.has(documentId)) return;
+      const timer = setTimeout(() => {
+        this.historyRetryTimers.delete(documentId);
+        if (this.dirtyHistories.has(documentId)) void this.persist(documentId).catch(() => {});
+      }, 15_000);
+      timer.unref();
+      this.historyRetryTimers.set(documentId, timer);
+    });
     void write.finally(() => { if (this.writes.get(documentId) === write) this.writes.delete(documentId); }).catch(() => {});
     return write;
   }
@@ -135,6 +163,16 @@ export class AiSuggestionService {
     this.dirtyHistories.set(entry.suggestion.documentId, ++this.historyRevision);
     entry.suggestion.updatedAt = new Date(Math.max(Date.now(), Date.parse(entry.suggestion.updatedAt) + 1)).toISOString();
     this.options.emit(entry.suggestion.documentId, entry.suggestion);
+  }
+
+  private async flushAcceptance(documentId: string): Promise<void> {
+    this.acceptanceFlushes.set(documentId, (this.acceptanceFlushes.get(documentId) ?? 0) + 1);
+    try { await this.options.rooms.flushDocumentForAi(documentId); }
+    finally {
+      const remaining = (this.acceptanceFlushes.get(documentId) ?? 1) - 1;
+      if (remaining) this.acceptanceFlushes.set(documentId, remaining);
+      else this.acceptanceFlushes.delete(documentId);
+    }
   }
 
   private selection(documentId: string, anchors: Pick<AiCreateRequest, "from" | "to">) {
@@ -299,7 +337,7 @@ export class AiSuggestionService {
       if (!entry) return { success: false, error: "Suggestion no longer exists" };
       if (entry.suggestion.status === "accepted" || entry.suggestion.status === "rejected") {
         if (this.pendingAcceptances.has(entry.suggestion.id)) {
-          await this.options.rooms.flushDocumentForAi(documentId);
+          await this.flushAcceptance(documentId);
           this.pendingAcceptances.delete(entry.suggestion.id);
         }
         await this.persist(documentId);
@@ -335,14 +373,14 @@ export class AiSuggestionService {
           const update = Y.encodeStateAsUpdate(selected.clone, vector);
           const applied = this.options.rooms.applyUpdate({ socket, documentId, update });
           if (!applied.success) return { success: false, error: applied.error };
-          this.pendingAcceptances.set(entry.suggestion.id, entry.suggestion);
+          this.pendingAcceptances.set(entry.suggestion.id, { suggestion: entry.suggestion, epoch: applied.epoch, revision: applied.revision });
           entry.suggestion = { ...entry.suggestion, status: "accepted", resolvedBy: socket.data.userName };
-          this.options.emitUpdate(documentId, update, socket.id);
+          this.options.emitUpdate(documentId, update, socket.id, { epoch: applied.epoch, revision: applied.revision });
         } finally { selected.clone.destroy(); }
       }
       this.changed(entry);
       if (entry.suggestion.status === "accepted") {
-        await this.options.rooms.flushDocumentForAi(documentId);
+        await this.flushAcceptance(documentId);
         this.pendingAcceptances.delete(entry.suggestion.id);
       }
       await this.persist(documentId);
@@ -353,9 +391,9 @@ export class AiSuggestionService {
   async flush(): Promise<void> {
     await Promise.all([...this.creates.values()].map(run => run.result));
     while (this.pendingAcceptances.size || this.dirtyHistories.size) {
-      for (const [id, suggestion] of this.pendingAcceptances) {
+      for (const [id, { suggestion }] of this.pendingAcceptances) {
         if (this.deleted.has(suggestion.documentId)) { this.pendingAcceptances.delete(id); continue; }
-        await this.options.rooms.flushDocumentForAi(suggestion.documentId);
+        await this.flushAcceptance(suggestion.documentId);
         this.pendingAcceptances.delete(id);
       }
       await Promise.all([...this.dirtyHistories.keys()].map(documentId => this.persist(documentId)));

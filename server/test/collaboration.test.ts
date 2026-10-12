@@ -7,6 +7,104 @@ import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 import { CollaborativeRoomSession, type SessionAccess } from "../src/socket/room-session.ts";
 import type { TypeSyncSocket } from "../src/socket/types.ts";
 
+test("an occupied runtime retries a failed explicit flush", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  let attempts = 0;
+  const runtime = createDocumentRuntime({
+    repository: {
+      loadState: async () => null,
+      saveState: async () => {
+        if (++attempts === 1) throw new Error("database unavailable");
+        return { title: "Test", updatedAt: new Date() };
+      },
+    },
+    roomOccupancyProvider: () => 1,
+  });
+  const doc = new Y.Doc();
+  try {
+    await runtime.ensureLoaded("document");
+    insertEditorText(doc, 0, "accepted AI text");
+    assert.equal(runtime.applyUpdate("document", Y.encodeStateAsUpdate(doc)).kind, "accepted");
+    await assert.rejects(runtime.flushDocument("document"), /unavailable/);
+    assert.equal(runtime.snapshotForJoin("document").persistedRevision, 0);
+    context.mock.timers.tick(15_000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(attempts, 2);
+    assert.equal(runtime.snapshotForJoin("document").persistedRevision, 1);
+  } finally {
+    runtime.discard("document");
+    doc.destroy();
+  }
+});
+
+test("AI acceptance retains its persistence cursor through older acknowledgements and restart recovery", () => {
+  const callbacks: Parameters<ConstructorParameters<typeof CollaborativeSyncManager>[0]["emitUpdate"]>[3][] = [];
+  const updates: Uint8Array[] = [];
+  const manager = new CollaborativeSyncManager({
+    documentId: "document",
+    emitUpdate(_id, update, _timeout, callback) { updates.push(update); callbacks.push(callback); },
+    emitAwareness() {},
+  });
+  const local = new Y.Doc();
+  try {
+    manager.noteServerPersistence("epoch", 0);
+    manager.setDocumentRole("owner");
+    manager.setConnected(true);
+    insertEditorText(local, 0, "local ");
+    manager.enqueueDocumentUpdate(Y.encodeStateAsUpdate(local));
+    const vector = Y.encodeStateVector(local);
+    insertEditorText(local, 6, "AI text");
+    manager.noteAcceptedServerUpdate(Y.encodeStateAsUpdate(local, vector), "epoch", 2);
+    assert.equal(updates.length, 1);
+    assert.equal(manager.getState().awaitingPersistence, true);
+    callbacks[0]?.(null, { success: true, epoch: "epoch", revision: 1 });
+    manager.notePersisted("epoch", 1);
+    assert.equal(manager.getState().syncStatus, "syncing");
+    manager.setConnected(false);
+    manager.noteServerPersistence("restart", 0);
+    manager.setConnected(true);
+    manager.reconcilePendingUpdates(local, new Uint8Array([0, 0]));
+    assert.equal(updates.length, 2);
+    const recovered = new Y.Doc();
+    try {
+      const recoveryUpdate = updates[1];
+      assert(recoveryUpdate);
+      Y.applyUpdate(recovered, recoveryUpdate);
+      assert.equal(editorText(recovered).toString(), "local AI text");
+    } finally { recovered.destroy(); }
+    callbacks[1]?.(null, { success: true, epoch: "restart", revision: 1 });
+    manager.notePersisted("restart", 1);
+    assert.equal(manager.getState().syncStatus, "synced");
+    manager.notePersisted("restart", 2);
+    manager.noteAcceptedServerUpdate(Y.encodeStateAsUpdate(local), "restart", 2);
+    assert.equal(manager.getState().awaitingPersistence, false);
+  } finally {
+    manager.destroy();
+    local.destroy();
+  }
+});
+
+test("an unsaved join snapshot protects viewers without submitting an edit", () => {
+  let sends = 0;
+  const manager = new CollaborativeSyncManager({ documentId: "document", emitUpdate() { sends++; }, emitAwareness() {} });
+  const local = new Y.Doc();
+  try {
+    insertEditorText(local, 0, "AI text");
+    const state = Y.encodeStateAsUpdate(local);
+    manager.noteServerPersistence("epoch", 0);
+    manager.setDocumentRole("viewer", { flush: false });
+    manager.setConnected(true);
+    manager.reconcilePendingUpdates(local, state);
+    manager.noteAcceptedServerUpdate(state, "epoch", 1);
+    assert.equal(sends, 0);
+    assert.equal(manager.getState().hasPendingUpdates, false);
+    assert.equal(manager.getState().awaitingPersistence, true);
+    assert.equal(manager.getState().syncStatus, "syncing");
+    manager.notePersisted("epoch", 1);
+    assert.equal(manager.getState().syncStatus, "synced");
+  } finally { manager.destroy(); local.destroy(); }
+});
+
 function editorText(doc: Y.Doc): Y.XmlText {
   const fragment = doc.getXmlFragment("default");
   if (fragment.length === 0) {

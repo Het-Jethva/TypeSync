@@ -57,10 +57,11 @@ export class CollaborativeSyncManager {
 
   /** Null until a join or an ack names the server runtime. */
   private persistenceEpoch: string | null = null;
-  /** Revision on the latest successful ack. Persistence must catch up to this. */
+  /** Highest accepted revision observed from delivery, AI acceptance, or joining. */
   private ackedRevision = 0;
-  /** Highest saved revision in `persistenceEpoch` that covered the latest ack. */
+  /** Highest saved revision in `persistenceEpoch`. */
   private persistedRevision = 0;
+  private latestSave: { epoch: string; revision: number } | null = null;
   private acknowledgedBatches: { id: number; update: Uint8Array }[] = [];
 
   private listeners = new Set<(state: SyncState) => void>();
@@ -124,22 +125,24 @@ export class CollaborativeSyncManager {
 
   /**
    * Records a snapshot revision captured when that save was encoded.
-   * Another runtime's epoch does not count. A revision older than the latest
-   * ack is an in-flight save from before that edit and does not count.
+   * Only a save in the accepted runtime can cover its changes.
    */
   notePersisted(epoch: string, revision: number): void {
-    if (this.disposed || epoch !== this.persistenceEpoch || revision < this.ackedRevision) return;
+    if (this.disposed) return;
+    if (this.latestSave?.epoch !== epoch || revision > this.latestSave.revision) {
+      this.latestSave = { epoch, revision };
+    }
+    if (epoch !== this.persistenceEpoch) return;
     const nextPersisted = Math.max(this.persistedRevision, revision);
     if (nextPersisted === this.persistedRevision) return;
     this.persistedRevision = nextPersisted;
-    this.acknowledgedBatches = [];
+    if (nextPersisted >= this.ackedRevision) this.acknowledgedBatches = [];
     this.refreshPendingState();
   }
 
   /**
    * Joined runtime's saved cursor. A new epoch drops this client's acks.
-   * The server revision is not an ack: other people's saves must not look
-   * like this client's, and a higher local ack stays unsynced until it catches up.
+   * A higher accepted revision stays unsynced until persistence catches up.
    */
   noteServerPersistence(epoch: string, serverPersistedRevision: number): void {
     if (this.disposed) return;
@@ -151,7 +154,28 @@ export class CollaborativeSyncManager {
       this.acknowledgedBatches = [];
     }
     this.persistedRevision = Math.max(this.persistedRevision, serverPersistedRevision);
+    if (this.latestSave?.epoch === epoch) {
+      this.persistedRevision = Math.max(this.persistedRevision, this.latestSave.revision);
+    }
     this.refreshPendingState();
+  }
+
+  noteAcceptedServerUpdate(update: Uint8Array, epoch: string, revision: number): void {
+    if (this.disposed) return;
+    this.recordAcceptedRevision(epoch, revision);
+    if (revision > this.persistedRevision) {
+      this.acknowledgedBatches.push({ id: this.nextBatchId++, update });
+    }
+    this.refreshPendingState();
+  }
+
+  private recordAcceptedRevision(epoch: string, revision: number): void {
+    if (epoch !== this.persistenceEpoch) {
+      this.persistenceEpoch = epoch;
+      this.ackedRevision = 0;
+      this.persistedRevision = this.latestSave?.epoch === epoch ? this.latestSave.revision : 0;
+    }
+    this.ackedRevision = Math.max(this.ackedRevision, revision);
   }
 
   handleAccessLost(): void {
@@ -222,8 +246,7 @@ export class CollaborativeSyncManager {
     if (!this.permissionHold) {
       this.updateState({ syncError: null, isSyncBlocked: false });
     }
-    this.pendingBatches = [...this.acknowledgedBatches, ...this.pendingBatches];
-    this.acknowledgedBatches = [];
+    this.pendingBatches = [];
     const server = new Y.Doc();
     try {
       Y.applyUpdate(server, serverState);
@@ -236,6 +259,7 @@ export class CollaborativeSyncManager {
     } finally {
       server.destroy();
     }
+    this.acknowledgedBatches = [];
     this.refreshPendingState();
     if (this.permissionHold) return;
     this.flushPendingUpdates();
@@ -336,12 +360,8 @@ export class CollaborativeSyncManager {
         this.pendingBatches.shift();
         this.retryAttempt = 0;
         // Only saves from the acknowledged runtime can cover these edits.
-        if (result.epoch !== this.persistenceEpoch) {
-          this.persistenceEpoch = result.epoch;
-          this.persistedRevision = 0;
-        }
-        this.ackedRevision = result.revision;
-        if (this.ackedRevision > this.persistedRevision) {
+        this.recordAcceptedRevision(result.epoch, result.revision);
+        if (result.revision > this.persistedRevision) {
           this.acknowledgedBatches.push(batch);
         }
         const acceptedUpdate =

@@ -131,7 +131,7 @@ export function setupSocket(
     rooms: roomSession,
     repository: new DrizzleDocumentStateRepository(),
     emit: (documentId, suggestion) => io.to(`doc:${documentId}`).emit("ai:suggestion", { documentId, suggestion }),
-    emitUpdate: (documentId, update, socketId) => io.to(`doc:${documentId}`).emit("doc:update", { documentId, update, source: { kind: "ai-acceptance", socketId } }),
+    emitUpdate: (documentId, update, socketId, cursor) => io.to(`doc:${documentId}`).emit("doc:update", { documentId, update, source: { kind: "ai-acceptance", socketId, ...cursor } }),
   });
 
   io.use(async (socket, next) => {
@@ -222,6 +222,7 @@ export function setupSocket(
         presence: result.presence,
         epoch: result.epoch,
         persistedRevision: result.persistedRevision,
+        currentRevision: result.currentRevision,
       });
 
       if (result.awarenessSnapshot) {

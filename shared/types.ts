@@ -166,6 +166,7 @@ export type DocumentJoinResult =
       epoch: string;
       /** Highest revision of this epoch written to PostgreSQL. 0 if this epoch has not saved. */
       persistedRevision: number;
+      currentRevision: number;
     }
   | {
       success: false;
@@ -178,7 +179,7 @@ export interface ServerToClientEvents {
   "doc:update": (payload: {
     documentId: string;
     update: Uint8Array;
-    source: { kind: "edit" } | { kind: "ai-acceptance"; socketId: string };
+    source: { kind: "edit" } | { kind: "ai-acceptance"; socketId: string; epoch: string; revision: number };
   }) => void;
   "awareness:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;

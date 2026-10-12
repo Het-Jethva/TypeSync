@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-10-12T08:35:25.4294257Z	frame	Fix findings sequentially with separate commits	Each change must be verified before the next	docs/audit-remediation.md	open
+2026-10-12T08:42:29.3428916Z	fix-01	Track accepted AI state until a covering save and retry document/history failures	Preserve immediate collaboration and undo without false saved status	server/test/collaboration.test.ts;server/test/ai-suggestions.test.ts; .audit/remediation-check-01.log	VERIFIED; 25 tests; lint/typecheck/build pass

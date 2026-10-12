@@ -55,6 +55,7 @@ export class CollaborativeRoomSession {
   private isDraining = false;
   private readonly lifecycleListeners = new Set<(documentId: string | null) => void>();
   private readonly aiFlushListeners = new Set<() => Promise<void>>();
+  private readonly documentSavedListeners = new Set<NonNullable<DocumentRuntimeOptions["onDocumentSaved"]>>();
 
   private readonly runtime;
   private readonly awarenessManager;
@@ -65,7 +66,14 @@ export class CollaborativeRoomSession {
     this.runtime = createDocumentRuntime({
       repository: options.repository,
       roomOccupancyProvider: (documentId) => this.holdCount(documentId),
-      onDocumentSaved: options.onDocumentSaved,
+      onDocumentSaved: payload => {
+        const listeners = [...this.documentSavedListeners];
+        if (options.onDocumentSaved) listeners.unshift(options.onDocumentSaved);
+        for (const listener of listeners) {
+          try { listener(payload); }
+          catch (error) { console.error(`Failed to notify a document-save listener for ${payload.documentId}:`, error); }
+        }
+      },
       sizeLimits: options.sizeLimits,
     });
     this.awarenessManager = createAwarenessManager();
@@ -94,6 +102,10 @@ export class CollaborativeRoomSession {
 
   onAiFlush(listener: () => Promise<void>): void {
     this.aiFlushListeners.add(listener);
+  }
+
+  onDocumentSaved(listener: NonNullable<DocumentRuntimeOptions["onDocumentSaved"]>): void {
+    this.documentSavedListeners.add(listener);
   }
 
   aiAccess(socket: TypeSyncSocket, documentId: string, edit = false): string | null {
@@ -275,6 +287,7 @@ export class CollaborativeRoomSession {
         presence,
         epoch: snapshot.epoch,
         persistedRevision: snapshot.persistedRevision,
+        currentRevision: snapshot.currentRevision,
         awarenessSnapshot: this.awarenessManager.snapshot(documentId),
         sizeStatus: snapshot.sizeStatus,
       };

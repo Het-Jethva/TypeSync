@@ -90,6 +90,9 @@ export function useCollaborativeDocument(
     const handleUpdate: ServerToClientEvents["doc:update"] = (payload) => {
       if (payload.documentId !== documentId) return;
       const update = new Uint8Array(payload.update);
+      if (payload.source.kind === "ai-acceptance") {
+        syncManager.noteAcceptedServerUpdate(update, payload.source.epoch, payload.source.revision);
+      }
       const handler = acceptanceHandlerRef.current;
       if (payload.source.kind === "ai-acceptance" && payload.source.socketId === socket.id &&
         handler?.ydoc === ydoc && handler.apply(update)) return;
@@ -198,6 +201,7 @@ export function useCollaborativeDocument(
         syncManager.setConnected(true);
         syncManager.setDocumentRole(result.role, { flush: false });
         syncManager.reconcilePendingUpdates(ydoc, new Uint8Array(result.state));
+        syncManager.noteAcceptedServerUpdate(new Uint8Array(result.state), result.epoch, result.currentRevision);
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
