@@ -420,7 +420,6 @@ export default function DashboardPage() {
       markDocumentChanged({
         docId: payload.documentId,
         metadata: { title: payload.title, updatedAt: payload.updatedAt },
-        refresh: false,
       });
       setDocuments((current) =>
         orderDocuments(current.map((doc) => {
@@ -594,7 +593,6 @@ export default function DashboardPage() {
         docId,
         pendingDelta: -1,
         pendingTitle: null,
-        refresh: false,
       });
       renamingDocumentIdsRef.current.delete(docId);
       setRenamingDocumentIds(new Set(renamingDocumentIdsRef.current));
