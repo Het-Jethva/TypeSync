@@ -154,7 +154,7 @@ export function Dialog({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] ${maxWidthClassName} outline-none`}
+        className={`dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-md ${maxWidthClassName} outline-none`}
       >
         <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
           <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4">
