@@ -1,154 +1,61 @@
 # TypeSync
 
-TypeSync is a real-time collaborative document editor. It works like a small Google Docs clone with shared editing, live presence, and role based sharing.
+A collaborative rich-text editor with live cursors, document sharing, and an AI co-editor. Write together in real time and review AI suggestions before they change the document.
 
-## Features
+[Try the live demo](https://typesync.hetjethva.tech)
 
-- **Real-time editing.** Multiple people edit one document at once. The client uses TipTap on top of Yjs. The server relays Yjs updates over Socket.IO.
-- **Live presence.** You see who else is in the document. Awareness updates flow through `awareness:update`.
-- **Roles that mean something.** Each user has one role per document. Owners manage access. Editors write. Viewers read. The checks live in `shared/types.ts`.
-- **Sharing UI.** The dashboard has a share modal with editor and viewer invites by email.
-- **Document dashboard.** You can create, search, sort, and page through documents. The list API supports `q`, `sort`, `cursor`, and `limit`.
-- **Rich text blocks.** The editor supports tables, task lists, images, code blocks, underline, and slash menu inserts.
-- **Auth included.** Sign in uses better-auth with session cookies.
-- **Persistence that survives restarts.** Yjs state flushes to PostgreSQL. Shutdown drains rooms and saves before exit.
-- **Guards for production use.** The API uses rate limits, size limits for updates and documents, CORS with credentials, and readiness probes at `/api/ready`.
+## What you can do
 
-## Tech stack
+- Edit together with live cursors and collaborator presence.
+- Write rich text with tables, task lists, images, code blocks, and slash commands.
+- Share documents by email with owner, editor, and viewer permissions.
+- Ask AI to rewrite, shorten, fix grammar, or follow a custom instruction. Suggestions stream to collaborators for review and remain in shared history.
+- Search and sort your documents, and export them as HTML, plain text, or JSON.
 
-- Client in `client/`. React 19, Vite, React Router 8, Tailwind CSS 4, TipTap 3, Yjs, Socket.IO client, better-auth, Zod.
-- Server in `server/`. Node 24, Express 5, Socket.IO, Yjs, Drizzle ORM, PostgreSQL 17, better-auth, Zod.
-- Shared contract in `shared/`. Zod schemas and Socket.IO event types in `shared/types.ts`.
-- Infra. Docker Compose for Postgres. Multi-stage `Dockerfile` for the server. `client/vercel.json` rewrites SPA routes to `index.html`.
+## How it works
 
-## Architecture
+TipTap handles the editor, while Yjs merges concurrent edits using a conflict-free replicated data type, or CRDT. Socket.IO carries document updates and presence between clients and the Express server. REST endpoints handle document management and sharing. PostgreSQL stores document state and AI suggestion history.
 
-The client talks to one server over two channels.
+The implementation accounts for changes that happen while people work together:
 
-- REST at `/api/documents` for create, list, rename, delete, and collaborators.
-- Socket.IO for `doc:join`, `doc:update`, `awareness:update`, and `doc:leave`.
-- The server keeps each open document in a `CollaborativeRoomSession`.
-- The session persists Yjs binary state to the `document` table.
-- Auth state comes from better-auth. Document access checks run before room join and before each update.
+- The client queues pending edits and retries delivery after reconnecting. It marks a document as synced only after the server confirms PostgreSQL persistence.
+- The server enforces document permissions when collaborators join and submit edits.
+- AI suggestions use Yjs relative positions to follow a selected passage as surrounding text moves. Acceptance checks the original text, formatting, and character identity so a suggestion cannot overwrite a changed passage.
 
-A simplified flow looks like this.
+## Built with
 
-- You open `/document/:id`.
-- The client joins the room with `doc:join`.
-- The server returns the current Yjs state, your role, and a unique runtime epoch.
-- Edits send binary updates with `doc:update`.
-- Other clients receive `doc:update` and presence through `awareness:update`.
-
-## Quickstart
-
-You need Node 24 or later, npm, and Docker.
-
-1. Install dependencies.
-
-```bash
-npm install
-```
-
-2. Start Postgres.
-
-```bash
-docker compose up -d
-```
-
-3. Copy the server env file and edit the values.
-
-```bash
-cp server/.env.example server/.env
-```
-
-4. Initialize the database with the committed migrations.
-
-```bash
-npm run db:migrate -w server
-```
-
-5. Run the app in dev mode.
-
-```bash
-npm run dev
-```
-
-Open the client at `http://localhost:5173`. The API runs at `http://localhost:3000`. Vite proxies `/api` and `/socket.io` to the server in dev.
-
-## Environment variables
-
-The client accepts `VITE_API_URL` at build time. Set it to the backend HTTP(S) origin, for example `https://api.example.com`. Whitespace and trailing slashes are normalized. Paths, query strings, fragments, and credentials are rejected. Leave it unset for same-origin requests through the development proxy or a production reverse proxy.
-
-The server reads these values from `server/.env`. See `server/.env.example` for a starter file. See `server/src/config.ts` for validation.
-
-- `DATABASE_URL`. Postgres connection string.
-- `BETTER_AUTH_SECRET`. Random string with at least 32 characters.
-- `BETTER_AUTH_URL`. Public URL of the server. Use `http://localhost:3000` for dev.
-- `VITE_CLIENT_URL`. Client HTTP(S) URL used for CORS and auth origins. The server uses its origin, so trailing slashes and paths are removed. Use `http://localhost:5173` for dev.
-- `PORT`. Server port. Defaults to 3000.
-- `NODE_ENV`. Set to `production` for strict config checks.
-- `AUTH_COOKIE_SAME_SITE`. Use `lax` or `none`.
-- `RESEND_API_KEY`. Resend sending-access key, preferably restricted to the verified sending domain. Required in production; development signup and verification fail closed without mail credentials.
-- `EMAIL_FROM`. Sender on a verified Resend domain, for example `TypeSync <no-reply@mail.hetjethva.tech>`. Required in production.
-- `OPENROUTER_API_KEY`. Server-only credential for the AI co-editor. Leave it unset to disable generation.
-- `OPENROUTER_MODEL`. Pinned OpenRouter model ending in `:free`. Defaults to `liquid/lfm-2.5-2.6b:free`. The provider tries `openrouter/free` if the pinned model fails. Both requests limit provider prices to zero.
-
-Email/password accounts must verify their mailbox before signing in or receiving documents shared by email. Signup shows a check-email screen with a resend button. Verification links expire after one hour and return to the client sign-in page. Existing unverified accounts must verify too; existing sessions cannot access documents until verification. Mail delivery errors are surfaced as authentication failures so users can retry with the resend flow. Set the two mail variables in your hosting environment before deploying; the local ignored `server/.env` is not included in builds or deployment.
-
-## AI co-editor
-
-Select text in a document and open **AI co-editor**, or press **Alt+Shift+A**. Choose **Rewrite**, **Shorten**, **Fix grammar**, or **Custom**. For a custom edit, enter an instruction and click **Generate suggestion**.
-
-Every collaborator sees the response stream into a suggestion. The document changes only when an editor or owner clicks **Accept**. **Reject** cancels an active response or dismisses a completed suggestion. Viewers can read suggestions and locate their original text.
-
-Acceptance follows the selected passage through unrelated collaborative edits. If its text, formatting, or underlying selected characters change, the server refuses acceptance. Select the current passage and request a new suggestion. AI replacement text retains the starting text formatting and treats generated content as plain text.
-
-Suggestions and the actual model used remain in shared history across reconnects and server restarts. Server logs emit `ai.provider.model` with the requested and actual model, and `ai.provider.failed` for failed attempts. Free model availability and response quality vary, including the model chosen by the fallback router.
-
-Run database migrations before starting an updated backend. The `0004_ai_suggestions` migration adds suggestion history. Generation accepts up to 12,000 selected characters and 2,000 instruction characters. The server permits two active generations per document, eight globally, and one new request per user every three seconds. History keeps up to 100 suggestions per document.
-
-## Production deployment
-
-The frontend runs on Vercel and the backend runs on Render. These settings live in the hosting dashboards.
-
-| Setting | Value |
+| Layer | Technologies |
 | --- | --- |
-| Vercel frontend domain | `typesync.hetjethva.tech` |
-| DNS record in the `hetjethva.tech` zone | `typesync A 76.76.21.21` |
-| Backend DNS record | `api.typesync CNAME typesync-backend-4gcv.onrender.com` |
-| Render service | `typesync-backend` |
-| Render health-check path | `/api/ready` |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, TipTap |
+| Collaboration | Yjs, Socket.IO |
+| Backend | Node.js, Express, PostgreSQL, Drizzle ORM |
+| Auth and AI | Better Auth, Resend, OpenRouter |
 
-Keep an explicit DNS record for `typesync`. The `api.typesync` child record prevents the zone wildcard from resolving the parent frontend domain. Check the frontend with `vercel domains inspect typesync.hetjethva.tech`; a ready deployment and a verified domain do not establish that DNS resolves.
+The npm workspace separates the frontend in `client/`, backend in `server/`, and shared schemas and socket contracts in `shared/`.
 
-Render's `/api/ready` check queries PostgreSQL and returns HTTP 503 if the database is unavailable. Set this path in the service's Health Checks settings. `/api/health` checks only that the server responds.
+## Run locally
 
-## Scripts
+Use Node.js 24 or later, npm, and Docker.
 
-Run these from the repo root.
+1. Install dependencies, start PostgreSQL, and copy the environment template.
 
-- `npm run dev`. Build shared types, then run server and client together.
-- `npm run build`. Build shared, client, and server.
-- `npm run check`. Run lint, typecheck, regression tests, and build.
-- `npm test`. Run collaboration and AI suggestion regression tests using real Yjs documents, plus provider stream checks.
-- `npm run lint`. Run ESLint with zero warnings allowed.
-- `npm run typecheck`. Typecheck shared, client, and server.
-- `npm run db:push -w server`. Push the schema to a disposable database for experiments. This command does not record migration history.
-- `npm run db:studio -w server`. Open Drizzle Studio.
-- `npm run db:generate -w server`. Generate migrations from the schema.
-- `npm run db:migrate -w server`. Initialize a fresh database or apply pending committed migrations. Use this command before local startup and after schema updates.
-- `npm run migrate -w server`. Apply committed migrations with the compiled server. Build the server first. Docker runs this command before startup.
-- `npm run docker:up`. Start Postgres in the background.
-- `npm run docker:down`. Stop Postgres.
+   ```sh
+   npm install
+   docker compose up -d
+   cp server/.env.example server/.env
+   ```
 
-## Project structure
+2. Edit `server/.env`. Set `BETTER_AUTH_SECRET` to a random secret of at least 32 characters. Set `RESEND_API_KEY` and `EMAIL_FROM` to credentials and a sender for your verified Resend domain. Signup requires email verification, including in development. The template's database and localhost URLs match the local setup.
 
-- `client/src/pages/`. Landing, auth, and dashboard routes.
-- `client/src/components/Editor.tsx`. TipTap editor bound to Yjs.
-- `client/src/components/ShareModal.tsx`. Collaborator invites and role changes.
-- `client/src/components/Sidebar.tsx`. Document list and search.
-- `server/src/index.ts`. Express app, Socket.IO setup, health checks, shutdown.
-- `server/src/routes/documents.ts`. Document REST API.
-- `server/src/socket/room-session.ts`. In-memory Yjs rooms and persistence.
-- `server/src/db/schema.ts`. Drizzle tables for users, documents, and collaborators.
-- `shared/types.ts`. Roles, document shapes, list queries, and socket events.
+   To enable AI suggestions, also set `OPENROUTER_API_KEY`. Without it, document editing still works.
+
+3. Apply migrations and start the app.
+
+   ```sh
+   npm run db:migrate
+   npm run dev
+   ```
+
+Open [localhost:5173](http://localhost:5173), create an account, and verify your email before signing in. The backend runs on port 3000.
+
+Run `npm run check` for lint, type checks, regression tests, and a production build.
