@@ -15,6 +15,11 @@ interface ShareModalProps {
   onUpdate: () => void;
 }
 
+type CollaboratorsState =
+  | { status: "loading" }
+  | { status: "loaded"; collaborators: DocumentCollaboratorWithUser[] }
+  | { status: "failed"; message: string };
+
 export function ShareModal({
   documentId,
   open,
@@ -26,10 +31,9 @@ export function ShareModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [collaborators, setCollaborators] = useState<
-    DocumentCollaboratorWithUser[]
-  >([]);
-  const [isFetching, setIsFetching] = useState(true);
+  const [collaboratorsState, setCollaboratorsState] = useState<CollaboratorsState>({
+    status: "loading",
+  });
   const collaboratorsRequestGenerationRef = useRef(0);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const emailId = `share-email-${useId().replace(/:/g, "")}`;
@@ -38,36 +42,32 @@ export function ShareModal({
 
   const fetchCollaborators = useCallback(async () => {
     const requestGeneration = ++collaboratorsRequestGenerationRef.current;
-    setIsFetching(true);
+    setCollaboratorsState({ status: "loading" });
 
     try {
       const res = await api.documents.listCollaborators(documentId);
       if (requestGeneration !== collaboratorsRequestGenerationRef.current)
         return;
-      setCollaborators(res);
+      setCollaboratorsState({ status: "loaded", collaborators: res });
     } catch (err) {
       if (requestGeneration !== collaboratorsRequestGenerationRef.current)
         return;
       console.error("Failed to fetch collaborators:", err);
-      setError(errorMessage(err, "Failed to fetch collaborators"));
-    } finally {
-      if (requestGeneration === collaboratorsRequestGenerationRef.current) {
-        setIsFetching(false);
-      }
+      setCollaboratorsState({
+        status: "failed",
+        message: errorMessage(err, "Failed to fetch collaborators"),
+      });
     }
   }, [documentId]);
 
-  // The dialog stays mounted so it can animate out, so the collaborator list is
-  // fetched on each open rather than on mount.
   useEffect(() => {
     if (!open) return;
 
     collaboratorsRequestGenerationRef.current += 1;
-    setCollaborators([]);
     setEmail("");
     setError("");
     setSuccess("");
-    setIsFetching(true);
+    setCollaboratorsState({ status: "loading" });
     void fetchCollaborators();
 
     return () => {
@@ -222,13 +222,12 @@ export function ShareModal({
         </button>
       </form>
 
-      {/* Collaborator List */}
       <div className="mt-6 pt-5 border-t border-border">
         <h3 className="text-micro font-semibold text-text-primary uppercase tracking-wider mb-3">
           Who has access
         </h3>
 
-        {isFetching ? (
+        {collaboratorsState.status === "loading" ? (
           <div
             className="flex items-center justify-center gap-2 py-2"
             role="status"
@@ -242,13 +241,24 @@ export function ShareModal({
               Loading collaborators…
             </span>
           </div>
-        ) : collaborators.length === 0 ? (
+        ) : collaboratorsState.status === "failed" ? (
+          <div role="status" aria-live="polite" className="space-y-2">
+            <p className="text-ui text-error">{collaboratorsState.message}</p>
+            <button
+              type="button"
+              onClick={() => void fetchCollaborators()}
+              className="btn-linear-primary text-ui px-3 py-1.5"
+            >
+              Try again
+            </button>
+          </div>
+        ) : collaboratorsState.collaborators.length === 0 ? (
           <p className="text-ui text-text-muted">
             Only you have access to this document.
           </p>
         ) : (
           <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
-            {collaborators.map((collab) => (
+            {collaboratorsState.collaborators.map((collab) => (
               <div
                 key={collab.user.id}
                 className="flex items-center justify-between gap-3 text-ui"
