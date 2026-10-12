@@ -509,7 +509,27 @@ export class CollaborativeRoomSession {
   }
 
   async flushAll(): Promise<{ succeeded: string[]; failed: string[] }> {
-    await Promise.all([...this.aiFlushListeners].map(flush => flush()));
-    return this.runtime.flushAll();
+    const [listeners, documents] = await Promise.all([
+      Promise.allSettled([...this.aiFlushListeners].map(async flush => flush())),
+      this.runtime.flushAll().then(
+        result => ({ kind: "fulfilled", result } as const),
+        (error: unknown) => ({ kind: "rejected", error } as const),
+      ),
+    ]);
+    const errors: unknown[] = [];
+    for (const listener of listeners) {
+      if (listener.status === "rejected") errors.push(listener.reason);
+    }
+    if (documents.kind === "rejected") {
+      throw new AggregateError([...errors, documents.error], "Failed to flush AI history and documents", { cause: documents.error });
+    }
+    const { result } = documents;
+    if (errors.length > 0) {
+      if (result.failed.length > 0) {
+        errors.push(new Error(`Failed to save documents: ${result.failed.join(", ")}`));
+      }
+      throw new AggregateError(errors, "Failed to flush AI history and documents", { cause: result });
+    }
+    return result;
   }
 }

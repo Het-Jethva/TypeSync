@@ -9,6 +9,77 @@ import { CollaborativeSyncManager } from "../../client/src/lib/sync-manager.ts";
 import { CollaborativeRoomSession, type SessionAccess } from "../src/socket/room-session.ts";
 import type { TypeSyncSocket } from "../src/socket/types.ts";
 
+test("shutdown saves unrelated documents while AI listeners settle and reports every failure", async () => {
+  const stored = new Map<string, Uint8Array>();
+  const attempts: string[] = [];
+  const written = Promise.withResolvers<void>();
+  const rooms = new CollaborativeRoomSession({
+    repository: {
+      loadState: async () => null,
+      saveState: async (documentId, state) => {
+        attempts.push(documentId);
+        if (documentId === "failed-document") throw new Error("database unavailable");
+        stored.set(documentId, state);
+        written.resolve();
+        return { title: "Untitled", updatedAt: new Date() };
+      },
+    },
+    getRoomOccupancy: () => 1,
+  });
+  const roomNames = new Set<string>();
+  const socket = {
+    id: "socket", connected: true, data: { userId: "user", userName: "User" }, rooms: roomNames,
+    join: (name: string) => { roomNames.add(name); },
+    leave: (name: string) => { roomNames.delete(name); },
+    emit: () => {},
+  } as unknown as TypeSyncSocket;
+  const doc = new Y.Doc();
+  const saved = new Y.Doc();
+  const history = Promise.withResolvers<void>();
+  const syncError = new Error("AI listener threw synchronously");
+  const asyncError = new Error("AI history save failed");
+  const listeners: string[] = [];
+  rooms.initializeSocket(socket);
+  rooms.onAiFlush(() => { listeners.push("sync"); throw syncError; });
+  rooms.onAiFlush(async () => { listeners.push("async"); throw asyncError; });
+  rooms.onAiFlush(async () => { listeners.push("history"); await history.promise; });
+  try {
+    insertEditorText(doc, 0, "ordinary dirty edit");
+    for (const documentId of ["ordinary-document", "failed-document"]) {
+      assert.equal((await rooms.joinSession({
+        socket, documentId, checkSession: async () => "valid",
+        authorize: async () => ({ hasAccess: true, role: "owner" }),
+      })).success, true);
+      assert.equal(rooms.applyUpdate({ socket, documentId, update: Y.encodeStateAsUpdate(doc) }).success, true);
+    }
+    rooms.beginDrain();
+    const flush = rooms.flushAll();
+    const rejected = assert.rejects(flush, error => {
+      assert(error instanceof AggregateError);
+      assert.deepEqual(error.errors.slice(0, 2), [syncError, asyncError]);
+      assert.match(error.errors[2].message, /failed-document/);
+      assert.deepEqual(error.cause, { succeeded: ["ordinary-document"], failed: ["failed-document"] });
+      return true;
+    });
+    await written.promise;
+    assert.deepEqual(listeners, ["sync", "async", "history"]);
+    assert.deepEqual(attempts, ["ordinary-document", "failed-document"]);
+    history.resolve();
+    await rejected;
+    assert.deepEqual(attempts, ["ordinary-document", "failed-document"]);
+    const state = stored.get("ordinary-document");
+    assert(state);
+    Y.applyUpdate(saved, state);
+    assert.equal(editorText(saved).toString(), "ordinary dirty edit");
+  } finally {
+    history.resolve();
+    rooms.handleDocumentDeleted("ordinary-document", []);
+    rooms.handleDocumentDeleted("failed-document", []);
+    doc.destroy();
+    saved.destroy();
+  }
+});
+
 test("an occupied runtime retries a failed explicit flush", async context => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   let attempts = 0;

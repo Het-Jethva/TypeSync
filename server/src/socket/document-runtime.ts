@@ -223,6 +223,7 @@ export function createDocumentRuntime(
       state.retryTimer = undefined;
       triggerScheduledFlush(docId, ydoc, state);
     }, SAVE_RETRY_INTERVAL);
+    state.retryTimer.unref();
   }
 
   function triggerScheduledFlush(docId: string, ydoc: Y.Doc, state: PersistenceState): void {
