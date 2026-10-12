@@ -28,5 +28,6 @@ npm-debug.log*
 
 # Local decision logs
 .audit/
+docs/
 
 .vercel
