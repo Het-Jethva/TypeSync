@@ -7,7 +7,9 @@ export function normalizeUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
+  const isHostWithPort = /^[^/?#:\s]+\.[^/?#:\s]+:\d+(?:[/?#]|$)/.test(trimmed);
+  const candidate = hasScheme && !isHostWithPort
     ? trimmed
     : `https://${trimmed}`;
 

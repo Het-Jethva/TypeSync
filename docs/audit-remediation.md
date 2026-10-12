@@ -22,7 +22,7 @@ Implementation baseline: 400bc22. The audit baseline was a22a4c6; the intervenin
 7. [x] Dashboard refresh failure and retry state. Pending requests hide prior-query rows; failed initial or refresh reads expose persistent retry and successful retry restores pagination.
 8. [x] Share dialog dismissal during reads. Close and Escape remain available during initial and post-mutation collaborator reads.
 9. [x] Share list error state and retry. Loading, loaded and failed reads are distinct; only successful empty reads claim exclusive access.
-10. Bare hostname URLs with ports.
+10. [x] Bare hostname URLs with ports. Dotted hosts with numeric ports receive HTTPS; unsupported explicit schemes and invalid ports remain rejected.
 11. Environment file ignore patterns.
 12. Shutdown deadlines and documented container grace.
 
