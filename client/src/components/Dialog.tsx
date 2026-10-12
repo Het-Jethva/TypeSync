@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -10,7 +9,10 @@ import {
 import { createPortal } from "react-dom";
 
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button, input, select, textarea, [contenteditable="true"], [tabindex]';
+
+const openDialogs: HTMLDialogElement[] = [];
+let previousBodyOverflow = "";
 
 interface DialogProps {
   open: boolean;
@@ -44,6 +46,7 @@ export function Dialog({
   busy = false,
   maxWidthClassName = "max-w-md",
 }: DialogProps) {
+  const modalRef = useRef<HTMLDialogElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = `dialog-title-${useId().replace(/:/g, "")}`;
 
@@ -53,56 +56,74 @@ export function Dialog({
 
   // Captured before the dialog takes focus so it can be handed back on close.
   useLayoutEffect(() => {
-    if (!open) return;
+    const modal = modalRef.current;
+    const panel = dialogRef.current;
+    if (!open || !modal || !panel) return;
     const opener =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
 
+    modal.showModal();
+    if (openDialogs.length === 0) {
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    openDialogs.push(modal);
+
+    const focusableElements = () =>
+      Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (element) =>
+          element.tabIndex >= 0 &&
+          !element.matches(":disabled") &&
+          !element.closest("[inert]") &&
+          element.getClientRects().length > 0,
+      );
+    const focusable = focusableElements();
+    const initialTarget = initialFocusRef?.current;
     const target =
-      initialFocusRef?.current ??
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ??
-      dialogRef.current;
-    target?.focus();
+      initialTarget && focusable.includes(initialTarget)
+        ? initialTarget
+        : (focusable[0] ?? panel);
+    target.focus();
 
-    return () => opener?.focus();
-  }, [open, initialFocusRef]);
+    // Disabling or removing the focused control can leave focus on BODY.
+    // Listen there too, while only the top modal owns keyboard navigation.
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (openDialogs.at(-1) !== modal) return;
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        return;
+      }
+      if (event.key !== "Tab") return;
 
-  // A modal that scrolls the page behind it reads as two competing surfaces.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
+      const controls = focusableElements();
+      const first = controls[0];
+      const last = controls.at(-1);
+      const active = document.activeElement;
+      if (!first || !last) {
+        event.preventDefault();
+        panel.focus();
+      } else if (
+        !controls.some((control) => control === active) ||
+        (event.shiftKey ? active === first : active === last)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
     };
-  }, [open]);
+    document.addEventListener("keydown", handleKeyDown, true);
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      requestClose();
-      return;
-    }
-    if (event.key !== "Tab") return;
-
-    const focusable =
-      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-    const first = focusable?.[0];
-    const last = focusable?.[focusable.length - 1];
-    if (!first || !last) {
-      event.preventDefault();
-      dialogRef.current?.focus();
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      openDialogs.splice(openDialogs.indexOf(modal), 1);
+      modal.close();
+      if (openDialogs.length === 0) {
+        document.body.style.overflow = previousBodyOverflow;
+      }
+      opener?.focus();
+    };
+  }, [open, initialFocusRef]);
 
   if (!open) return null;
 
@@ -113,7 +134,17 @@ export function Dialog({
   // conditional rendering, so it cannot fail in either direction, and the
   // entrance is a CSS animation that skips itself under reduced motion.
   return createPortal(
-    <div className="fixed inset-0 z-50">
+    <dialog
+      ref={modalRef}
+      aria-labelledby={titleId}
+      aria-describedby={describedById}
+      aria-busy={busy}
+      onCancel={(event) => {
+        event.preventDefault();
+        requestClose();
+      }}
+      className="fixed inset-0 z-50 m-0 h-full w-full max-h-none max-w-none border-0 bg-transparent p-0 text-inherit outline-none [&::backdrop]:bg-transparent"
+    >
       <div
         className="dialog-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={requestClose}
@@ -122,13 +153,7 @@ export function Dialog({
 
       <div
         ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={describedById}
-        aria-busy={busy}
         tabIndex={-1}
-        onKeyDown={handleKeyDown}
         className={`dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] ${maxWidthClassName} outline-none`}
       >
         <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
@@ -170,7 +195,7 @@ export function Dialog({
           )}
         </div>
       </div>
-    </div>,
+    </dialog>,
     document.body,
   );
 }
