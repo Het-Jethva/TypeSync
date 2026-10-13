@@ -6,6 +6,9 @@ import { config } from "../config.js";
 
 const pool = new pg.Pool({
   connectionString: config.databaseUrl,
+  connectionTimeoutMillis: 5_000,
+  statement_timeout: 8_000,
+  query_timeout: 10_000,
 });
 
 export const db = drizzle(pool, { schema });
