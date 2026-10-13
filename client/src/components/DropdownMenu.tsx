@@ -1,5 +1,6 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useContext, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { motion } from "motion/react";
+import { PortalPositionedContext, type OverlayCloseReason } from "./overlay-state";
 
 export interface DropdownMenuItem {
   id: string;
@@ -13,7 +14,7 @@ export interface DropdownMenuItem {
 interface DropdownMenuProps {
   label: string;
   items: DropdownMenuItem[];
-  onClose: () => void;
+  onClose: (reason: OverlayCloseReason) => void;
   /** Positioning classes. The menu itself is only responsible for behaviour. */
   className?: string;
   style?: CSSProperties;
@@ -31,16 +32,18 @@ export function DropdownMenu({
   style,
 }: DropdownMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const positioned = useContext(PortalPositionedContext);
 
   useEffect(() => {
+    if (!positioned) return;
     menuRef.current
       ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')
       ?.focus();
-  }, []);
+  }, [positioned]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!(event.target instanceof Node) || !menuRef.current?.contains(event.target)) onClose();
+      if (!(event.target instanceof Node) || !menuRef.current?.contains(event.target)) onClose("pointer");
     };
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -64,7 +67,7 @@ export function DropdownMenu({
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      onClose();
+      onClose("keyboard");
       return;
     }
     if (event.key === "ArrowDown") {
@@ -99,7 +102,7 @@ export function DropdownMenu({
           disabled={item.disabled}
           onClick={() => {
             item.onSelect();
-            onClose();
+            onClose("action");
           }}
           className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-ui font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             item.tone === "danger"

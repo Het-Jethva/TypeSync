@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { PortalPositionedContext } from "./overlay-state";
 
 interface AnchoredPortalProps {
   anchorRef: RefObject<HTMLElement | null>;
@@ -76,7 +77,9 @@ export function AnchoredPortal({
         zIndex: 50,
       }}
     >
-      {children}
+      <PortalPositionedContext.Provider value={position !== null}>
+        {children}
+      </PortalPositionedContext.Provider>
     </div>,
     document.body
   );

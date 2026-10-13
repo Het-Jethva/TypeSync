@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { normalizeUrl } from "../lib/url";
+import { PortalPositionedContext, type OverlayCloseReason } from "./overlay-state";
 
 interface ToolbarUrlPopoverProps {
   label: string;
@@ -12,7 +13,7 @@ interface ToolbarUrlPopoverProps {
   onRemove?: () => void;
   removeLabel?: string;
   onSubmit: (url: string) => void;
-  onClose: () => void;
+  onClose: (reason: OverlayCloseReason) => void;
 }
 
 export function ToolbarUrlPopover({
@@ -31,15 +32,17 @@ export function ToolbarUrlPopover({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputId = `toolbar-url-${useId().replace(/:/g, "")}`;
   const errorId = `${inputId}-error`;
+  const positioned = useContext(PortalPositionedContext);
 
   useEffect(() => {
+    if (!positioned) return;
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, []);
+  }, [positioned]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!(event.target instanceof Node) || !containerRef.current?.contains(event.target)) onClose();
+      if (!(event.target instanceof Node) || !containerRef.current?.contains(event.target)) onClose("pointer");
     };
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -52,7 +55,7 @@ export function ToolbarUrlPopover({
       return;
     }
     onSubmit(url);
-    onClose();
+    onClose("action");
   };
 
   return (
@@ -65,8 +68,9 @@ export function ToolbarUrlPopover({
       aria-label={label}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
+          event.preventDefault();
           event.stopPropagation();
-          onClose();
+          onClose("keyboard");
         }
       }}
       className="absolute top-full left-0 mt-1.5 z-50 w-72 rounded-md border border-border-strong bg-bg-elevated p-3 shadow-lg"
@@ -111,14 +115,14 @@ export function ToolbarUrlPopover({
             type="button"
             onClick={() => {
               onRemove();
-              onClose();
+              onClose("action");
             }}
             className="mr-auto rounded px-2 py-1 text-micro font-medium text-text-muted transition-colors hover:bg-error/10 hover:text-error"
           >
             {removeLabel ?? "Remove"}
           </button>
         )}
-        <button type="button" onClick={onClose} className="btn-linear text-micro">
+        <button type="button" onClick={(event) => onClose(event.detail === 0 ? "keyboard" : "pointer")} className="btn-linear text-micro">
           Cancel
         </button>
         <button

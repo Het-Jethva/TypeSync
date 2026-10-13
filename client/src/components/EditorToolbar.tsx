@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { ToolbarUrlPopover } from "./ToolbarUrlPopover";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
 import { AnchoredPortal } from "./AnchoredPortal";
+import type { OverlayCloseReason } from "./overlay-state";
 
 const HEADING_LEVELS: readonly [1, 2, 3] = [1, 2, 3];
 
@@ -104,9 +105,12 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
     if (canEditRef.current && editor.isEditable) action();
   };
 
-  const closePopover = () => {
+  const closePopover = (reason: OverlayCloseReason) => {
     setOpenPopover(null);
-    runEditable(() => editor.chain().focus().run());
+    if (reason === "keyboard") {
+      const anchor = openPopover === "link" ? linkAnchorRef : imageAnchorRef;
+      anchor.current?.querySelector("button")?.focus();
+    }
   };
 
   // The blocks people reach for least often, kept off the main row so it stays
@@ -361,7 +365,10 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
               <DropdownMenu
                 label="More blocks"
                 items={overflowItems}
-                onClose={() => setOverflowOpen(false)}
+                onClose={(reason) => {
+                  setOverflowOpen(false);
+                  if (reason === "keyboard") overflowAnchorRef.current?.querySelector("button")?.focus();
+                }}
               />
             </AnchoredPortal>
           )}

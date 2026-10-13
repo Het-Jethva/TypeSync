@@ -190,7 +190,10 @@ export function DocumentHeader({
                 <DropdownMenu
                   label="Document actions"
                   items={documentMenuItems}
-                  onClose={() => setMenuOpen(false)}
+                  onClose={(reason) => {
+                    setMenuOpen(false);
+                    if (reason === "keyboard") menuAnchorRef.current?.querySelector("button")?.focus();
+                  }}
                 />
               </AnchoredPortal>
             )}

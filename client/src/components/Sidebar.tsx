@@ -5,6 +5,7 @@ import { canEditDocument, type DocumentWithRole, type ListDocumentsQuery, type R
 import { toggleThemeWithTransition } from "../lib/theme";
 import { useConfirm } from "../lib/confirm-context";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
+import type { OverlayCloseReason } from "./overlay-state";
 import { Select } from "./Select";
 
 type SortBy = ListDocumentsQuery["sort"];
@@ -134,16 +135,16 @@ export function Sidebar({
     toggleThemeWithTransition(theme, setTheme, e);
   };
 
-  const closeContextMenu = () => {
+  const closeContextMenu = (reason: OverlayCloseReason) => {
     setContextMenu(null);
-    contextMenuTriggerRef.current?.focus();
+    if (reason === "keyboard") contextMenuTriggerRef.current?.focus();
     contextMenuTriggerRef.current = null;
   };
 
   useEffect(() => {
     if (!contextMenu) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeContextMenu();
+      if (event.key === "Escape") closeContextMenu("keyboard");
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
