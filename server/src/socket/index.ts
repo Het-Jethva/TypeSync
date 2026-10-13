@@ -13,6 +13,7 @@ import { config } from "../config.js";
 import { AUTH_CLIENT_IP_HEADER, auth } from "../lib/auth.js";
 import { isTrustedWebOrigin } from "../lib/origin.js";
 import { sessionCacheHit, sessionRecheck } from "../lib/session-recheck.js";
+import { logProxyProbe } from "../lib/proxy-probe.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
 import { AiSuggestionService } from "../services/ai-suggestions.js";
@@ -136,6 +137,7 @@ export function setupSocket(
 
   io.use(async (socket, next) => {
     try {
+      logProxyProbe(socket.request);
       const cookies = socket.handshake.headers.cookie || "";
       const headers = new Headers();
       headers.set("cookie", cookies);

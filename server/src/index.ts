@@ -14,6 +14,7 @@ import type { TypeSyncSocketServer } from "./socket/types.js";
 import { errorHandler } from "./middleware/error.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
 import { pool } from "./db/index.js";
+import { logProxyProbe } from "./lib/proxy-probe.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -44,6 +45,7 @@ app.use(express.json());
 
 // ─── Better Auth handler ─────────────────────────────────
 app.all("/api/auth/*splat", (req, _res, next) => {
+  logProxyProbe(req);
   // Better Auth rejects a multi-hop X-Forwarded-For chain without a proxy
   // allowlist. Express has already resolved the client through the one Render
   // edge hop above. Overwrite this header so callers cannot choose their own IP.
