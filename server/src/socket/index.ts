@@ -293,7 +293,10 @@ export function setupSocket(
         io.to(roomName).emit("doc:size-status", result.sizeStatus);
       }
 
-      socket.to(roomName).emit("doc:update", { documentId: docId, update, source: { kind: "edit" } });
+      socket.to(roomName).emit("doc:update", {
+        documentId: docId, update,
+        source: { kind: "edit", epoch: result.epoch, revision: result.revision },
+      });
       respond({ success: true, revision: result.revision, epoch: result.epoch });
     });
 

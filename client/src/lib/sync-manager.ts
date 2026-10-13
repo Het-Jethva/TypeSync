@@ -57,7 +57,6 @@ export class CollaborativeSyncManager {
 
   /** Null until a join or an ack names the server runtime. */
   private persistenceEpoch: string | null = null;
-  /** Highest accepted revision observed from delivery, AI acceptance, or joining. */
   private ackedRevision = 0;
   /** Highest saved revision in `persistenceEpoch`. */
   private persistedRevision = 0;

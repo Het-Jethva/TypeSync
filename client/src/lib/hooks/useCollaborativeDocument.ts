@@ -90,9 +90,7 @@ export function useCollaborativeDocument(
     const handleUpdate: ServerToClientEvents["doc:update"] = (payload) => {
       if (payload.documentId !== documentId) return;
       const update = new Uint8Array(payload.update);
-      if (payload.source.kind === "ai-acceptance") {
-        syncManager.noteAcceptedServerUpdate(update, payload.source.epoch, payload.source.revision);
-      }
+      syncManager.noteAcceptedServerUpdate(update, payload.source.epoch, payload.source.revision);
       const handler = acceptanceHandlerRef.current;
       if (payload.source.kind === "ai-acceptance" && payload.source.socketId === socket.id &&
         handler?.ydoc === ydoc && handler.apply(update)) return;

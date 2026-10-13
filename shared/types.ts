@@ -180,7 +180,9 @@ export interface ServerToClientEvents {
   "doc:update": (payload: {
     documentId: string;
     update: Uint8Array;
-    source: { kind: "edit" } | { kind: "ai-acceptance"; socketId: string; epoch: string; revision: number };
+    source: { epoch: string; revision: number } & (
+      { kind: "edit" } | { kind: "ai-acceptance"; socketId: string }
+    );
   }) => void;
   "awareness:update": (payload: { documentId: string; update: Uint8Array }) => void;
   "doc:permission-updated": (payload: { documentId: string; role: Role }) => void;
