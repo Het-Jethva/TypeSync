@@ -140,12 +140,28 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
 
   // Handle keyboard navigation
   useEffect(() => {
+    const ownsTarget = (target: EventTarget | null) =>
+      target instanceof Node &&
+      (editor.view.dom.contains(target) || !!menuRef.current?.contains(target));
+
+    const handleFocusOut = (e: FocusEvent) => {
+      if (ownsTarget(e.target) && !ownsTarget(e.relatedTarget)) {
+        onClose();
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!ownsTarget(e.target)) {
+        onClose();
+        return;
+      }
       if (!editor.isEditable) {
         onClose();
         return;
       }
-      if (e.key === "ArrowDown") {
+      if (e.key === "Tab") {
+        onClose();
+      } else if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
         setSelectedIndex((prev) => (prev + 1) % SLASH_MENU_ITEMS.length);
@@ -184,7 +200,11 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("focusout", handleFocusOut);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("focusout", handleFocusOut);
+    };
   }, [editor, selectedIndex, onClose]);
 
   // Scroll active item into view inside the popover
