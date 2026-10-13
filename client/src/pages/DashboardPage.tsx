@@ -83,6 +83,7 @@ export default function DashboardPage() {
   const routeDocumentRequestGenerationRef = useRef(0);
   const documentIdRef = useRef(documentId);
   const documentsRef = useRef(documents);
+  const routeDocumentRef = useRef(routeDocument);
   const bypassNextNavigationRef = useRef(false);
   const renamingDocumentIdsRef = useRef(new Set<string>());
   const [renamingDocumentIds, setRenamingDocumentIds] = useState<ReadonlySet<string>>(
@@ -108,7 +109,7 @@ export default function DashboardPage() {
   }) => {
     const previous = documentChangesRef.current.get(docId);
     documentChangesRef.current.set(docId, {
-      revision: refresh ? ++documentChangeRevisionRef.current : previous?.revision ?? documentChangeRevisionRef.current,
+      revision: ++documentChangeRevisionRef.current,
       pendingMutations: (previous?.pendingMutations ?? 0) + pendingDelta,
       pendingTitle: pendingTitle !== undefined ? pendingTitle : previous?.pendingTitle ?? null,
       removed: removed ?? previous?.removed ?? false,
@@ -139,7 +140,7 @@ export default function DashboardPage() {
     const snapshotIds = new Set(snapshot.map((document) => document.id));
     const localAdditions = current.filter((document) =>
       !snapshotIds.has(document.id) &&
-      (documentChangesRef.current.get(document.id)?.pendingMutations ?? 0) > 0 &&
+      changedAfterRequest(document.id) &&
       !documentChangesRef.current.get(document.id)?.removed
     );
     const reconciled = snapshot.flatMap((document) => {
@@ -177,6 +178,22 @@ export default function DashboardPage() {
         right.id.localeCompare(left.id);
     });
   }, [sort]);
+
+  const mergeDocumentMetadata = useCallback((
+    docId: string,
+    candidate: DocumentWithRole | null,
+  ) => {
+    if (documentChangesRef.current.get(docId)?.removed) return;
+    setDocuments((current) => {
+      const existing = current.find(document => document.id === docId);
+      const document = existing ?? candidate;
+      if (!document) return current;
+      const merged = reconcileDocumentSnapshot([document], [document], -1);
+      return orderDocuments([...current.filter(item => item.id !== docId), ...merged]);
+    });
+    setRouteDocument((current) => current?.id === docId
+      ? reconcileDocumentSnapshot([current], [current], -1)[0] ?? null : current);
+  }, [orderDocuments, reconcileDocumentSnapshot]);
 
   const visibleDocuments = debouncedSearch
     ? documents.filter(document => document.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
@@ -259,6 +276,10 @@ export default function DashboardPage() {
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  useEffect(() => {
+    routeDocumentRef.current = routeDocument;
+  }, [routeDocument]);
 
   useEffect(() => {
     const requestGeneration = ++routeDocumentRequestGenerationRef.current;
@@ -418,17 +439,17 @@ export default function DashboardPage() {
         metadata: { title: payload.title, updatedAt: payload.updatedAt },
         refresh: false,
       });
-      setDocuments((current) =>
-        orderDocuments(current.map((doc) => {
-          if (doc.id !== payload.documentId) return doc;
-          if (!isNewerOrEqual(payload.updatedAt, doc.updatedAt)) return doc;
-          return { ...doc, title: payload.title, updatedAt: payload.updatedAt };
-        }))
-      );
-      setRouteDocument((current) => {
-        if (current?.id !== payload.documentId) return current;
-        if (!isNewerOrEqual(payload.updatedAt, current.updatedAt)) return current;
-        return { ...current, title: payload.title, updatedAt: payload.updatedAt };
+      const candidate = routeDocumentRef.current?.id === payload.documentId
+        ? routeDocumentRef.current : null;
+      mergeDocumentMetadata(payload.documentId, candidate);
+      if (candidate || documentsRef.current.some(document => document.id === payload.documentId) ||
+        documentChangesRef.current.get(payload.documentId)?.removed) return;
+      const requestGeneration = documentsRequestGenerationRef.current;
+      void api.documents.get(payload.documentId).then((document) => {
+        if (requestGeneration !== documentsRequestGenerationRef.current) return;
+        mergeDocumentMetadata(payload.documentId, document);
+      }).catch((error: unknown) => {
+        console.error("Failed to load changed document:", error);
       });
     };
 
@@ -443,7 +464,7 @@ export default function DashboardPage() {
       socket.off("doc:title-updated", handleMetadataUpdated);
       socket.off("doc:saved", handleMetadataUpdated);
     };
-  }, [documentId, fetchDocuments, markDocumentChanged, navigate, orderDocuments]);
+  }, [documentId, markDocumentChanged, mergeDocumentMetadata, navigate]);
 
   // Keyboard shortcut for sidebar toggle
   useEffect(() => {
@@ -552,19 +573,14 @@ export default function DashboardPage() {
       } : {}),
     });
     applyDocumentTitle(docId, title);
+    const requestGeneration = documentsRequestGenerationRef.current;
     try {
       const updated = await api.documents.update(docId, { title });
       if (!updated) return;
       const metadata = { title: updated.title, updatedAt: updated.updatedAt };
       markDocumentChanged({ docId, metadata, refresh: false });
-      setDocuments((current) => orderDocuments(current.map((document) =>
-        document.id === docId && isNewerOrEqual(updated.updatedAt, document.updatedAt)
-          ? { ...document, ...metadata } : document
-      )));
-      setRouteDocument((current) =>
-        current?.id === docId && isNewerOrEqual(updated.updatedAt, current.updatedAt)
-          ? { ...current, ...metadata } : current
-      );
+      mergeDocumentMetadata(docId,
+        requestGeneration === documentsRequestGenerationRef.current ? previousDocument ?? null : null);
     } catch (err) {
       console.error("Failed to rename document:", err);
       const rollbackTitle = documentChangesRef.current.get(docId)?.metadata?.title;
@@ -592,6 +608,7 @@ export default function DashboardPage() {
         pendingTitle: null,
         refresh: false,
       });
+      mergeDocumentMetadata(docId, null);
       renamingDocumentIdsRef.current.delete(docId);
       setRenamingDocumentIds(new Set(renamingDocumentIdsRef.current));
     }
