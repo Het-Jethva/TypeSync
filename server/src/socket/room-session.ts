@@ -440,6 +440,18 @@ export class CollaborativeRoomSession {
     return this.getRoomOccupancy(documentId);
   }
 
+  emitToDocument(
+    documentId: string,
+    emit: (socket: TypeSyncSocket) => void
+  ): void {
+    for (const socket of this.sockets.values()) {
+      if (socket.connected && this.getRole(socket.id, documentId) &&
+        socket.rooms.has(`doc:${documentId}`)) {
+        this.notifySocket(socket, () => emit(socket));
+      }
+    }
+  }
+
   emitToUsers(
     userIds: Iterable<string>,
     emit: (socket: TypeSyncSocket) => void

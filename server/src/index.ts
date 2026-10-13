@@ -89,6 +89,9 @@ const roomSession = new CollaborativeRoomSession({
       revision,
       epoch,
     };
+    roomSession.emitToDocument(documentId, (socket) => {
+      socket.emit("doc:saved", payload);
+    });
     void DocumentService.listAccessUserIds(documentId)
       .then((userIds) => {
         roomSession.emitToUsers(userIds, (socket) => {
