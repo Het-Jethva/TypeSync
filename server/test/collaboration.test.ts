@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as Y from "yjs";
-import { prosemirrorJSONToYDoc } from "@tiptap/y-tiptap";
+import { prosemirrorJSONToYDoc, yXmlFragmentToProsemirrorJSON } from "@tiptap/y-tiptap";
 import { editorSchema } from "@typesync/shared/editor-schema";
 
 import { createDocumentRuntime, type DocumentRuntimeOptions } from "../src/socket/document-runtime.ts";
@@ -666,6 +666,69 @@ test("table resource validation rejects unsafe updates and stored states and acc
       finally { loaded.discard("valid"); }
     } finally { valid.destroy(); }
   } finally { runtime.discard("document"); }
+});
+
+test("link href validation rejects malformed updates and stored states while valid links persist and render", async context => {
+  context.mock.method(console, "error", () => {});
+  let stored: Uint8Array | null = null;
+  let writes = 0;
+  const repository = {
+    loadState: async () => stored,
+    saveState: async (_id: string, state: Uint8Array) => {
+      stored = state;
+      writes++;
+      return { title: "Test", updatedAt: new Date() };
+    },
+  };
+  const runtime = createDocumentRuntime({ repository });
+  const reopened = createDocumentRuntime({ repository });
+  const source = new Y.Doc();
+  const restored = new Y.Doc();
+  const paragraph = new Y.XmlElement("paragraph");
+  const text = new Y.XmlText();
+  paragraph.insert(0, [text]);
+  source.getXmlFragment("default").insert(0, [paragraph]);
+  text.insert(0, "Link", { link: { href: "https://example.com" } });
+  try {
+    await runtime.ensureLoaded("document");
+    assert.equal(runtime.applyUpdate("document", Y.encodeStateAsUpdate(source)).kind, "accepted");
+    await runtime.flushDocument("document");
+    const before = runtime.snapshotForJoin("document");
+    assert.equal(writes, 1);
+    for (const href of [7, null, true, [], {}]) {
+      text.format(0, text.length, { link: { href } });
+      const rejected = runtime.applyUpdate("document", Y.encodeStateAsUpdate(source));
+      assert.equal(rejected.kind, "invalid");
+      if (rejected.kind === "invalid") assert.match(String(rejected.error), /attribute href/);
+      assert.deepEqual(runtime.snapshotForJoin("document"), before);
+      await runtime.flushDocument("document");
+      assert.equal(writes, 1);
+      assert.deepEqual(stored, before.state);
+      const unsafe = createDocumentRuntime({ repository: {
+        loadState: async () => Y.encodeStateAsUpdate(source),
+        saveState: async () => { throw new Error("Malformed links must not be saved"); },
+      } });
+      try {
+        await assert.rejects(unsafe.ensureLoaded("unsafe"), /Malformed document state in database/);
+        assert.throws(() => unsafe.snapshotForJoin("unsafe"), /not loaded/);
+      } finally { unsafe.discard("unsafe"); }
+    }
+    await reopened.ensureLoaded("document");
+    Y.applyUpdate(restored, reopened.snapshotForJoin("document").state);
+    const content = editorSchema.nodeFromJSON(yXmlFragmentToProsemirrorJSON(restored.getXmlFragment("default")));
+    content.check();
+    const mark = content.firstChild?.firstChild?.marks[0];
+    assert(mark);
+    assert.equal(mark.attrs.href, "https://example.com");
+    const render = mark.type.spec.toDOM;
+    assert(render);
+    assert.doesNotThrow(() => render(mark, true));
+  } finally {
+    runtime.discard("document");
+    reopened.discard("document");
+    source.destroy();
+    restored.destroy();
+  }
 });
 
 test("editor schema validation rejects corrupt updates and stored states without changing the document", async (context) => {

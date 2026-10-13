@@ -1,6 +1,7 @@
-import { getSchema } from "@tiptap/core";
+import { getSchema, type Attributes } from "@tiptap/core";
 import type { Node } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
@@ -12,10 +13,17 @@ import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { common, createLowlight } from "lowlight";
 
 const lowlight = createLowlight(common);
+const ValidatedLink = Link.extend({
+  addAttributes() {
+    const attributes: Attributes = this.parent?.() ?? {};
+    return { ...attributes, href: { ...attributes.href, validate: "string" } };
+  },
+});
 
 export function createContentExtensions() {
   return [
-    StarterKit.configure({ undoRedo: false, codeBlock: false, link: { openOnClick: false, autolink: true } }),
+    StarterKit.configure({ undoRedo: false, codeBlock: false, link: false }),
+    ValidatedLink.configure({ openOnClick: false, autolink: true }),
     Image.configure({ inline: false, allowBase64: false }),
     Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
     TaskList, TaskItem.configure({ nested: true }),
