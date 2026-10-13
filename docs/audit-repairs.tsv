@@ -2,3 +2,4 @@ ts	phase	decision	why	evidence	result
 2026-10-13T00:00:00Z	frame	Fix seven accepted audit findings in separate commits	User authorized repairs and a passing push to main	.audit/report.md	in progress
 2026-10-13T11:36:24.9536000Z	frame	Correct the initial row timestamp	Initial timestamp was a date placeholder, not the observed time	.audit/repair-workflow.md	in progress
 2026-10-13T11:37:04.7801870Z	link	Validate href as a string in the shared Link schema	Schema validation guards incoming updates and stored documents before rendering	server/test/collaboration.test.ts; .audit/fix-link.md	VERIFIED
+2026-10-13T11:39:57.1474128Z	ai	Recheck edit access after the awaited initial history save	Permissions can change while persistence yields	server/test/ai-suggestions.test.ts; .audit/fix-ai.md	VERIFIED

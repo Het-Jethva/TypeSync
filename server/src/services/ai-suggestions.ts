@@ -278,6 +278,15 @@ export class AiSuggestionService {
         return { success: false, error: "Could not save AI suggestion" };
       }
       if (this.deleted.has(documentId)) return { success: false, error: "Document no longer exists" };
+      error = this.options.rooms.aiAccess(socket, documentId, true);
+      if (error) {
+        controller.abort();
+        this.active.delete(entry.suggestion.id);
+        entry.suggestion = { ...entry.suggestion, status: "failed", error };
+        this.changed(entry);
+        await this.persist(documentId).catch(() => {});
+        return { success: false, error };
+      }
       this.changed(entry);
       if (!controller.signal.aborted) void this.generate(entry, controller);
       else {

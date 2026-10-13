@@ -299,6 +299,49 @@ for (const decision of ["accept", "reject"] as const) {
   }
 }
 
+for (const role of ["viewer", null] as const) {
+  test(`initial AI save rejects creation after editor access changes to ${role}`, async () => {
+    let generations = 0;
+    const f = await fixture(async ({ onDelta }) => { generations++; onDelta("Hi"); });
+    const saveHistory = f.repository.saveAiSuggestions;
+    const started = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<void>();
+    let firstWrite = true;
+    f.repository.saveAiSuggestions = async (...args) => {
+      if (firstWrite) {
+        firstWrite = false;
+        started.resolve();
+        await held.promise;
+      }
+      await saveHistory(...args);
+    };
+    try {
+      const request = f.request();
+      const original = f.ai.create(f.editor, f.documentId, request);
+      await started.promise;
+      const duplicate = f.ai.create(f.editor, f.documentId, request);
+      f.rooms.reconcileAccessChange(f.documentId, f.editor.data.userId, role);
+      held.resolve();
+      const expected = { success: false, error: role === "viewer" ? "Unauthorized to edit this document" : "Not joined to this document" };
+      assert.deepEqual(await original, expected);
+      assert.deepEqual(await duplicate, expected);
+      assert.equal(generations, 0);
+      assert.equal(f.events.some(entry => entry.status === "streaming"), false);
+      const [suggestion] = await settled(f.ai, f.owner, f.documentId);
+      assert.equal(suggestion?.status, "failed");
+      assert.equal(suggestion?.error, expected.error);
+      const history = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+      assert.equal(history.length, 1);
+      assert.equal(history[0]?.suggestion.status, "failed");
+      assert.equal(history[0]?.suggestion.error, expected.error);
+    } finally {
+      held.resolve();
+      f.repository.saveAiSuggestions = saveHistory;
+      await f.cleanup();
+    }
+  });
+}
+
 for (const outcome of ["success", "failure", "delete", "drain"] as const) {
   test(`initial AI save ${outcome} keeps duplicate requests private until committed`, async () => {
     let generations = 0;
