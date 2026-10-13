@@ -1,3 +1,4 @@
+import { normalizeIP } from "@better-auth/core/utils/ip";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { config } from "../config.js";
 
@@ -45,8 +46,8 @@ export function createRateLimit({
   sweep.unref();
 
   return function rateLimit(req: Request, res: Response, next: NextFunction): void {
-    const key = req.ip;
-    if (!key) {
+    const ip = req.ip;
+    if (!ip) {
       if (config.isProduction) {
         res.status(429).json({ success: false, error: "Too many requests" });
         return;
@@ -54,6 +55,8 @@ export function createRateLimit({
       return next();
     }
 
+    // The normalizer's hex IPv4-mapped detection needs lowercase groups.
+    const key = normalizeIP(ip.toLowerCase(), { ipv6Subnet: 64 });
     const now = Date.now();
     let bucket = buckets.get(key);
     if (!bucket) {
