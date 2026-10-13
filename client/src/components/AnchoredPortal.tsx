@@ -19,7 +19,7 @@ interface AnchoredPortalProps {
 }
 
 /**
- * Renders into the body, positioned under an anchor. Overlays that live inside
+ * Renders into the body, positioned above or below an anchor. Overlays that live inside
  * a scrolling or clipping container would otherwise be cut off by it.
  */
 export function AnchoredPortal({
@@ -29,7 +29,7 @@ export function AnchoredPortal({
   children,
 }: AnchoredPortalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
+  const [position, setPosition] = useState<{ top: number; left: number; overflowY: "auto" | "visible" } | null>(
     null
   );
 
@@ -40,11 +40,21 @@ export function AnchoredPortal({
 
     const rect = anchor.getBoundingClientRect();
     const width = Math.max(panel.getBoundingClientRect().width, panel.scrollWidth);
+    const viewportHeight = document.documentElement.clientHeight;
+    const height = Math.min(panel.scrollHeight, Math.max(0, viewportHeight - 16));
+    const below = rect.bottom + offset;
+    const desiredTop = below + height <= viewportHeight - 8
+      ? below
+      : rect.top - offset - height;
     const desiredLeft = align === "right" ? rect.right - width : rect.left;
-    setPosition({
-      top: rect.bottom + offset,
+    const nextPosition = {
+      top: Math.max(8, Math.min(desiredTop, viewportHeight - height - 8)),
       left: Math.max(8, Math.min(desiredLeft, document.documentElement.clientWidth - width - 8)),
-    });
+      overflowY: panel.scrollHeight > height ? "auto" : "visible",
+    } satisfies NonNullable<typeof position>;
+    setPosition((previous) => previous?.top === nextPosition.top && previous.left === nextPosition.left && previous.overflowY === nextPosition.overflowY
+      ? previous
+      : nextPosition);
   }, [align, anchorRef, offset]);
 
   useLayoutEffect(measure, [measure]);
@@ -74,6 +84,8 @@ export function AnchoredPortal({
         visibility: position ? "visible" : "hidden",
         width: "max-content",
         maxWidth: "calc(100vw - 16px)",
+        maxHeight: "calc(100vh - 16px)",
+        overflowY: position?.overflowY ?? "visible",
         zIndex: 50,
       }}
     >
