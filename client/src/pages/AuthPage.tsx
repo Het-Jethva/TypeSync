@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, sendVerificationEmail, useSession } from "../lib/auth-client";
 import { Logo } from "../components/Logo";
 import { BackendReadinessStatus } from "../components/BackendReadinessStatus";
+import { SessionStatus } from "../components/SessionStatus";
 import { useBackendReadiness } from "../lib/backend-readiness-context";
 import { errorMessage } from "../lib/error-message";
 import { getAuthDestination, getAuthPath } from "@typesync/shared";
@@ -15,7 +16,7 @@ export default function AuthPage() {
   const destination = getAuthDestination(searchParams.get("next"));
   const signInPath = getAuthPath({ mode: "signin", destination });
   const verificationCallbackURL = new URL(signInPath, window.location.origin).href;
-  const { data: session, isPending: isSessionPending, refetch } = useSession();
+  const { data: session, isPending: isSessionPending, error: sessionError, refetch } = useSession();
   const { status: backendStatus } = useBackendReadiness();
 
   const isSignIn = mode !== "signup";
@@ -118,22 +119,8 @@ export default function AuthPage() {
     }
   };
 
-  if (isSessionPending) {
-    return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-primary"
-        role="status"
-        aria-live="polite"
-      >
-        <div
-          className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"
-          aria-hidden="true"
-        />
-        <span className="text-ui font-medium text-text-secondary">
-          Checking your session…
-        </span>
-      </div>
-    );
+  if (isSessionPending || (!session && sessionError)) {
+    return <SessionStatus failed={Boolean(sessionError)} refetch={refetch} />;
   }
 
   if (session?.user.emailVerified) {

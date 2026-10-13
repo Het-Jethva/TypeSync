@@ -32,11 +32,13 @@ const statusContent: Record<
 type BackendReadinessStatusProps = {
   className?: string;
   id?: string;
+  onRetry?: () => void;
 };
 
 export function BackendReadinessStatus({
   className = "",
   id,
+  onRetry,
 }: BackendReadinessStatusProps) {
   const { status, retry } = useBackendReadiness();
   const content = statusContent[status];
@@ -67,7 +69,7 @@ export function BackendReadinessStatus({
       {status === "unavailable" ? (
         <button
           type="button"
-          onClick={retry}
+          onClick={onRetry ?? retry}
           className="btn-linear shrink-0 text-ui"
         >
           Try again
