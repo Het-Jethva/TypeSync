@@ -27,6 +27,7 @@
     "express": "^5.1.0",
     "lib0": "^0.2.117",
     "pg": "^8.16.0",
+    "proxy-addr": "2.0.8",
     "socket.io": "^4.8.0",
     "yjs": "^13.6.0",
     "zod": "^4.6.5"
@@ -36,6 +37,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.11.0",
+    "@types/proxy-addr": "2.0.3",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",
     "typescript": "~6.0.3"

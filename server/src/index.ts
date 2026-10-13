@@ -14,15 +14,12 @@ import type { TypeSyncSocketServer } from "./socket/types.js";
 import { errorHandler } from "./middleware/error.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
 import { pool } from "./db/index.js";
-import { logProxyProbe } from "./lib/proxy-probe.js";
+import { RENDER_HTTP_PROXY_HOPS } from "./lib/client-ip.js";
 
 const app = express();
 app.disable("x-powered-by");
-// Render terminates TLS at its edge proxy. Without this every request reports
-// the proxy's address, so per-client rate limiting would put the whole world in
-// one bucket. One hop only — the edge is the sole proxy in front of this app.
 if (config.isProduction) {
-  app.set("trust proxy", 1);
+  app.set("trust proxy", RENDER_HTTP_PROXY_HOPS);
 }
 const httpServer = createServer(app);
 
@@ -45,10 +42,9 @@ app.use(express.json());
 
 // ─── Better Auth handler ─────────────────────────────────
 app.all("/api/auth/*splat", (req, _res, next) => {
-  logProxyProbe(req);
   // Better Auth rejects a multi-hop X-Forwarded-For chain without a proxy
-  // allowlist. Express has already resolved the client through the one Render
-  // edge hop above. Overwrite this header so callers cannot choose their own IP.
+  // allowlist. Express has already resolved the client through Render ingress.
+  // Overwrite this header so callers cannot choose their own IP.
   if (req.ip) {
     req.headers[AUTH_CLIENT_IP_HEADER] = req.ip;
   } else {

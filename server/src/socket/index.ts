@@ -1,5 +1,4 @@
 import { Server as HttpServer } from "http";
-import { isIP } from "node:net";
 import { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
 import { DOCUMENT_MAX_UPDATE_BYTES, AiCreateRequestSchema, AiResolveRequestSchema } from "@typesync/shared";
@@ -13,7 +12,7 @@ import { config } from "../config.js";
 import { AUTH_CLIENT_IP_HEADER, auth } from "../lib/auth.js";
 import { isTrustedWebOrigin } from "../lib/origin.js";
 import { sessionCacheHit, sessionRecheck } from "../lib/session-recheck.js";
-import { logProxyProbe } from "../lib/proxy-probe.js";
+import { resolveSocketClientIp } from "../lib/client-ip.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
 import { AiSuggestionService } from "../services/ai-suggestions.js";
@@ -31,16 +30,6 @@ const SESSION_CHECK_UNAVAILABLE_COOLDOWN_MS = 5_000;
 const SESSION_CHECK_UNAVAILABLE_ERROR = "Session check unavailable";
 const DocumentIdSchema = z.string().uuid();
 const MAX_SOCKET_BUFFER_BYTES = DOCUMENT_MAX_UPDATE_BYTES + 64 * 1024;
-
-function socketClientIp(socket: TypeSyncSocket): string {
-  if (config.isProduction) {
-    const forwarded = socket.handshake.headers["x-forwarded-for"];
-    const forwardedValue = Array.isArray(forwarded) ? forwarded.at(-1) : forwarded;
-    const nearest = forwardedValue?.split(",").at(-1)?.trim();
-    if (nearest && isIP(nearest)) return nearest;
-  }
-  return socket.handshake.address;
-}
 
 async function ensureSocketSession(
   socket: TypeSyncSocket,
@@ -137,11 +126,10 @@ export function setupSocket(
 
   io.use(async (socket, next) => {
     try {
-      logProxyProbe(socket.request);
       const cookies = socket.handshake.headers.cookie || "";
       const headers = new Headers();
       headers.set("cookie", cookies);
-      const clientIp = socketClientIp(socket);
+      const clientIp = resolveSocketClientIp(socket.request, config);
       headers.set(AUTH_CLIENT_IP_HEADER, clientIp);
 
       const session = await auth.api.getSession({ headers });
