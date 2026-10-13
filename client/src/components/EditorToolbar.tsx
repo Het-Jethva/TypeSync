@@ -14,13 +14,15 @@ interface EditorToolbarProps {
 }
 
 function ToolbarButton({
-  isActive = false,
+  isActive,
+  isExpanded,
   onClick,
   title,
   children,
   disabled = false,
 }: {
   isActive?: boolean;
+  isExpanded?: boolean;
   onClick: () => void;
   title: string;
   children: React.ReactNode;
@@ -34,12 +36,14 @@ function ToolbarButton({
       title={title}
       disabled={disabled}
       aria-label={title}
+      aria-pressed={isActive}
+      aria-expanded={isExpanded}
       className={`toolbar-button touch-target w-6.5 h-6.5 rounded flex items-center justify-center transition-[background-color,border-color,color,box-shadow,transform,opacity] border text-ui ${
         disabled
           ? "cursor-not-allowed border-transparent text-text-muted opacity-50"
           : "cursor-pointer"
       } ${
-        isActive
+        isActive || isExpanded
           ? "bg-accent-light border-border-accent text-accent font-semibold shadow-[0_1px_2px_rgba(194,89,63,0.02)]"
           : "border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary"
       }`}
@@ -350,7 +354,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
         <ToolbarButton
           onClick={() => runEditable(() => setOverflowOpen((current) => !current))}
           title="More blocks"
-          isActive={overflowOpen}
+          isExpanded={overflowOpen}
           disabled={!canEdit || !isEditable}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">

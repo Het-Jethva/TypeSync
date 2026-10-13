@@ -118,6 +118,7 @@ export function DocumentHeader({
         {isEditing && canEdit ? (
           <input
             type="text"
+            aria-label="Document title"
             disabled={isRenaming}
             value={title}
             onChange={(e) => setTitle(e.target.value)}

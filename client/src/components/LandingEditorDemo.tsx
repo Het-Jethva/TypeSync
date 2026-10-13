@@ -57,7 +57,13 @@ export function LandingEditorDemo() {
       Placeholder.configure({ placeholder: "Start writing…" }),
       Collaboration.configure({ document: ydoc }),
     ],
-    editorProps: { attributes: { class: "tiptap" } },
+    editorProps: {
+      attributes: {
+        class: "tiptap",
+        "aria-label": "Demo document content",
+        "aria-multiline": "true",
+      },
+    },
   });
 
   // Seeded once. The emptiness check matters because development mounts

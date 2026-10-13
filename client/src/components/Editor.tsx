@@ -108,6 +108,8 @@ export function Editor({
       editorProps: {
         attributes: {
           class: "tiptap",
+          "aria-label": "Document content",
+          "aria-multiline": "true",
         },
         handleTextInput(view, from, to, text) {
           const { selection } = view.state;
