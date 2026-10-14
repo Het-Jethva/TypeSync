@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useLayoutEffect, useRef, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams, Link, Navigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { signIn, signUp, sendVerificationEmail, useSession } from "../lib/auth-client";
@@ -29,20 +29,34 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
   const [verificationResent, setVerificationResent] = useState(false);
+  const requestGeneration = useRef(0);
   const pendingEmail = verificationEmail;
 
-  // Clear errors on mode change
-  useEffect(() => {
+  useLayoutEffect(() => {
+    requestGeneration.current += 1;
     setError("");
     setName("");
     setEmail("");
     setPassword("");
     setVerificationEmail(null);
     setVerificationResent(false);
-  }, [mode]);
+    setIsLoading(false);
+    return () => {
+      requestGeneration.current += 1;
+    };
+  }, [mode, destination]);
+
+  const dismissVerification = () => {
+    requestGeneration.current += 1;
+    setVerificationEmail(null);
+    setVerificationResent(false);
+    setError("");
+    setIsLoading(false);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
 
     if (!isBackendReady) {
@@ -62,6 +76,7 @@ export default function AuthPage() {
       return;
     }
 
+    const generation = ++requestGeneration.current;
     setIsLoading(true);
 
     try {
@@ -70,6 +85,7 @@ export default function AuthPage() {
           { email, password, callbackURL: new URL(destination, window.location.origin).href },
           { disableSignal: true },
         );
+        if (generation !== requestGeneration.current) return;
         if (result.error) {
           if (result.error.code === "EMAIL_NOT_VERIFIED") {
             setVerificationEmail(email);
@@ -82,6 +98,7 @@ export default function AuthPage() {
           { name, email, password, callbackURL: verificationCallbackURL },
           { disableSignal: true },
         );
+        if (generation !== requestGeneration.current) return;
         if (result.error) {
           setError(result.error.message || "Sign up failed");
           return;
@@ -92,11 +109,13 @@ export default function AuthPage() {
       }
 
       await refetch();
+      if (generation !== requestGeneration.current) return;
       navigate(destination, { replace: true });
     } catch (err) {
+      if (generation !== requestGeneration.current) return;
       setError(errorMessage(err, "Authentication failed. Please try again."));
     } finally {
-      setIsLoading(false);
+      if (generation === requestGeneration.current) setIsLoading(false);
     }
   };
 
@@ -104,18 +123,21 @@ export default function AuthPage() {
     if (!pendingEmail || !isBackendReady || isLoading) return;
     setError("");
     setVerificationResent(false);
+    const generation = ++requestGeneration.current;
     setIsLoading(true);
     try {
       const result = await sendVerificationEmail({ email: pendingEmail, callbackURL: verificationCallbackURL });
+      if (generation !== requestGeneration.current) return;
       if (result.error) {
         setError(result.error.message || "Could not send verification email. Try again.");
         return;
       }
       setVerificationResent(true);
     } catch (err) {
+      if (generation !== requestGeneration.current) return;
       setError(errorMessage(err, "Could not send verification email. Try again."));
     } finally {
-      setIsLoading(false);
+      if (generation === requestGeneration.current) setIsLoading(false);
     }
   };
 
@@ -207,7 +229,7 @@ export default function AuthPage() {
                 className="w-full btn-linear-primary py-2 text-ui">
                 {isLoading ? "Sending…" : "Resend verification email"}
               </button>
-              <Link to={signInPath} onClick={() => setVerificationEmail(null)}
+              <Link to={signInPath} onClick={dismissVerification}
                 className="block text-center text-ui text-accent">
                 Back to sign in
               </Link>
