@@ -5,7 +5,6 @@ import CharacterCount from "@tiptap/extension-character-count";
 
 import Placeholder from "@tiptap/extension-placeholder";
 import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { columnResizingPluginKey } from "@tiptap/pm/tables";
 import * as Y from "yjs";
@@ -15,7 +14,7 @@ import { motion } from "motion/react";
 import { useCollaborativeDocument } from "../lib/hooks/useCollaborativeDocument";
 import {
   mountSmoothCollaborationCarets,
-  renderCollaborationCaretMarker,
+  SmoothCollaborationCaret,
 } from "../lib/smooth-collaboration-carets";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorSlashMenu } from "./EditorSlashMenu";
@@ -96,14 +95,13 @@ export function Editor({
         Collaboration.configure({
           document: ydoc,
         }),
-        CollaborationCaret.configure({
+        SmoothCollaborationCaret.configure({
           provider: { awareness },
           user: {
             userId: "",
             name: "Connecting…",
             color: "#5a6b7c",
           },
-          render: renderCollaborationCaretMarker,
         }),
       ],
       editorProps: {

@@ -1,5 +1,34 @@
+import { isValidCSSStyleValue } from "@tiptap/core";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import { yCursorPlugin, yCursorPluginKey } from "@tiptap/y-tiptap";
+
 const DEFAULT_CARET_COLOR = "#5a6b7c";
-let nextMarkerId = 0;
+
+function sanitizeUserColor(user: Record<string, unknown>) {
+  return {
+    ...user,
+    color:
+      isValidCSSStyleValue(user.color) && /^#[0-9a-fA-F]{6}$/.test(user.color)
+        ? user.color
+        : "transparent",
+  };
+}
+
+export const SmoothCollaborationCaret = CollaborationCaret.extend({
+  addProseMirrorPlugins() {
+    const plugins = this.parent?.() ?? [];
+    return plugins.map((plugin) =>
+      plugin.spec.key === yCursorPluginKey
+        ? yCursorPlugin(this.options.provider.awareness, {
+            cursorBuilder: (user: Record<string, unknown>, clientId: number) =>
+              renderCollaborationCaretMarker(sanitizeUserColor(user), clientId),
+            selectionBuilder: (user: Record<string, unknown>) =>
+              this.options.selectionRender(sanitizeUserColor(user)),
+          })
+        : plugin
+    );
+  },
+});
 
 interface AwarenessEvents {
   on(event: "update", handler: () => void): void;
@@ -11,15 +40,13 @@ function safeUserValue(value: unknown, fallback: string): string {
 }
 
 export function renderCollaborationCaretMarker(
-  user: Record<string, unknown>
+  user: Record<string, unknown>,
+  clientId: number
 ): HTMLElement {
   const marker = document.createElement("span");
   const name = safeUserValue(user.name, "Collaborator");
   const color = safeUserValue(user.color, DEFAULT_CARET_COLOR);
-  const identity =
-    typeof user.clientId === "number" && Number.isSafeInteger(user.clientId)
-      ? `client-${user.clientId}`
-      : `marker-${nextMarkerId++}`;
+  const identity = `client-${clientId}`;
 
   marker.classList.add("collaboration-carets__marker");
   marker.dataset.collaborationCaretId = identity;
