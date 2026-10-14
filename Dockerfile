@@ -38,4 +38,4 @@ ENV NODE_ENV=production
 
 USER node
 
-CMD ["sh", "-c", "npm run migrate -w server && npm run start -w server"]
+CMD ["sh", "-c", "node server/dist/migrate.js && unset MIGRATION_DATABASE_URL && exec node server/dist/index.js"]

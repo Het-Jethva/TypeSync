@@ -60,6 +60,14 @@ Open [localhost:5173](http://localhost:5173), create an account, and verify your
 
 Run `npm run check` for lint, type checks, regression tests, and a production build.
 
+## Deployment database credentials
+
+Set `MIGRATION_DATABASE_URL` to the PostgreSQL login that owns the schema and runs migrations. Production requires this variable. Set `DATABASE_URL` to a separate runtime login with `CONNECT` on the database, `USAGE` on the public schema and `collaborator_role` enum, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `user`, `session`, `account`, `verification`, `document`, and `document_collaborator`. Keep schema creation, table ownership, and the Drizzle migration ledger restricted to the migration login. Configure both URLs to verify the database server's TLS certificate.
+
+Docker runs migrations first, removes `MIGRATION_DATABASE_URL` from the environment, and starts the server as PID 1. A failed migration prevents server startup. The migration credential remains in the hosting provider's configuration. Locally, migration commands use `DATABASE_URL` when `MIGRATION_DATABASE_URL` is omitted. An explicit empty or invalid migration URL fails.
+
+When changing an existing deployment, add `MIGRATION_DATABASE_URL` before deploying this version. Verify that deployment before changing `DATABASE_URL` to the restricted login. Rolling back to a version without this credential split also requires restoring the schema owner's `DATABASE_URL`.
+
 ## Deployment shutdown
 
 Give the server at least 30 seconds after SIGTERM before forcibly killing it. At 20 seconds, the server allows its document flush up to five more seconds before forcing exit, leaving five seconds of margin with a 30-second host grace. It starts the flush if draining has not finished or reuses an existing flush. Failed or timed-out shutdowns exit with a nonzero status.
