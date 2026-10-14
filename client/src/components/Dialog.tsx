@@ -14,21 +14,23 @@ const FOCUSABLE_SELECTOR =
 const openDialogs: HTMLDialogElement[] = [];
 let previousBodyOverflow = "";
 
-interface DialogProps {
+interface DialogContentProps {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
-  /** Rendered below the body, separated from it. Buttons belong here. */
-  footer?: ReactNode;
   /** Focused on open. Falls back to the first focusable element in the dialog. */
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Id of the element describing the dialog, for `aria-describedby`. */
   describedById?: string;
   /** Blocks escape and backdrop dismissal while an operation is in flight. */
   busy?: boolean;
-  maxWidthClassName?: string;
 }
+
+type DialogProps = DialogContentProps & (
+  | { variant?: "dialog"; footer?: ReactNode; maxWidthClassName?: string }
+  | { variant: "drawer"; footer?: never; maxWidthClassName?: never }
+);
 
 /**
  * Modal dialog: portalled, focus-trapped, escape-dismissable, and restores
@@ -44,6 +46,7 @@ export function Dialog({
   initialFocusRef,
   describedById,
   busy = false,
+  variant = "dialog",
   maxWidthClassName = "max-w-md",
 }: DialogProps) {
   const modalRef = useRef<HTMLDialogElement>(null);
@@ -91,10 +94,6 @@ export function Dialog({
     // Listen there too, while only the top modal owns keyboard navigation.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (openDialogs.at(-1) !== modal) return;
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        return;
-      }
       if (event.key !== "Tab") return;
 
       const controls = focusableElements();
@@ -154,9 +153,16 @@ export function Dialog({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-md ${maxWidthClassName} outline-none`}
+        className={variant === "drawer"
+          ? "absolute inset-y-0 left-0 h-full w-[280px] max-w-[85vw] border-r border-border bg-bg-secondary shadow-xl outline-none"
+          : `dialog-panel absolute top-1/2 left-1/2 w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-md ${maxWidthClassName} outline-none`}
       >
-        <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
+        {variant === "drawer" ? (
+          <>
+            <h2 id={titleId} className="sr-only">{title}</h2>
+            {children}
+          </>
+        ) : <div className="bg-bg-elevated border border-border-strong rounded-md shadow-xl">
           <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4">
             <h2
               id={titleId}
@@ -193,7 +199,7 @@ export function Dialog({
               {footer}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </dialog>,
     document.body,

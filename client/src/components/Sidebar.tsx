@@ -137,14 +137,20 @@ export function Sidebar({
 
   const closeContextMenu = (reason: OverlayCloseReason) => {
     setContextMenu(null);
-    if (reason === "keyboard") contextMenuTriggerRef.current?.focus();
+    if (reason === "keyboard" || reason === "action") contextMenuTriggerRef.current?.focus();
     contextMenuTriggerRef.current = null;
   };
 
   useEffect(() => {
     if (!contextMenu) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeContextMenu("keyboard");
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const trigger = contextMenuTriggerRef.current;
+      if (Array.from(document.querySelectorAll("dialog:modal")).some(
+        (modal) => !trigger || !modal.contains(trigger),
+      )) return;
+      event.preventDefault();
+      closeContextMenu("keyboard");
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);

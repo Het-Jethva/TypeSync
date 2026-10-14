@@ -3,6 +3,7 @@ import { useParams, useNavigate, useBlocker } from "react-router";
 import type { BlockerFunction } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "../components/Sidebar";
+import { Dialog } from "../components/Dialog";
 import { Editor } from "../components/Editor";
 import { DocumentHeader } from "../components/DocumentHeader";
 import { ApiError, api } from "../lib/api";
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   const { data: session } = useSession();
   const [documents, setDocuments] = useState<DocumentWithRole[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [nextDocumentsCursor, setNextDocumentsCursor] = useState<string | null>(null);
@@ -471,6 +473,9 @@ export default function DashboardPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "\\") {
         e.preventDefault();
+        if (Array.from(document.querySelectorAll("dialog:modal")).some(
+          (modal) => !sidebarContentRef.current || !modal.contains(sidebarContentRef.current),
+        )) return;
         setSidebarOpen((p) => !p);
       }
     };
@@ -695,88 +700,80 @@ export default function DashboardPage() {
     </div>
   );
 
+  const sidebar = (
+    <div ref={sidebarContentRef} className="h-full">
+    <Sidebar
+      documents={visibleDocuments}
+      renamingDocumentIds={renamingDocumentIds}
+      activeDocId={documentId}
+      isLoading={isLoading}
+      isCreating={isCreatingDocument}
+      error={documentsError}
+      onRetry={handleRetryDocuments}
+      hasMore={nextDocumentsCursor !== null}
+      isLoadingMore={isLoadingMoreDocuments}
+      onLoadMore={loadMoreDocuments}
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      sort={sort}
+      onSortChange={setSort}
+      onCreateDocument={handleCreateDocument}
+      onDeleteDocument={handleDeleteDocument}
+      onLeaveDocument={(id) => void handleLeaveDocument(id)}
+      // Rejects so the header can revert its own input; the sidebar has
+      // no local copy to restore and the failure is already reported.
+      onRenameDocument={(id, title) => {
+        void handleRenameDocument(id, title).catch(() => {});
+      }}
+      onCopyLink={(id) => void handleCopyLink(id)}
+      onSelectDocument={(id) => {
+        if (id !== documentId) {
+          navigate(`/document/${id}`);
+        }
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
+      }}
+      onBeforeSignOut={confirmLeavingWithUnsavedChanges}
+      onSignedOut={async () => {
+        if (hasUnpersistedDocumentChanges) {
+          bypassNextNavigationRef.current = true;
+        }
+        await navigate("/", { flushSync: true });
+      }}
+      onSignOutError={addNotification}
+      onClose={() => setSidebarOpen(false)}
+      showCloseButton={isMobile}
+    />
+    </div>
+  );
+
   return (
     <div className="h-screen flex bg-bg-primary overflow-hidden">
-      {/* Sidebar Backdrop Overlay for Mobile */}
-      <AnimatePresence>
-        {isMobile && sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/30 backdrop-blur-xs z-30"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sidebar */}
-      <AnimatePresence initial={false}>
-        {sidebarOpen && (
-          <motion.div
-            {...(isMobile
-              ? {
-                  initial: { x: "-100%" },
-                  animate: { x: 0 },
-                  exit: { x: "-100%" },
-                  transition: { type: "tween", ease: "easeOut", duration: 0.22 },
-                  className: "fixed top-0 left-0 bottom-0 h-full overflow-hidden z-40 shadow-xl border-r border-border bg-bg-secondary",
-                }
-              : {
-                  initial: { width: 0, opacity: 0 },
-                  animate: { width: 280, opacity: 1 },
-                  exit: { width: 0, opacity: 0 },
-                  transition: { type: "tween", ease: "easeInOut", duration: 0.22 },
-                  className: "h-full overflow-hidden shrink-0 border-r border-border",
-                })}
-          >
-            <Sidebar
-              documents={visibleDocuments}
-              renamingDocumentIds={renamingDocumentIds}
-              activeDocId={documentId}
-              isLoading={isLoading}
-              isCreating={isCreatingDocument}
-              error={documentsError}
-              onRetry={handleRetryDocuments}
-              hasMore={nextDocumentsCursor !== null}
-              isLoadingMore={isLoadingMoreDocuments}
-              onLoadMore={loadMoreDocuments}
-              search={searchQuery}
-              onSearchChange={setSearchQuery}
-              sort={sort}
-              onSortChange={setSort}
-              onCreateDocument={handleCreateDocument}
-              onDeleteDocument={handleDeleteDocument}
-              onLeaveDocument={(id) => void handleLeaveDocument(id)}
-              // Rejects so the header can revert its own input; the sidebar has
-              // no local copy to restore and the failure is already reported.
-              onRenameDocument={(id, title) => {
-                void handleRenameDocument(id, title).catch(() => {});
-              }}
-              onCopyLink={(id) => void handleCopyLink(id)}
-              onSelectDocument={(id) => {
-                if (id !== documentId) {
-                  navigate(`/document/${id}`);
-                }
-                if (isMobile) {
-                  setSidebarOpen(false);
-                }
-              }}
-              onBeforeSignOut={confirmLeavingWithUnsavedChanges}
-              onSignedOut={async () => {
-                if (hasUnpersistedDocumentChanges) {
-                  bypassNextNavigationRef.current = true;
-                }
-                await navigate("/", { flushSync: true });
-              }}
-              onSignOutError={addNotification}
-              onClose={() => setSidebarOpen(false)}
-              showCloseButton={isMobile}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isMobile ? (
+        <Dialog
+          variant="drawer"
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          title="Sidebar"
+        >
+          {sidebar}
+        </Dialog>
+      ) : (
+        <AnimatePresence initial={false}>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.22 }}
+              className="h-full overflow-hidden shrink-0 border-r border-border"
+            >
+              {sidebar}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
