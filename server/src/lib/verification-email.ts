@@ -1,4 +1,7 @@
 import { config } from "../config.js";
+import { z } from "zod";
+
+const AcceptedEmailSchema = z.object({ id: z.uuid() });
 
 export async function sendVerificationEmail({
   email,
@@ -29,4 +32,20 @@ export async function sendVerificationEmail({
   if (!response.ok) {
     throw new Error(`Verification email delivery failed (HTTP ${response.status})`);
   }
+
+  const body: unknown = await response.json().catch(() => undefined);
+  const accepted = AcceptedEmailSchema.safeParse(body);
+  if (accepted.success) {
+    console.info("Verification email accepted", {
+      operation: "verification_email",
+      status: "accepted",
+      messageId: accepted.data.id,
+    });
+    return;
+  }
+  console.warn("Verification email acceptance diagnostic", {
+    operation: "verification_email",
+    status: "accepted",
+    diagnostic: "invalid_provider_response",
+  });
 }

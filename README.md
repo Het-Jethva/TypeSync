@@ -60,6 +60,12 @@ Open [localhost:5173](http://localhost:5173), create an account, and verify your
 
 Run `npm run check` for lint, type checks, regression tests, and a production build.
 
+## Diagnose email delivery
+
+Successful verification sends log Resend's accepted message ID. To receive delivery events, create a TypeSync webhook in Resend for `POST https://<backend-host>/api/webhooks/resend`. Subscribe to `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.failed`, `email.complained`, and `email.suppressed`. Save its signing secret as `RESEND_WEBHOOK_SECRET` on the backend, deploy, and then enable the endpoint. Omit this variable to disable the route. An invalid configured signing secret prevents startup.
+
+Match the accepted `messageId` to delivery logs. Webhook events cover the Resend account and may include other applications' messages. Delivery means the recipient's mail server accepted the email, not that it reached the inbox or was read. Resend retries and replays can produce duplicate log entries. The handler acknowledges duplicates and has no delivery state or exactly-once guarantee.
+
 ## Deployment database credentials
 
 Set `MIGRATION_DATABASE_URL` to the PostgreSQL login that owns the schema and runs migrations. Production requires this variable. Set `DATABASE_URL` to a separate runtime login with `CONNECT` on the database, `USAGE` on the public schema and `collaborator_role` enum, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `user`, `session`, `account`, `verification`, `document`, and `document_collaborator`. Keep schema creation, table ownership, and the Drizzle migration ledger restricted to the migration login. Configure both URLs to verify the database server's TLS certificate.

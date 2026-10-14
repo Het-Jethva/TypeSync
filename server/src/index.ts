@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
 import { AUTH_CLIENT_IP_HEADER, auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
+import { createResendWebhookHandler } from "./routes/resend-webhook.js";
 import { DocumentAccessAuthorizer } from "./services/document-access-authorizer.js";
 import { DocumentService } from "./services/document.service.js";
 import { setupSocket } from "./socket/index.js";
@@ -38,6 +39,9 @@ app.use(
     maxAge: 7200,
   })
 );
+if (config.resendWebhookSecret) {
+  app.post("/api/webhooks/resend", createResendWebhookHandler(config.resendWebhookSecret));
+}
 app.use(express.json());
 
 // ─── Better Auth handler ─────────────────────────────────

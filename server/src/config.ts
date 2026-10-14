@@ -40,6 +40,12 @@ const HttpUrlSchema = requiredString()
 const ClientOriginSchema = HttpUrlSchema.transform((value) => new URL(value).origin);
 
 const ResendApiKeySchema = requiredString().trim().regex(/^re_[A-Za-z0-9_]+$/, "must be a Resend API key");
+const ResendWebhookSecretSchema = z.string().refine((value) => {
+  if (!/^whsec_(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return false;
+  const encoded = value.slice(6);
+  const key = Buffer.from(encoded, "base64");
+  return key.length > 0 && key.toString("base64") === encoded;
+}, "RESEND_WEBHOOK_SECRET must be a nonempty whsec_ Base64 signing key");
 const EmailFromSchema = requiredString().trim().refine((value) => {
   if (/[\r\n]/.test(value)) return false;
   const address = value.match(/^[^<>]+<([^<>]+)>$/)?.[1] ?? value;
@@ -104,6 +110,7 @@ export const config = {
   authCookieSameSite:
     productionConfig?.AUTH_COOKIE_SAME_SITE ?? developmentCookieSameSite,
   isProduction,
+  resendWebhookSecret: ResendWebhookSecretSchema.optional().parse(process.env.RESEND_WEBHOOK_SECRET),
   resendApiKey: productionConfig?.RESEND_API_KEY ??
     (process.env.RESEND_API_KEY ? ResendApiKeySchema.parse(process.env.RESEND_API_KEY) : undefined),
   emailFrom: productionConfig?.EMAIL_FROM ??
