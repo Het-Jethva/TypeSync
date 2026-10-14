@@ -35,6 +35,7 @@ export async function requireAuth(
     }
     const session = await auth.api.getSession({
       headers,
+      query: { disableRefresh: true },
     });
 
     if (!session) {

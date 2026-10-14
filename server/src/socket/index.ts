@@ -62,7 +62,7 @@ async function ensureSocketSession(
   headers.set("cookie", socket.data.authCookie);
   headers.set(AUTH_CLIENT_IP_HEADER, socket.data.clientIp);
   const validation = Promise.resolve()
-    .then(() => auth.api.getSession({ headers }))
+    .then(() => auth.api.getSession({ headers, query: { disableRefresh: true } }))
     .then((session): SocketSessionCheck =>
       session?.session.id === socket.data.sessionId && session.user.emailVerified ? "valid" : "expired"
     )
@@ -132,7 +132,7 @@ export function setupSocket(
       const clientIp = resolveSocketClientIp(socket.request, config);
       headers.set(AUTH_CLIENT_IP_HEADER, clientIp);
 
-      const session = await auth.api.getSession({ headers });
+      const session = await auth.api.getSession({ headers, query: { disableRefresh: true } });
       if (!session) return next(new Error("Unauthorized"));
       if (!session.user.emailVerified) return next(new Error("Verify your email before accessing documents"));
 

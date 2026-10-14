@@ -3,6 +3,9 @@ import { apiBaseUrl } from "./backend-url";
 
 export const authClient = createAuthClient({
   baseURL: new URL(`${apiBaseUrl}/auth`, window.location.origin).href,
+  sessionOptions: {
+    refetchInterval: 60 * 60,
+  },
   fetchOptions: {
     customFetchImpl: (url, options) => {
       const deadline = AbortSignal.timeout(45_000);
