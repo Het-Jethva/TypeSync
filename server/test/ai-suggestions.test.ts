@@ -215,50 +215,109 @@ test("accept fits selections across paragraphs and rejects replacing selected te
   } finally { await stale.cleanup(); }
 });
 
-test("AI rejects image-spanning generation and restored ready acceptance without changing the document", async () => {
-  let generations = 0;
-  const f = await fixture(async ({ onDelta }) => { generations++; onDelta("Replacement"); });
-  try {
-    f.mutate(transform => transform.insert(13, editorSchema.node("image", { src: "https://example.com/image.png" })));
-    const from = 1;
-    const to = f.content().content.size - 1;
-    const request = f.request(from, to);
-    assert.equal(request.sourceText, "Hello world\nKeep this.");
-    assert.equal(isTextOnlySelection(f.content(), from, to), false);
-    assert.equal(isTextOnlySelection(f.content(), 1, 12), true);
-    const code = editorSchema.node("doc", null, [editorSchema.node("codeBlock", null, editorSchema.text("first\nsecond"))]);
-    assert.equal(isTextOnlySelection(code, 1, code.content.size - 1), true);
-    const before = f.rooms.snapshotForAi(f.documentId);
-    assert.deepEqual(await f.ai.create(f.owner, f.documentId, request), { success: false, error: unsafeAiSelectionReason });
-    assert.equal(generations, 0);
-    assert.deepEqual(await f.repository.loadAiSuggestions(), []);
+for (const contentType of ["image", "table"] as const) {
+  test(`AI rejects ${contentType}-spanning generation and restored ready acceptance without changing the document`, async () => {
+    let generations = 0;
+    const f = await fixture(async ({ onDelta }) => { generations++; onDelta("Replacement"); });
+    try {
+      if (contentType === "image") {
+        f.mutate(transform => transform.insert(13, editorSchema.node("image", { src: "https://example.com/image.png" })));
+      } else {
+        const cell = (text: string) => editorSchema.node("tableCell", null, [editorSchema.node("paragraph", null, editorSchema.text(text))]);
+        const table = editorSchema.node("table", null, [
+          editorSchema.node("tableRow", null, [cell("Alpha"), cell("Beta")]),
+          editorSchema.node("tableRow", null, [cell("Unselected left"), cell("Unselected right")]),
+        ]);
+        f.mutate(transform => transform.replaceWith(0, transform.doc.content.size, table));
+      }
+      const from = contentType === "image" ? 1 : 6;
+      const to = contentType === "image" ? f.content().content.size - 1 : 15;
+      const request = f.request(from, to);
+      assert.equal(request.sourceText, contentType === "image" ? "Hello world\nKeep this." : "pha\nBe");
+      assert.equal(isTextOnlySelection(f.content(), from, to), false);
+      assert.equal(isTextOnlySelection(f.content(), contentType === "image" ? 1 : 4, contentType === "image" ? 12 : 9), true);
+      const code = editorSchema.node("doc", null, [editorSchema.node("codeBlock", null, editorSchema.text("first\nsecond"))]);
+      assert.equal(isTextOnlySelection(code, 1, code.content.size - 1), true);
+      const before = f.rooms.snapshotForAi(f.documentId);
+      assert.deepEqual(await f.ai.create(f.owner, f.documentId, request), { success: false, error: unsafeAiSelectionReason });
+      assert.equal(generations, 0);
+      assert.deepEqual(await f.repository.loadAiSuggestions(), []);
 
-    const clone = new Y.Doc();
-    Y.applyUpdate(clone, before);
-    const fragment = clone.getXmlFragment("default");
-    const mapped = initProseMirrorDoc(fragment, editorSchema);
-    const identity = createHash("sha256");
-    for (let position = from; position <= to; position++) {
-      identity.update(Y.encodeRelativePosition(absolutePositionToRelativePosition(position, fragment, mapped.mapping)));
-    }
-    const now = new Date().toISOString();
-    const suggestion = { ...request, id: randomUUID(), documentId: f.documentId, authorId: f.owner.data.userId, authorName: "owner",
-      replacement: "Replacement", model: null, createdAt: now, updatedAt: now, status: "ready" } satisfies AiSuggestion;
-    await f.repository.saveAiSuggestions(f.documentId, [{ suggestion,
-      sourceSlice: JSON.stringify(mapped.doc.slice(from, to).toJSON()), sourceIdentity: identity.digest("hex"),
-    }]);
-    clone.destroy();
-    const restored = new AiSuggestionService({ rooms: f.rooms, repository: f.repository, configured: () => true,
-      emit: () => {}, emitUpdate: (_id, update) => f.updates.push(update),
-    });
-    assert.deepEqual(await restored.resolve(f.editor, f.documentId, { suggestionId: suggestion.id, decision: "accept" }),
-      { success: false, error: unsafeAiSelectionReason });
-    assert.deepEqual(f.rooms.snapshotForAi(f.documentId), before);
-    assert.equal(f.content().child(1).type.name, "image");
-    assert.equal(f.updates.length, 0);
-    const listed = await restored.list(f.owner, f.documentId);
-    assert(listed.success);
-    assert.equal(listed.suggestions[0]?.status, "ready");
+      const clone = new Y.Doc();
+      Y.applyUpdate(clone, before);
+      const fragment = clone.getXmlFragment("default");
+      const mapped = initProseMirrorDoc(fragment, editorSchema);
+      const identity = createHash("sha256");
+      for (let position = from; position <= to; position++) {
+        identity.update(Y.encodeRelativePosition(absolutePositionToRelativePosition(position, fragment, mapped.mapping)));
+      }
+      const now = new Date().toISOString();
+      const suggestion = { ...request, id: randomUUID(), documentId: f.documentId, authorId: f.owner.data.userId, authorName: "owner",
+        replacement: "Replacement", model: null, createdAt: now, updatedAt: now, status: "ready" } satisfies AiSuggestion;
+      await f.repository.saveAiSuggestions(f.documentId, [{ suggestion,
+        sourceSlice: JSON.stringify(mapped.doc.slice(from, to).toJSON()), sourceIdentity: identity.digest("hex"),
+      }]);
+      clone.destroy();
+      const restored = new AiSuggestionService({ rooms: f.rooms, repository: f.repository, configured: () => true,
+        emit: () => {}, emitUpdate: (_id, update) => f.updates.push(update),
+      });
+      assert.deepEqual(await restored.resolve(f.editor, f.documentId, { suggestionId: suggestion.id, decision: "accept" }),
+        { success: false, error: unsafeAiSelectionReason });
+      assert.deepEqual(f.rooms.snapshotForAi(f.documentId), before);
+      if (contentType === "image") assert.equal(f.content().child(1).type.name, "image");
+      else assert.deepEqual(f.content().firstChild?.content.content.map(row => row.childCount), [2, 2]);
+      assert.equal(f.updates.length, 0);
+      const listed = await restored.list(f.owner, f.documentId);
+      assert(listed.success);
+      assert.equal(listed.suggestions[0]?.status, "ready");
+    } finally { await f.cleanup(); }
+  });
+}
+
+test("AI accepts multiple paragraphs within one cell and rejects nested or enclosing table ranges", async () => {
+  const f = await fixture(async ({ onDelta }) => onDelta("Corrected\nText"));
+  const paragraph = (text: string) => editorSchema.node("paragraph", null, editorSchema.text(text));
+  const nested = editorSchema.node("table", null, [editorSchema.node("tableRow", null, [
+    editorSchema.node("tableCell", null, [paragraph("Nested")]),
+  ])]);
+  const table = editorSchema.node("table", null, [editorSchema.node("tableRow", null, [
+    editorSchema.node("tableHeader", null, [paragraph("Alpha"), paragraph("Beta")]),
+    editorSchema.node("tableCell", null, [paragraph("Before nested"), nested, paragraph("After nested")]),
+  ])]);
+  try {
+    f.mutate(transform => transform.replaceWith(0, transform.doc.content.size, [paragraph("Outside before"), table, paragraph("Outside after")]));
+    const doc = f.content();
+    const positions = new Map<string, number>();
+    doc.descendants((node, position) => { if (node.isText) positions.set(node.textContent, position); });
+    const position = (text: string) => {
+      const value = positions.get(text);
+      assert(value !== undefined, `Missing text ${text}`);
+      return value;
+    };
+    const alpha = position("Alpha");
+    const beta = position("Beta");
+    const before = position("Before nested");
+    const inside = position("Nested");
+    const after = position("After nested");
+    assert.equal(isTextOnlySelection(doc, inside, inside + 6), true);
+    for (const [from, to] of [
+      [before, inside + 6], [inside, after + 12], [before, after + 12],
+      [position("Outside before"), alpha + 5], [beta, position("Outside after") + 13],
+      [position("Outside before"), position("Outside after") + 13],
+    ]) assert.equal(isTextOnlySelection(doc, from, to), false);
+    const created = await f.ai.create(f.owner, f.documentId, { ...f.request(alpha, beta + 4), action: "grammar" });
+    assert(created.success);
+    await settled(f.ai, f.owner, f.documentId);
+    assert((await f.ai.resolve(f.owner, f.documentId, { suggestionId: created.suggestion.id, decision: "accept" })).success);
+    const expectedCell = editorSchema.node("tableHeader", null, [editorSchema.node("paragraph", null, [
+      editorSchema.text("Corrected"), editorSchema.node("hardBreak"), editorSchema.text("Text"),
+    ])]);
+    const expectedDoc = editorSchema.node("doc", null, [paragraph("Outside before"),
+      editorSchema.node("table", null, [editorSchema.node("tableRow", null, [expectedCell, table.child(0).child(1)])]),
+      paragraph("Outside after"),
+    ]);
+    assert.deepEqual(f.content().toJSON(), expectedDoc.toJSON());
+    f.content().check();
   } finally { await f.cleanup(); }
 });
 

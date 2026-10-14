@@ -82,12 +82,17 @@ export function validateTableResources(doc: Node): void {
   });
 }
 
-export const unsafeAiSelectionReason = "Select text only. AI cannot replace a selection containing images or other non-text content.";
+export const unsafeAiSelectionReason = "Select text without crossing table cells. AI cannot replace a selection containing images or other non-text content.";
 
 export function isTextOnlySelection(doc: Node, from: number, to: number): boolean {
   let safe = true;
-  doc.nodesBetween(from, to, node => {
+  doc.nodesBetween(from, to, (node, position) => {
     if (!safe) return false;
+    const role = node.type.spec.tableRole;
+    if ((role === "cell" || role === "header_cell") && (from <= position || to >= position + node.nodeSize)) {
+      safe = false;
+      return false;
+    }
     if (!node.isText && (node.isLeaf || node.isAtom) && node.type.name !== "hardBreak") {
       safe = false;
       return false;
