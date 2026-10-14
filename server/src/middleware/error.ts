@@ -35,14 +35,13 @@ const JsonParserErrorSchema = z.union([
 ]);
 
 export const errorHandler = (
-  err: Error,
+  err: unknown,
   _req: Request,
   res: Response,
   _next: NextFunction
 ) => {
-  console.error("Request failed", { name: err.name });
-
   if (err instanceof z.ZodError) {
+    res.locals.requestFailure = "validation";
     return res.status(400).json({
       success: false,
       error: validationErrorMessage(err),
@@ -50,6 +49,7 @@ export const errorHandler = (
   }
 
   if (err instanceof AppError) {
+    res.locals.requestFailure = "app";
     return res.status(err.statusCode).json({
       success: false,
       error: err.message,
@@ -58,6 +58,7 @@ export const errorHandler = (
 
   const parserError = JsonParserErrorSchema.safeParse(err);
   if (parserError.success) {
+    res.locals.requestFailure = "body_parser";
     return res.status(parserError.data.status).json({
       success: false,
       error: parserError.data.type === "entity.parse.failed"
@@ -68,6 +69,7 @@ export const errorHandler = (
     });
   }
 
+  res.locals.requestFailure = "unknown";
   res.status(500).json({
     success: false,
     error: "Internal server error",

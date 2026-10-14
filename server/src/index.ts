@@ -13,11 +13,13 @@ import { CollaborativeRoomSession } from "./socket/room-session.js";
 import { DrizzleDocumentStateRepository } from "./socket/repository.js";
 import type { TypeSyncSocketServer } from "./socket/types.js";
 import { errorHandler } from "./middleware/error.js";
+import { requestDiagnostics } from "./middleware/request-diagnostics.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
 import { pool } from "./db/index.js";
 import { RENDER_HTTP_PROXY_HOPS } from "./lib/client-ip.js";
 
 const app = express();
+app.use(requestDiagnostics);
 app.disable("x-powered-by");
 if (config.isProduction) {
   app.set("trust proxy", RENDER_HTTP_PROXY_HOPS);
@@ -71,8 +73,8 @@ app.get("/api/ready", readinessRateLimit, async (_req, res) => {
   try {
     await pool.query("select 1");
     res.json({ status: "ready", timestamp: new Date().toISOString() });
-  } catch (error) {
-    console.error("Database readiness check failed", error);
+  } catch {
+    res.locals.requestFailure = "database";
     res.status(503).json({ status: "not_ready", timestamp: new Date().toISOString() });
   }
 });

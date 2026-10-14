@@ -57,15 +57,15 @@ export function createResendWebhookHandler(secret: string): RequestHandler {
       }
       const event = DeliveryEventSchema.safeParse(payload);
       if (!event.success) {
-        console.warn("Resend webhook diagnostic", { diagnostic: "invalid_event_payload" });
+        console.warn("Resend webhook diagnostic", JSON.stringify({ diagnostic: "invalid_event_payload" }));
         reject();
         return;
       }
-      console.info("Resend delivery event", {
+      console.info("Resend delivery event", JSON.stringify({
         event: event.data.type,
         messageId: event.data.data.email_id,
         eventCreatedAt: event.data.created_at,
-      });
+      }));
       res.sendStatus(204);
     });
   };

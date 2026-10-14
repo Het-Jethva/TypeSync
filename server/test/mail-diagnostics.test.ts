@@ -53,7 +53,7 @@ test("signed delivery endpoint enforces HTTP boundaries and logs only safe event
     for (const type of ["email.delivered", "email.delivery_delayed", "email.bounced", "email.failed", "email.complained", "email.suppressed"]) {
       const value = JSON.stringify({ ...payload, type });
       assert.equal((await post(value, signedHeaders(value))).status, 204);
-      assert.deepEqual(logs.at(-1), ["Resend delivery event", { event: type, messageId, eventCreatedAt: createdAt }]);
+      assert.deepEqual(logs.at(-1), ["Resend delivery event", JSON.stringify({ event: type, messageId, eventCreatedAt: createdAt })]);
     }
     assert.equal((await post(body, signedHeaders(body))).status, 204);
     assert.equal(logs.length, 7, "duplicates are harmless log entries");
@@ -93,7 +93,7 @@ test("signed delivery endpoint enforces HTTP boundaries and logs only safe event
     ]) {
       const value = JSON.stringify(invalid);
       assert.equal((await post(value, signedHeaders(value))).status, 400);
-      assert.deepEqual(logs.at(-1), ["Resend webhook diagnostic", { diagnostic: "invalid_event_payload" }]);
+      assert.deepEqual(logs.at(-1), ["Resend webhook diagnostic", JSON.stringify({ diagnostic: "invalid_event_payload" })]);
     }
     const serialized = JSON.stringify(logs);
     for (const value of [personal, "private subject", "private bounce"]) assert(!serialized.includes(value));
@@ -118,13 +118,13 @@ test("email acceptance logs a UUID and preserves success when diagnostics are ma
   try {
     globalThis.fetch = async () => new Response(JSON.stringify({ id: messageId, to: personal }));
     await sendVerificationEmail(options);
-    assert.deepEqual(logs.pop(), ["Verification email accepted", { operation: "verification_email", status: "accepted", messageId }]);
+    assert.deepEqual(logs.pop(), ["Verification email accepted", JSON.stringify({ operation: "verification_email", status: "accepted", messageId })]);
     for (const body of ["{}", JSON.stringify({ id: personal }), "private malformed JSON"]) {
       globalThis.fetch = async () => new Response(body);
       await sendVerificationEmail(options);
-      assert.deepEqual(logs.at(-1), ["Verification email acceptance diagnostic", {
+      assert.deepEqual(logs.at(-1), ["Verification email acceptance diagnostic", JSON.stringify({
         operation: "verification_email", status: "accepted", diagnostic: "invalid_provider_response",
-      }]);
+      })]);
     }
     globalThis.fetch = async () => new Response(personal, { status: 503 });
     await assert.rejects(sendVerificationEmail(options), /HTTP 503/);

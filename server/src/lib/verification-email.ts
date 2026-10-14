@@ -36,16 +36,16 @@ export async function sendVerificationEmail({
   const body: unknown = await response.json().catch(() => undefined);
   const accepted = AcceptedEmailSchema.safeParse(body);
   if (accepted.success) {
-    console.info("Verification email accepted", {
+    console.info("Verification email accepted", JSON.stringify({
       operation: "verification_email",
       status: "accepted",
       messageId: accepted.data.id,
-    });
+    }));
     return;
   }
-  console.warn("Verification email acceptance diagnostic", {
+  console.warn("Verification email acceptance diagnostic", JSON.stringify({
     operation: "verification_email",
     status: "accepted",
     diagnostic: "invalid_provider_response",
-  });
+  }));
 }

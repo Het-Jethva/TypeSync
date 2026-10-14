@@ -60,6 +60,12 @@ Open [localhost:5173](http://localhost:5173), create an account, and verify your
 
 Run `npm run check` for lint, type checks, regression tests, and a production build.
 
+## Diagnose failed HTTP requests
+
+Express responses include a generated `X-Request-ID`. Completed responses with status 400 or higher emit one `Request failed` record with that ID, final status, allowlisted method, a known route template when available, and failure kind. Match the browser response header to the server log. Request records omit concrete URLs, query strings, headers, bodies, document and user IDs, and raw errors.
+
+This covers completed Express responses. Socket.IO failures, requests rejected before Express, and aborted responses are outside this scope. Other application and dependency logs have separate behavior.
+
 ## Diagnose email delivery
 
 Successful verification sends log Resend's accepted message ID. To receive delivery events, create a TypeSync webhook in Resend for `POST https://<backend-host>/api/webhooks/resend`. Subscribe to `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.failed`, `email.complained`, and `email.suppressed`. Save its signing secret as `RESEND_WEBHOOK_SECRET` on the backend, deploy, and then enable the endpoint. Omit this variable to disable the route. An invalid configured signing secret prevents startup.
