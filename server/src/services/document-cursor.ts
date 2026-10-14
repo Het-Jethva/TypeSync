@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ListDocumentsQuery } from "@typesync/shared";
+import { PostgresTextSchema, type ListDocumentsQuery } from "@typesync/shared";
 import { AppError } from "../middleware/error.js";
 
 export type DocumentListSort = ListDocumentsQuery["sort"];
@@ -18,7 +18,7 @@ const CreatedCursorSchema = z.object({
 
 const AlphabeticalCursorSchema = z.object({
   sort: z.literal("alphabetical"),
-  title: z.string(),
+  title: PostgresTextSchema,
   id: z.string().uuid(),
 }).strict();
 

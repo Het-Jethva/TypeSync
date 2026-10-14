@@ -27,6 +27,10 @@ export function getAuthPath({ mode, destination }: {
 
 export const DOCUMENT_MAX_UPDATE_BYTES = 12 * 1024 * 1024;
 
+export const PostgresTextSchema = z.string().refine(value => !value.includes("\u0000"), {
+  message: "Text cannot contain null characters",
+});
+
 export const RoleSchema = z.enum(["owner", "editor", "viewer"]);
 export type Role = z.infer<typeof RoleSchema>;
 
@@ -218,8 +222,8 @@ const AiAnchorSchema = z.array(z.number().int().min(0).max(255)).min(1).max(2048
 export const AiCreateRequestSchema = z.object({
   requestId: z.string().uuid(),
   action: AiActionSchema,
-  instruction: z.string().trim().max(2000).default(""),
-  sourceText: z.string().min(1).max(12000),
+  instruction: PostgresTextSchema.trim().max(2000).default(""),
+  sourceText: PostgresTextSchema.min(1).max(12000),
   from: AiAnchorSchema,
   to: AiAnchorSchema,
 }).refine(value => value.action !== "custom" || value.instruction.length > 0, {
@@ -270,7 +274,7 @@ export const ListDocumentsQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   /** Case-insensitive substring match on the title. */
-  q: z.string().trim().min(1).max(200).optional(),
+  q: PostgresTextSchema.trim().min(1).max(200).optional(),
   /** Keyset order. A cursor is only valid for the same sort. */
   sort: z.enum(["updated", "created", "alphabetical"]).default("updated"),
 });
@@ -283,12 +287,12 @@ export const DocumentListPageSchema = z.object({
 export type DocumentListPage = z.infer<typeof DocumentListPageSchema>;
 
 export const CreateDocumentSchema = z.object({
-  title: z.string().min(1, "Title is required").max(100).optional().default("Untitled"),
+  title: PostgresTextSchema.min(1, "Title is required").max(100).optional().default("Untitled"),
 });
 export type CreateDocumentRequest = z.infer<typeof CreateDocumentSchema>;
 
 export const UpdateDocumentSchema = z.object({
-  title: z.string().min(1, "Title is required").max(100).optional(),
+  title: PostgresTextSchema.min(1, "Title is required").max(100).optional(),
 });
 export type UpdateDocumentRequest = z.infer<typeof UpdateDocumentSchema>;
 

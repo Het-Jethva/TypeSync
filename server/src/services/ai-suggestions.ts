@@ -5,7 +5,7 @@ import { Fragment, type Mark } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { absolutePositionToRelativePosition, initProseMirrorDoc, relativePositionToAbsolutePosition, updateYFragment } from "@tiptap/y-tiptap";
 import { editorSchema, isTextOnlySelection, selectedText, unsafeAiSelectionReason } from "@typesync/shared/editor-schema";
-import { AiSuggestionSchema, type AiCreateRequest, type AiResolveRequest, type AiResult, type AiListResult, type AiSuggestion } from "@typesync/shared";
+import { AiSuggestionSchema, PostgresTextSchema, type AiCreateRequest, type AiResolveRequest, type AiResult, type AiListResult, type AiSuggestion } from "@typesync/shared";
 import type { CollaborativeRoomSession } from "../socket/room-session.js";
 import type { DocumentStateRepository } from "../socket/repository.js";
 import type { TypeSyncSocket } from "../socket/types.js";
@@ -313,6 +313,7 @@ export class AiSuggestionService {
         },
         onDelta: delta => {
           if (entry.suggestion.status !== "streaming" || controller.signal.aborted) return;
+          if (!PostgresTextSchema.safeParse(delta).success) { controller.abort(); throw new Error("AI response contains null characters"); }
           if (entry.suggestion.replacement.length + delta.length > 24000) { controller.abort(); throw new Error("AI response is too long"); }
           entry.suggestion.replacement += delta;
           this.changed(entry);

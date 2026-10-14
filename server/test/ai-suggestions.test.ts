@@ -84,6 +84,26 @@ async function settled(ai: AiSuggestionService, socket: TypeSyncSocket, document
   throw new Error("Suggestion did not finish");
 }
 
+test("provider null characters fail generation before contaminating persisted history", async () => {
+  const f = await fixture(async ({ onDelta }) => {
+    onDelta("Safe prefix");
+    onDelta("bad\u0000response");
+  });
+  try {
+    assert((await f.ai.create(f.owner, f.documentId, f.request())).success);
+    const [suggestion] = await settled(f.ai, f.owner, f.documentId);
+    assert.equal(suggestion?.status, "failed");
+    assert.equal(suggestion?.error, "AI response contains null characters");
+    assert.equal(suggestion?.replacement, "Safe prefix");
+    const history = z.array(z.object({ suggestion: AiSuggestionSchema })).parse(await f.repository.loadAiSuggestions());
+    assert.equal(history[0]?.suggestion.status, "failed");
+    assert.equal(history[0]?.suggestion.replacement, "Safe prefix");
+    assert.equal(JSON.stringify(history).includes("\\u0000"), false);
+    assert.equal(f.content().firstChild?.textContent, "Hello world");
+    assert.deepEqual(f.updates, []);
+  } finally { await f.cleanup(); }
+});
+
 test("failed AI acceptance saves retry the document and then finalize history", async context => {
   const f = await fixture(async ({ onDelta }) => onDelta("Hi everyone"));
   try {
