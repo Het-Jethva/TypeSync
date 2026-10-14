@@ -72,6 +72,19 @@ export const DocumentWithRoleSchema = DocumentSchema.extend({
 });
 export type DocumentWithRole = z.infer<typeof DocumentWithRoleSchema>;
 
+// PostgreSQL's UTF-8 COLLATE "C" orders valid Unicode by code point.
+export function compareDocumentTitles(left: string, right: string): number {
+  const leftPoints = Array.from(left, character => character.codePointAt(0) ?? 0);
+  const rightPoints = Array.from(right, character => character.codePointAt(0) ?? 0);
+  for (const [index, leftPoint] of leftPoints.entries()) {
+    const rightPoint = rightPoints[index];
+    if (rightPoint === undefined) return 1;
+    const difference = leftPoint - rightPoint;
+    if (difference !== 0) return difference;
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
 export const CollaboratorUserSchema = z.object({
   id: z.string(),
   name: z.string(),

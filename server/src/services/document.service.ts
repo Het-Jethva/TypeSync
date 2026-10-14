@@ -13,11 +13,13 @@ import {
   type DocumentListSort,
 } from "./document-cursor.js";
 
+const alphabeticalTitle = sql<string>`${document.title} COLLATE "C"`;
+
 function documentCursorFilter(cursor: DocumentCursor): SQL | undefined {
   if (cursor.sort === "alphabetical") {
     return or(
-      gt(document.title, cursor.title),
-      and(eq(document.title, cursor.title), gt(document.id, cursor.id))
+      gt(alphabeticalTitle, cursor.title),
+      and(eq(alphabeticalTitle, cursor.title), gt(document.id, cursor.id))
     );
   }
 
@@ -43,7 +45,7 @@ function documentOrder(sort: DocumentListSort): [SQL, SQL] {
 function listedDocumentColumns(role: SQL<Role>) {
   return {
     id: document.id,
-    title: document.title,
+    title: alphabeticalTitle.as("title"),
     ownerId: document.ownerId,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,

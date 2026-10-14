@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useBlocker } from "react-router";
 import type { BlockerFunction } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
@@ -12,6 +12,7 @@ import { connectSocket, disconnectSocket, getSocket } from "../lib/socket";
 import { useConfirm } from "../lib/confirm-context";
 import { useSession } from "../lib/auth-client";
 import type { DocumentWithRole, ListDocumentsQuery, PresenceIdentity, ServerToClientEvents } from "@typesync/shared";
+import { compareDocumentTitles } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { needsLeaveProtection, type DocumentStatus } from "../lib/document-status";
 
@@ -58,6 +59,8 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<ListDocumentsQuery["sort"]>("updated");
+  const sortRef = useRef(sort);
+  useLayoutEffect(() => { sortRef.current = sort; }, [sort]);
   const [documentsQueryNonce, setDocumentsQueryNonce] = useState(0);
   const hasUnpersistedDocumentChanges = needsLeaveProtection(documentStatus);
   const leaveConfirmation = documentStatus?.hasPendingUpdates
@@ -171,15 +174,16 @@ export default function DashboardPage() {
   }, []);
 
   const orderDocuments = useCallback((items: DocumentWithRole[]) => {
+    const currentSort = sortRef.current;
     return [...items].sort((left, right) => {
-      if (sort === "alphabetical") {
-        return left.title.localeCompare(right.title) || left.id.localeCompare(right.id);
+      if (currentSort === "alphabetical") {
+        return compareDocumentTitles(left.title, right.title) || left.id.localeCompare(right.id);
       }
-      const dateKey = sort === "created" ? "createdAt" : "updatedAt";
+      const dateKey = currentSort === "created" ? "createdAt" : "updatedAt";
       return new Date(right[dateKey]).getTime() - new Date(left[dateKey]).getTime() ||
         right.id.localeCompare(left.id);
     });
-  }, [sort]);
+  }, []);
 
   const mergeDocumentMetadata = useCallback((
     docId: string,
@@ -496,7 +500,7 @@ export default function DashboardPage() {
       setDocuments((current) =>
         current.some((document) => document.id === created.id)
           ? current
-          : [created, ...current]
+          : orderDocuments([created, ...current])
       );
       if (confirmedPendingUpdates) bypassNextNavigationRef.current = true;
       navigate(`/document/${created.id}`);
@@ -515,7 +519,6 @@ export default function DashboardPage() {
     if (deletingDocumentIds.has(docId)) return;
 
     const removedDocument = documents.find((document) => document.id === docId);
-    const removedIndex = documents.findIndex((document) => document.id === docId);
 
     setDeletingDocumentIds((current) => new Set(current).add(docId));
     markDocumentChanged({ docId, pendingDelta: 1, removed: true });
@@ -536,9 +539,7 @@ export default function DashboardPage() {
       if (removedDocument) {
         setDocuments((current) => {
           if (current.some((document) => document.id === docId)) return current;
-          const restored = [...current];
-          restored.splice(Math.max(removedIndex, 0), 0, removedDocument);
-          return restored;
+          return orderDocuments([...current, removedDocument]);
         });
       }
     } finally {
@@ -553,14 +554,14 @@ export default function DashboardPage() {
 
   const applyDocumentTitle = useCallback((docId: string, title: string) => {
     setDocuments((current) =>
-      current.map((document) =>
+      orderDocuments(current.map((document) =>
         document.id === docId ? { ...document, title } : document
-      )
+      ))
     );
     setRouteDocument((current) =>
       current?.id === docId ? { ...current, title } : current
     );
-  }, []);
+  }, [orderDocuments]);
 
   const handleRenameDocument = async (docId: string, title: string) => {
     if (renamingDocumentIdsRef.current.has(docId)) {
@@ -591,11 +592,11 @@ export default function DashboardPage() {
       const rollbackTitle = documentChangesRef.current.get(docId)?.metadata?.title;
       if (rollbackTitle !== undefined) {
         setDocuments((current) =>
-          current.map((document) =>
+          orderDocuments(current.map((document) =>
             document.id === docId && document.title === title
               ? { ...document, title: rollbackTitle }
               : document
-          )
+          ))
         );
         setRouteDocument((current) =>
           current?.id === docId && current.title === title
@@ -627,7 +628,6 @@ export default function DashboardPage() {
     if (documentId === docId && !(await confirmLeavingWithUnsavedChanges())) return;
 
     const removedDocument = documents.find((document) => document.id === docId);
-    const removedIndex = documents.findIndex((document) => document.id === docId);
 
     markDocumentChanged({ docId, pendingDelta: 1, removed: true });
     setDocuments((current) => current.filter((document) => document.id !== docId));
@@ -647,9 +647,7 @@ export default function DashboardPage() {
       if (removedDocument) {
         setDocuments((current) => {
           if (current.some((document) => document.id === docId)) return current;
-          const restored = [...current];
-          restored.splice(Math.max(removedIndex, 0), 0, removedDocument);
-          return restored;
+          return orderDocuments([...current, removedDocument]);
         });
       }
     } finally {
