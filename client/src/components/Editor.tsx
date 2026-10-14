@@ -7,6 +7,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
+import { columnResizingPluginKey } from "@tiptap/pm/tables";
 import * as Y from "yjs";
 import { z } from "zod";
 import { aiAcceptanceOrigin, applyAiAcceptance } from "../lib/ai-acceptance";
@@ -172,6 +173,9 @@ export function Editor({
   );
 
   useLayoutEffect(() => {
+    if (editor && !canEdit && columnResizingPluginKey.getState(editor.state)?.dragging) {
+      editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setHandle: -1 }));
+    }
     editor?.setEditable(canEdit);
     if (!canEdit) {
       setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
