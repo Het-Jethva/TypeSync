@@ -52,13 +52,7 @@ export function documentCursorFor(sort: DocumentListSort, item: CursorSource): D
 }
 
 export function encodeDocumentCursor(cursor: DocumentCursor): string {
-  const payload =
-    cursor.sort === "updated"
-      ? { sort: cursor.sort, updatedAt: cursor.updatedAt.toISOString(), id: cursor.id }
-      : cursor.sort === "created"
-        ? { sort: cursor.sort, createdAt: cursor.createdAt.toISOString(), id: cursor.id }
-        : { sort: cursor.sort, title: cursor.title, id: cursor.id };
-  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
 
 export function decodeDocumentCursor(cursor: string, sort: DocumentListSort): DocumentCursor {

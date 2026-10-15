@@ -4,7 +4,6 @@ import {
   type DocumentJoinResult,
   type DocumentSizeStatus,
   type DocumentUpdateResult,
-  type PresenceIdentity,
   type Role,
 } from "@typesync/shared";
 import { createAwarenessManager } from "./awareness.js";
@@ -88,7 +87,7 @@ export class CollaborativeRoomSession {
     this.awarenessManager = createAwarenessManager();
   }
 
-  initializeSocket(socket: TypeSyncSocket): PresenceIdentity {
+  initializeSocket(socket: TypeSyncSocket): void {
     this.sockets.set(socket.id, socket);
     this.socketRoles.set(socket.id, new Map());
     this.socketJoins.set(socket.id, { current: new Map(), inFlight: 0 });
@@ -97,7 +96,7 @@ export class CollaborativeRoomSession {
       lastRefill: Date.now(),
     });
 
-    return this.awarenessManager.initializeSocket(socket);
+    this.awarenessManager.initializeSocket(socket);
   }
 
   beginDrain(): void {
@@ -300,10 +299,7 @@ export class CollaborativeRoomSession {
     const joins = this.socketJoins.get(socket.id);
     if (!joins?.current.has(documentId) && !this.getRole(socket.id, documentId) &&
       !socket.rooms.has(`doc:${documentId}`)) return;
-    joins?.current.delete(documentId);
-    this.awarenessManager.releaseBinding(socket, documentId);
-    socket.leave(`doc:${documentId}`);
-    this.clearRole(socket.id, documentId);
+    this.removeSocketDocumentAccess(socket, documentId);
     if (!this.isDraining) {
       await this.evictIfEmpty(documentId);
     }

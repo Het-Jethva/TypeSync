@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 
 interface SlashMenuItem {
@@ -83,6 +83,15 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
+  const executeItem = useCallback((item: SlashMenuItem) => {
+    if (editor.isEditable) {
+      const { selection } = editor.state;
+      editor.chain().focus().deleteRange({ from: selection.from - 1, to: selection.from }).run();
+      item.action(editor);
+    }
+    onClose();
+  }, [editor, onClose]);
+
   useEffect(() => {
     const closeReadOnlyMenu = () => {
       if (!editor.isEditable) onClose();
@@ -92,7 +101,6 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
     return () => { editor.off("update", closeReadOnlyMenu); };
   }, [editor, onClose]);
 
-  // Bounds checking logic for menu placement
   useEffect(() => {
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
@@ -102,7 +110,6 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
       let left = position.left;
       let top = position.top;
 
-      // Adjust horizontal overflow
       if (left + menuWidth > window.innerWidth) {
         left = window.innerWidth - menuWidth - 12;
       }
@@ -110,7 +117,6 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
         left = 12;
       }
 
-      // Adjust vertical overflow
       if (top + menuHeight > window.innerHeight) {
         const spaceAbove = position.top - 12 - 12;
         if (spaceAbove > menuHeight) {
@@ -127,7 +133,6 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
     }
   }, [position]);
 
-  // Close when user clicks outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && (!(e.target instanceof Node) || !menuRef.current.contains(e.target))) {
@@ -138,7 +143,6 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
-  // Handle keyboard navigation
   useEffect(() => {
     const ownsTarget = (target: EventTarget | null) =>
       target instanceof Node &&
@@ -174,14 +178,7 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
         e.stopPropagation();
         const item = SLASH_MENU_ITEMS[selectedIndex];
         if (!item) return;
-        
-        // Remove the slash '/' typed before execution
-        const { selection } = editor.state;
-        editor.chain().focus().deleteRange({ from: selection.from - 1, to: selection.from }).run();
-        
-        // Execute the action
-        item.action(editor);
-        onClose();
+        executeItem(item);
       } else if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -205,9 +202,8 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
       window.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("focusout", handleFocusOut);
     };
-  }, [editor, selectedIndex, onClose]);
+  }, [editor, executeItem, selectedIndex, onClose]);
 
-  // Scroll active item into view inside the popover
   useEffect(() => {
     if (menuRef.current) {
       const activeEl = menuRef.current.children[selectedIndex];
@@ -235,16 +231,7 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
           role="menuitem"
           onMouseDown={(event) => event.preventDefault()}
           onMouseEnter={() => setSelectedIndex(idx)}
-          onClick={() => {
-            if (!editor.isEditable) {
-              onClose();
-              return;
-            }
-            const { selection } = editor.state;
-            editor.chain().focus().deleteRange({ from: selection.from - 1, to: selection.from }).run();
-            item.action(editor);
-            onClose();
-          }}
+          onClick={() => executeItem(item)}
           className={`w-full text-left px-3 py-1.5 flex items-center gap-3 transition-colors border-l-2 ${
             selectedIndex === idx
               ? "bg-accent-light/50 border-accent text-text-primary"

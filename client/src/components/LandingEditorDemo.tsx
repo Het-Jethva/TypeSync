@@ -1,21 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { createContentExtensions } from "@typesync/shared/editor-schema";
 import Placeholder from "@tiptap/extension-placeholder";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Collaboration from "@tiptap/extension-collaboration";
-import Image from "@tiptap/extension-image";
-import { Table } from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import { common, createLowlight } from "lowlight";
 import * as Y from "yjs";
 import { EditorToolbar } from "./EditorToolbar";
-
-const lowlight = createLowlight(common);
 
 const DEMO_CONTENT = `
   <h2>Weekend plans</h2>
@@ -38,22 +27,7 @@ export function LandingEditorDemo() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        undoRedo: false,
-        codeBlock: false,
-        link: { openOnClick: false, autolink: true },
-      }),
-      // The toolbar is shared with the app, so the demo carries every
-      // extension it can drive. Anything missing would be a button that
-      // silently does nothing.
-      Image.configure({ inline: false, allowBase64: false }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      CodeBlockLowlight.configure({ lowlight }),
+      ...createContentExtensions(),
       Placeholder.configure({ placeholder: "Start writing…" }),
       Collaboration.configure({ document: ydoc }),
     ],

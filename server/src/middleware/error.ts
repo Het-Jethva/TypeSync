@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction, RequestHandler } from "express";
+import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 
 export class AppError extends Error {
@@ -8,18 +8,6 @@ export class AppError extends Error {
   ) {
     super(message);
   }
-}
-
-export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
-): RequestHandler {
-  return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-}
-
-export function validationErrorMessage(error: z.ZodError): string {
-  return error.issues[0]?.message ?? "Validation error";
 }
 
 const JsonParserErrorSchema = z.union([
@@ -44,7 +32,7 @@ export const errorHandler = (
     res.locals.requestFailure = "validation";
     return res.status(400).json({
       success: false,
-      error: validationErrorMessage(err),
+      error: err.issues[0]?.message ?? "Validation error",
     });
   }
 

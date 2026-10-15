@@ -61,7 +61,6 @@ export class CollaborativeSyncManager {
   /** Highest saved revision in `persistenceEpoch`. */
   private persistedRevision = 0;
   private latestSave: { epoch: string; revision: number } | null = null;
-  private acknowledgedBatches: { id: number; update: Uint8Array }[] = [];
 
   private listeners = new Set<(state: SyncState) => void>();
 
@@ -135,7 +134,6 @@ export class CollaborativeSyncManager {
     const nextPersisted = Math.max(this.persistedRevision, revision);
     if (nextPersisted === this.persistedRevision) return;
     this.persistedRevision = nextPersisted;
-    if (nextPersisted >= this.ackedRevision) this.acknowledgedBatches = [];
     this.refreshPendingState();
   }
 
@@ -149,8 +147,6 @@ export class CollaborativeSyncManager {
       this.persistenceEpoch = epoch;
       this.ackedRevision = 0;
       this.persistedRevision = 0;
-    } else if (serverPersistedRevision >= this.ackedRevision) {
-      this.acknowledgedBatches = [];
     }
     this.persistedRevision = Math.max(this.persistedRevision, serverPersistedRevision);
     if (this.latestSave?.epoch === epoch) {
@@ -159,12 +155,9 @@ export class CollaborativeSyncManager {
     this.refreshPendingState();
   }
 
-  noteAcceptedServerUpdate(update: Uint8Array, epoch: string, revision: number): void {
+  noteAcceptedServerUpdate(epoch: string, revision: number): void {
     if (this.disposed) return;
     this.recordAcceptedRevision(epoch, revision);
-    if (revision > this.persistedRevision) {
-      this.acknowledgedBatches.push({ id: this.nextBatchId++, update });
-    }
     this.refreshPendingState();
   }
 
@@ -258,7 +251,6 @@ export class CollaborativeSyncManager {
     } finally {
       server.destroy();
     }
-    this.acknowledgedBatches = [];
     this.refreshPendingState();
     if (this.permissionHold) return;
     this.flushPendingUpdates();
@@ -360,9 +352,6 @@ export class CollaborativeSyncManager {
         this.retryAttempt = 0;
         // Only saves from the acknowledged runtime can cover these edits.
         this.recordAcceptedRevision(result.epoch, result.revision);
-        if (result.revision > this.persistedRevision) {
-          this.acknowledgedBatches.push(batch);
-        }
         const acceptedUpdate =
           this.state.documentSizeStatus?.reason === "update"
             ? { documentSizeStatus: null }

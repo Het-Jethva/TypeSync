@@ -6,7 +6,6 @@ import {
   ListDocumentsQuerySchema,
   UpdateDocumentSchema,
 } from "@typesync/shared";
-import { asyncHandler } from "../middleware/error.js";
 import { requireAuth, authenticatedUser } from "../middleware/auth.js";
 import { isTrustedWebOrigin } from "../lib/origin.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
@@ -44,35 +43,35 @@ export default function createDocumentRoutes(
 
   router.post(
     "/",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const { title } = CreateDocumentSchema.parse(req.body);
       const storedDocument = await DocumentService.createDocument(title, authenticatedUser(req).id);
       res.status(201).json({ success: true, data: storedDocument });
-    })
+    }
   );
 
   router.get(
     "/",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const pagination = ListDocumentsQuerySchema.parse(req.query);
       const page = await DocumentService.listUserDocuments(authenticatedUser(req).id, pagination);
       res.json({ success: true, data: page });
-    })
+    }
   );
 
   router.get(
     "/:id",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       const role = await accessAuthorizer.requireDocumentRole(documentId, authenticatedUser(req).id, "any");
       const storedDocument = await DocumentService.getDocument(documentId);
       res.json({ success: true, data: { ...storedDocument, role } });
-    })
+    }
   );
 
   router.patch(
     "/:id",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       const { title } = UpdateDocumentSchema.parse(req.body);
 
@@ -97,34 +96,34 @@ export default function createDocumentRoutes(
         socket.emit("doc:title-updated", payload);
       });
       res.json({ success: true, data: updated });
-    })
+    }
   );
 
   router.delete(
     "/:id",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       await accessAuthorizer.requireDocumentRole(documentId, authenticatedUser(req).id, "owner");
       const audience = await DocumentService.listAccessUserIds(documentId);
       await DocumentService.deleteDocument(documentId);
       roomSession.handleDocumentDeleted(documentId, audience);
       res.json({ success: true });
-    })
+    }
   );
 
   router.get(
     "/:id/collaborators",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       await accessAuthorizer.requireDocumentRole(documentId, authenticatedUser(req).id, "owner");
       const collaborators = await DocumentService.listCollaborators(documentId);
       res.json({ success: true, data: collaborators });
-    })
+    }
   );
 
   router.post(
     "/:id/collaborators",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       const { email, role } = AddCollaboratorSchema.parse(req.body);
       const collaborator = await accessAuthorizer.grantAccess(
@@ -134,17 +133,17 @@ export default function createDocumentRoutes(
         authenticatedUser(req).id
       );
       res.status(201).json({ success: true, data: collaborator });
-    })
+    }
   );
 
   router.delete(
     "/:id/collaborators/:userId",
-    asyncHandler(async (req, res) => {
+    async (req, res) => {
       const documentId = uuidParam(req.params.id);
       const targetUserId = paramStr(req.params.userId);
       await accessAuthorizer.revokeAccess(documentId, targetUserId, authenticatedUser(req).id);
       res.json({ success: true });
-    })
+    }
   );
 
   return router;

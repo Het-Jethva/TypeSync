@@ -11,7 +11,6 @@ import type {
 import { config } from "../config.js";
 import { AUTH_CLIENT_IP_HEADER, auth } from "../lib/auth.js";
 import { isTrustedWebOrigin } from "../lib/origin.js";
-import { sessionCacheHit, sessionRecheck } from "../lib/session-recheck.js";
 import { resolveSocketClientIp } from "../lib/client-ip.js";
 import { DocumentAccessAuthorizer } from "../services/document-access-authorizer.js";
 import { CollaborativeRoomSession } from "./room-session.js";
@@ -36,14 +35,12 @@ async function ensureSocketSession(
   force = false
 ): Promise<SocketSessionCheck> {
   const now = Date.now();
+  const unavailable = socket.data.sessionUnavailableUntil !== undefined &&
+    now < socket.data.sessionUnavailableUntil;
   if (
     !force &&
-    sessionCacheHit(
-      now,
-      socket.data.lastSessionValidation,
-      SESSION_REVALIDATION_INTERVAL,
-      socket.data.sessionUnavailableUntil
-    )
+    !unavailable &&
+    now - socket.data.lastSessionValidation < SESSION_REVALIDATION_INTERVAL
   ) {
     return "valid";
   }
@@ -54,7 +51,7 @@ async function ensureSocketSession(
     return socket.data.sessionValidation;
   }
 
-  if (sessionRecheck(now, socket.data.sessionUnavailableUntil) === "unavailable") {
+  if (unavailable) {
     return "unavailable";
   }
 
@@ -138,7 +135,6 @@ export function setupSocket(
 
       socket.data.userId = session.user.id;
       socket.data.userName = session.user.name;
-      socket.data.userEmail = session.user.email;
       socket.data.authCookie = cookies;
       socket.data.clientIp = clientIp;
       socket.data.sessionId = session.session.id;
@@ -156,7 +152,6 @@ export function setupSocket(
       void ensureSocketSession(socket, true);
     }, SESSION_REVALIDATION_INTERVAL);
     sessionValidationTimer.unref();
-    socket.data.sessionValidationTimer = sessionValidationTimer;
 
     socket.on("ai:list", async (documentId, acknowledge) => {
       const respond = typeof acknowledge === "function" ? acknowledge : () => {};
@@ -307,10 +302,7 @@ export function setupSocket(
     });
 
     socket.on("disconnect", async () => {
-      if (socket.data.sessionValidationTimer) {
-        clearInterval(socket.data.sessionValidationTimer);
-        socket.data.sessionValidationTimer = undefined;
-      }
+      clearInterval(sessionValidationTimer);
       await roomSession.handleDisconnect(socket);
     });
   });

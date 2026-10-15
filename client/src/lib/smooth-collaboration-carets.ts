@@ -39,7 +39,7 @@ function safeUserValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-export function renderCollaborationCaretMarker(
+function renderCollaborationCaretMarker(
   user: Record<string, unknown>,
   clientId: number
 ): HTMLElement {

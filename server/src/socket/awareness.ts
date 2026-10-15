@@ -14,7 +14,6 @@ interface SanitizedAwarenessUpdate {
   clientId: number;
   clock: number;
   state: Record<string, unknown> | null;
-  removed: boolean;
 }
 
 interface StoredAwarenessEntry {
@@ -23,7 +22,7 @@ interface StoredAwarenessEntry {
 }
 
 interface AwarenessManager {
-  initializeSocket(socket: TypeSyncSocket): PresenceIdentity;
+  initializeSocket(socket: TypeSyncSocket): void;
   presenceFor(socket: TypeSyncSocket, role: Role | null): PresenceIdentity;
   consumeUpdate(
     socket: TypeSyncSocket,
@@ -220,7 +219,6 @@ export function createAwarenessManager(): AwarenessManager {
         clientId,
         clock,
         state: null,
-        removed: true,
       };
       forgetAwarenessBinding(socket.id, documentId);
       return sanitized;
@@ -235,7 +233,6 @@ export function createAwarenessManager(): AwarenessManager {
       clientId,
       clock,
       state,
-      removed: false,
     };
   }
 
@@ -245,8 +242,6 @@ export function createAwarenessManager(): AwarenessManager {
       socket.data.awarenessLastRefill = Date.now();
       socket.data.awarenessViolations = 0;
       socketAwarenessBindings.set(socket.id, new Map());
-      // No room has been joined yet, so there is no role to report.
-      return presenceIdentity(socket, null);
     },
 
     presenceFor(socket, role) {

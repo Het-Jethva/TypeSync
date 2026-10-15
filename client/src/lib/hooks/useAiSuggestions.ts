@@ -22,7 +22,7 @@ export function useAiSuggestions(documentId: string, syncReady: boolean) {
   const [connected, setConnected] = useState(() => getSocket().connected);
   const alive = useRef(true);
   const operation = useRef(0);
-  const pendingList = useRef<{ generation: number; receivedIds: Set<string> } | null>(null);
+  const pendingList = useRef<{ receivedIds: Set<string> } | null>(null);
 
   useEffect(() => {
     alive.current = true;
@@ -50,7 +50,7 @@ export function useAiSuggestions(documentId: string, syncReady: boolean) {
     const socket = getSocket();
     if (!syncReady || !socket.connected) return;
     const generation = ++operation.current;
-    pendingList.current = { generation, receivedIds: new Set() };
+    pendingList.current = { receivedIds: new Set() };
     socket.timeout(10000).emit("ai:list", documentId, (timeout: Error | null, result: AiListResult) => {
       if (!alive.current || generation !== operation.current) return;
       const receivedIds = pendingList.current?.receivedIds ?? new Set<string>();

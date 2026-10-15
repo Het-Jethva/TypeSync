@@ -84,6 +84,20 @@ export function Editor({
     });
   }, [confirm, recover]);
 
+  const closeInactiveSlashMenu = ({ editor }: { editor: TiptapEditor }) => {
+    const { selection } = editor.state;
+    const slashIsStillActive =
+      editor.isEditable &&
+      selection.empty &&
+      selection.$from.parent.isTextblock &&
+      selection.$from.parent.textContent === "/" &&
+      selection.$from.parentOffset === 1;
+
+    if (!slashIsStillActive) {
+      setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    }
+  };
+
   const editor = useEditor(
     {
       extensions: [
@@ -134,32 +148,8 @@ export function Editor({
           return false;
         },
       },
-      onUpdate({ editor }) {
-        const { selection } = editor.state;
-        const slashIsStillActive =
-          editor.isEditable &&
-          selection.empty &&
-          selection.$from.parent.isTextblock &&
-          selection.$from.parent.textContent === "/" &&
-          selection.$from.parentOffset === 1;
-
-        if (!slashIsStillActive) {
-          setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
-        }
-      },
-      onSelectionUpdate({ editor }) {
-        const { selection } = editor.state;
-        const slashIsStillActive =
-          editor.isEditable &&
-          selection.empty &&
-          selection.$from.parent.isTextblock &&
-          selection.$from.parent.textContent === "/" &&
-          selection.$from.parentOffset === 1;
-
-        if (!slashIsStillActive) {
-          setSlashMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
-        }
-      },
+      onUpdate: closeInactiveSlashMenu,
+      onSelectionUpdate: closeInactiveSlashMenu,
       editable: canEdit,
     },
     // `canEdit` is deliberately absent: a dependency change destroys and
@@ -330,7 +320,6 @@ export function Editor({
         />
       )}
 
-      {/* Document measures. Sync state is reported in the header. */}
       <div className="shrink-0 px-4 py-1 border-t border-border bg-bg-secondary/30 flex items-center justify-end gap-3">
         <span className="text-micro text-text-muted font-medium">
           {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}

@@ -10,7 +10,6 @@ export type SocketSessionCheck = "valid" | "expired" | "unavailable";
 export interface SocketData {
   userId: string;
   userName: string;
-  userEmail: string;
   authCookie: string;
   clientIp: string;
   sessionId: string;
@@ -22,7 +21,6 @@ export interface SocketData {
    */
   sessionUnavailableUntil?: number;
   sessionValidation?: Promise<SocketSessionCheck>;
-  sessionValidationTimer?: NodeJS.Timeout;
   awarenessTokens: number;
   awarenessLastRefill: number;
   awarenessViolations: number;

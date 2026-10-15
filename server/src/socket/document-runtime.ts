@@ -31,14 +31,14 @@ export interface DocumentRuntime {
   flushDocument(documentId: string): Promise<void>;
 }
 
-export type DocumentUpdateResult =
+type DocumentUpdateResult =
   | { kind: "accepted"; status: DocumentSizeStatus | null; revision: number; epoch: string }
   | { kind: "update-too-large"; status: DocumentSizeStatus }
   | { kind: "document-too-large"; status: DocumentSizeStatus }
   | { kind: "not-loaded" }
   | { kind: "invalid"; error: unknown };
 
-export interface DocumentSizeLimits {
+interface DocumentSizeLimits {
   maxUpdateBytes: number;
   warningBytes: number;
   maxStateBytes: number;

@@ -90,7 +90,7 @@ export function useCollaborativeDocument(
     const handleUpdate: ServerToClientEvents["doc:update"] = (payload) => {
       if (payload.documentId !== documentId) return;
       const update = new Uint8Array(payload.update);
-      syncManager.noteAcceptedServerUpdate(update, payload.source.epoch, payload.source.revision);
+      syncManager.noteAcceptedServerUpdate(payload.source.epoch, payload.source.revision);
       const handler = acceptanceHandlerRef.current;
       if (payload.source.kind === "ai-acceptance" && payload.source.socketId === socket.id &&
         handler?.ydoc === ydoc && handler.apply(update)) return;
@@ -199,7 +199,7 @@ export function useCollaborativeDocument(
         syncManager.setConnected(true);
         syncManager.setDocumentRole(result.role, { flush: false });
         syncManager.reconcilePendingUpdates(ydoc, new Uint8Array(result.state));
-        syncManager.noteAcceptedServerUpdate(new Uint8Array(result.state), result.epoch, result.currentRevision);
+        syncManager.noteAcceptedServerUpdate(result.epoch, result.currentRevision);
 
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
           awareness,
@@ -238,14 +238,10 @@ export function useCollaborativeDocument(
     };
     ydoc.on("update", updateHandler);
 
-    const pendingAwarenessClients = new Set<number>();
     let awarenessFrame: number | null = null;
 
     const flushAwarenessUpdate = () => {
       awarenessFrame = null;
-      const sendLocalClient = pendingAwarenessClients.has(awareness.clientID);
-      pendingAwarenessClients.clear();
-      if (!sendLocalClient) return;
 
       const update = awarenessProtocol.encodeAwarenessUpdate(awareness, [
         awareness.clientID,
@@ -261,7 +257,6 @@ export function useCollaborativeDocument(
       if (origin === "remote") return;
       const changedClients = added.concat(updated).concat(removed);
       if (!changedClients.includes(awareness.clientID)) return;
-      pendingAwarenessClients.add(awareness.clientID);
       awarenessFrame ??= window.requestAnimationFrame(flushAwarenessUpdate);
     };
     awareness.on("update", awarenessUpdateHandler);

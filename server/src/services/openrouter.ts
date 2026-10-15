@@ -17,8 +17,8 @@ const instructions: Record<Exclude<AiAction, "custom">, string> = {
   grammar: "Fix spelling, grammar, and punctuation. Preserve wording and tone wherever possible.",
 };
 
-export const AI_FALLBACK_MODEL = "openrouter/free";
-export const AI_MAX_OUTPUT_CHARACTERS = 24000;
+const AI_FALLBACK_MODEL = "openrouter/free";
+const AI_MAX_OUTPUT_CHARACTERS = 24000;
 
 export function isAiConfigured(): boolean {
   return Boolean(config.openRouterApiKey);

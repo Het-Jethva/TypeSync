@@ -77,7 +77,9 @@
 }
 
 /* ─── Tactile Button Utilities (Linear Aesthetic) ────────── */
-.btn-linear {
+.btn-linear,
+.btn-linear-primary,
+.btn-linear-danger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -86,12 +88,15 @@
   font-weight: 500;
   padding: 0.375rem 0.75rem;
   border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.btn-linear {
   border: 1px solid var(--color-border-strong);
   background-color: var(--color-bg-elevated);
   color: var(--color-text-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
 }
 
 .btn-linear:hover {
@@ -99,38 +104,28 @@
   border-color: var(--color-text-muted);
 }
 
-.btn-linear:active {
+.btn-linear:active,
+.btn-linear-primary:active,
+.btn-linear-danger:active {
   transform: translateY(0.5px);
 }
 
 .btn-linear-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-size: var(--text-ui);
-  font-weight: 500;
-  padding: 0.375rem 0.75rem;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--color-accent);
   background-color: var(--color-accent);
   color: #faf8f5;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
 }
 
-.dark .btn-linear-primary {
+.dark .btn-linear-primary,
+.dark .btn-linear-danger {
   color: #121110;
 }
 
 .btn-linear-primary:hover {
   background-color: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
-}
-
-.btn-linear-primary:active {
-  transform: translateY(0.5px);
 }
 
 .btn-linear-primary:disabled {
@@ -149,32 +144,15 @@
 }
 
 .btn-linear-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-size: var(--text-ui);
-  font-weight: 500;
-  padding: 0.375rem 0.75rem;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--color-error);
   background-color: var(--color-error);
   color: #faf8f5;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-}
-
-.dark .btn-linear-danger {
-  color: #121110;
 }
 
 .btn-linear-danger:hover {
   filter: brightness(0.94);
-}
-
-.btn-linear-danger:active {
-  transform: translateY(0.5px);
 }
 
 /* ─── Dialog ────────────────────────────────────────────── */
@@ -269,7 +247,6 @@ body {
   transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
-/* Smooth transition elements for dark mode */
 .h-screen,
 .bg-bg-primary,
 .bg-bg-secondary,
@@ -468,7 +445,6 @@ body {
   font-weight: 600;
 }
 
-/* Task list */
 .tiptap ul[data-type="taskList"] {
   list-style: none;
   padding-left: 0;
@@ -503,7 +479,6 @@ body {
   cursor: pointer;
 }
 
-/* Collaboration cursor position marker */
 .collaboration-carets__marker {
   position: relative;
   border-left: 2px solid transparent;
@@ -551,7 +526,6 @@ body {
   user-select: none;
 }
 
-/* Placeholder */
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

@@ -1,5 +1,4 @@
-import type { DocumentSizeStatus } from "@typesync/shared";
-import type { SyncStatus } from "./sync-manager";
+import type { SyncState } from "./sync-manager";
 
 /**
  * Everything the interface needs to say about whether the open document is
@@ -8,14 +7,7 @@ import type { SyncStatus } from "./sync-manager";
  * place, so the title and the content are never described in two different
  * vocabularies.
  */
-export interface DocumentStatus {
-  syncStatus: SyncStatus;
-  hasPendingUpdates: boolean;
-  awaitingPersistence: boolean;
-  documentSizeStatus: DocumentSizeStatus | null;
-  syncError: string | null;
-  isSyncBlocked: boolean;
-  retrying: boolean;
+export interface DocumentStatus extends SyncState {
   /** Discards unsynced edits and reloads the server's version. */
   recover: () => void;
 }

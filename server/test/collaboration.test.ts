@@ -210,9 +210,8 @@ test("AI acceptance retains its persistence cursor through older acknowledgement
     manager.setConnected(true);
     insertEditorText(local, 0, "local ");
     manager.enqueueDocumentUpdate(Y.encodeStateAsUpdate(local));
-    const vector = Y.encodeStateVector(local);
     insertEditorText(local, 6, "AI text");
-    manager.noteAcceptedServerUpdate(Y.encodeStateAsUpdate(local, vector), "epoch", 2);
+    manager.noteAcceptedServerUpdate("epoch", 2);
     assert.equal(updates.length, 1);
     assert.equal(manager.getState().awaitingPersistence, true);
     callbacks[0]?.(null, { success: true, epoch: "epoch", revision: 1 });
@@ -234,7 +233,7 @@ test("AI acceptance retains its persistence cursor through older acknowledgement
     manager.notePersisted("restart", 1);
     assert.equal(manager.getState().syncStatus, "synced");
     manager.notePersisted("restart", 2);
-    manager.noteAcceptedServerUpdate(Y.encodeStateAsUpdate(local), "restart", 2);
+    manager.noteAcceptedServerUpdate("restart", 2);
     assert.equal(manager.getState().awaitingPersistence, false);
   } finally {
     manager.destroy();
@@ -253,7 +252,7 @@ test("an unsaved join snapshot protects viewers without submitting an edit", () 
     manager.setDocumentRole("viewer", { flush: false });
     manager.setConnected(true);
     manager.reconcilePendingUpdates(local, state);
-    manager.noteAcceptedServerUpdate(state, "epoch", 1);
+    manager.noteAcceptedServerUpdate("epoch", 1);
     assert.equal(sends, 0);
     assert.equal(manager.getState().hasPendingUpdates, false);
     assert.equal(manager.getState().awaitingPersistence, true);
