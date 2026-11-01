@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { useEditor, useEditorState, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
-import { createContentExtensions } from "@typesync/shared/editor-schema";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEditor, useEditorState, EditorContent, ReactNodeViewRenderer, type Editor as TiptapEditor } from "@tiptap/react";
+import { createContentExtensions, DocumentImage as SharedDocumentImage } from "@typesync/shared/editor-schema";
 import CharacterCount from "@tiptap/extension-character-count";
 
 import Placeholder from "@tiptap/extension-placeholder";
@@ -22,6 +22,9 @@ import { AiCoEditor } from "./AiCoEditor";
 import { useConfirm } from "../lib/confirm-context";
 import { needsLeaveProtection, type DocumentStatus } from "../lib/document-status";
 import { canEditDocument, type PresenceIdentity, type Role } from "@typesync/shared";
+import { ImageUploads } from "../lib/image-uploads";
+import { DocumentImage } from "./DocumentImage";
+import { ImageUploadStatus } from "./ImageUploadStatus";
 
 interface EditorProps {
   documentId: string;
@@ -45,6 +48,7 @@ export function Editor({
   onEditorChange,
 }: EditorProps) {
   const confirm = useConfirm();
+  const imageUploads = useMemo(() => new ImageUploads(documentId), [documentId]);
   const [acceptanceEditor, setAcceptanceEditor] = useState<TiptapEditor | null>(null);
   const [slashMenu, setSlashMenu] = useState<{
     isOpen: boolean;
@@ -101,7 +105,12 @@ export function Editor({
   const editor = useEditor(
     {
       extensions: [
-        ...createContentExtensions(),
+        ...createContentExtensions().filter(extension => extension.name !== "image"),
+        SharedDocumentImage.extend({
+          addNodeView() {
+            return ReactNodeViewRenderer(props => <DocumentImage {...props} documentId={documentId} uploads={imageUploads} />);
+          },
+        }),
         CharacterCount,
         Placeholder.configure({
           placeholder: "Start writing… Type / for commands",
@@ -123,6 +132,20 @@ export function Editor({
           class: "tiptap",
           "aria-label": "Document content",
           "aria-multiline": "true",
+        },
+        handlePaste(_view, event) {
+          const files = Array.from(event.clipboardData?.files ?? []).filter(file => file.type.startsWith("image/"));
+          if (!files.length) return false;
+          imageUploads.insert(files);
+          return true;
+        },
+        handleDrop(view, event, _slice, moved) {
+          if (moved) return false;
+          const files = Array.from(event.dataTransfer?.files ?? []).filter(file => file.type.startsWith("image/"));
+          if (!files.length) return false;
+          const position = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+          imageUploads.insert(files, position);
+          return true;
         },
         handleTextInput(view, from, to, text) {
           const { selection } = view.state;
@@ -159,6 +182,18 @@ export function Editor({
     // effect below applies it to the live instance instead.
     [documentId, ydoc, awareness]
   );
+
+  useEffect(() => {
+    if (editor) return imageUploads.bind(editor);
+  }, [editor, imageUploads]);
+
+  useEffect(() => {
+    if (!canEdit) imageUploads.cancelAll();
+  }, [canEdit, imageUploads]);
+
+  const insertImage = useCallback(() => {
+    imageUploads.choose();
+  }, [imageUploads]);
 
   useLayoutEffect(() => {
     if (editor && !canEdit && columnResizingPluginKey.getState(editor.state)?.dragging) {
@@ -302,7 +337,8 @@ export function Editor({
       transition={{ duration: 0.2 }}
       className="h-full flex flex-col min-h-0"
     >
-      <EditorToolbar editor={editor} canEdit={canEdit} />
+      <EditorToolbar editor={editor} canEdit={canEdit} onInsertImage={insertImage} />
+      <ImageUploadStatus uploads={imageUploads} />
 
       <AiCoEditor key={`${documentId}-${ydoc.clientID}`} documentId={documentId} editor={editor} ydoc={ydoc} role={effectiveRole} syncReady={acceptanceEditor === editor && editor !== null && syncStatus === "synced" && !hasPendingUpdates && !isSyncBlocked}>
         <div className="editor-scroll-area relative flex-1 min-w-0 overflow-auto bg-bg-secondary/40 sm:py-8 sm:px-4 py-2 px-0 flex justify-center">
@@ -316,6 +352,7 @@ export function Editor({
         <EditorSlashMenu
           editor={editor}
           position={slashMenu.position}
+          onInsertImage={insertImage}
           onClose={() => setSlashMenu((prev) => ({ ...prev, isOpen: false }))}
         />
       )}

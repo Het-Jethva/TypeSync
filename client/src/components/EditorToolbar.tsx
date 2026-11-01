@@ -11,6 +11,7 @@ const HEADING_LEVELS: readonly [1, 2, 3] = [1, 2, 3];
 interface EditorToolbarProps {
   editor: TiptapEditor | null;
   canEdit: boolean;
+  onInsertImage?: () => void;
 }
 
 function ToolbarButton({
@@ -57,7 +58,7 @@ function Divider() {
   return <div className="w-px h-4 bg-border mx-1" />;
 }
 
-export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
+export function EditorToolbar({ editor, canEdit, onInsertImage }: EditorToolbarProps) {
   const [openPopover, setOpenPopover] = useState<"link" | "image" | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [isEditable, setIsEditable] = useState(editor?.isEditable ?? false);
@@ -120,6 +121,12 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
   // The blocks people reach for least often, kept off the main row so it stays
   // one line.
   const overflowItems: DropdownMenuItem[] = [
+    {
+      id: "image-url",
+      label: "Image from URL",
+      disabled: !canEdit || !isEditable,
+      onSelect: () => runEditable(() => setOpenPopover("image")),
+    },
     {
       id: "task-list",
       label: "Task list",
@@ -322,7 +329,7 @@ export function EditorToolbar({ editor, canEdit }: EditorToolbarProps) {
       {/* Image */}
       <div ref={imageAnchorRef}>
         <ToolbarButton
-          onClick={() => runEditable(() => setOpenPopover((current) => (current === "image" ? null : "image")))}
+          onClick={() => runEditable(onInsertImage ?? (() => setOpenPopover("image")))}
           title="Insert image"
           disabled={!canEdit || !isEditable}
         >

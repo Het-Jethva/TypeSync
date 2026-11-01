@@ -9,6 +9,7 @@ import {
   index,
   uniqueIndex,
   jsonb,
+  integer,
 } from "drizzle-orm/pg-core";
 
 // ─── Custom type for binary data ─────────────────────────
@@ -106,3 +107,14 @@ export const documentCollaborator = pgTable("document_collaborator", {
   index("doc_collab_user_id_idx").on(table.userId),
   uniqueIndex("doc_collab_document_user_idx").on(table.documentId, table.userId),
 ]));
+
+export const documentAsset = pgTable("document_asset", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").notNull().references(() => document.id, { onDelete: "cascade" }),
+  mediaType: text("media_type").notNull(),
+  byteLength: integer("byte_length").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  data: bytea("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [index("document_asset_document_id_idx").on(table.documentId)]);

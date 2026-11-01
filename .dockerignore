@@ -4,6 +4,7 @@ client/*
 **/dist
 .git
 .gitignore
+.audit/
 **/.env
 **/.env.*
 README.md

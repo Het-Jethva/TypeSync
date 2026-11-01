@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { toNodeHandler } from "better-auth/node";
 import { AUTH_CLIENT_IP_HEADER, auth } from "./lib/auth.js";
 import createDocumentRoutes from "./routes/documents.js";
+import createDocumentAssetRoutes from "./routes/document-assets.js";
+import createDocumentPdfRoutes from "./routes/document-pdf.js";
 import { createResendWebhookHandler } from "./routes/resend-webhook.js";
 import { DocumentAccessAuthorizer } from "./services/document-access-authorizer.js";
 import { DocumentService } from "./services/document.service.js";
@@ -44,6 +46,7 @@ app.use(
 if (config.resendWebhookSecret) {
   app.post("/api/webhooks/resend", createResendWebhookHandler(config.resendWebhookSecret));
 }
+app.use("/api/documents/:id/pdf", express.json({ limit: "12mb" }));
 app.use(express.json());
 
 // ─── Better Auth handler ─────────────────────────────────
@@ -117,6 +120,8 @@ socketServer.current = io;
 app.use(
   "/api/documents",
   documentsRateLimit,
+  createDocumentAssetRoutes(accessAuthorizer),
+  createDocumentPdfRoutes(accessAuthorizer),
   createDocumentRoutes(roomSession, accessAuthorizer)
 );
 

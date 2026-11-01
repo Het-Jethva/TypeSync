@@ -6,7 +6,7 @@ import { CollaboratorPresence } from "./CollaboratorPresence";
 import { DropdownMenu, type DropdownMenuItem } from "./DropdownMenu";
 import { DocumentStatusPill } from "./DocumentStatusPill";
 import { AnchoredPortal } from "./AnchoredPortal";
-import { exportDocument } from "../lib/export-document";
+import { exportDocument, exportPdf } from "../lib/export-document";
 import type { DocumentStatus } from "../lib/document-status";
 import { canEditDocument, type DocumentWithRole, type PresenceIdentity } from "@typesync/shared";
 import type { Editor as TiptapEditor } from "@tiptap/react";
@@ -41,6 +41,28 @@ export function DocumentHeader({
   const [shareOpen, setShareOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuAnchorRef = useRef<HTMLDivElement>(null);
+  const exportController = useRef<AbortController | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<{ kind: "idle" } | { kind: "exporting" } | { kind: "error"; message: string }>({ kind: "idle" });
+
+  useEffect(() => {
+    setPdfStatus({ kind: "idle" });
+    return () => { exportController.current?.abort(); exportController.current = null; };
+  }, [document.id]);
+
+  const downloadPdf = async () => {
+    if (!editor || exportController.current) return;
+    const controller = new AbortController();
+    exportController.current = controller;
+    setPdfStatus({ kind: "exporting" });
+    try {
+      await exportPdf(editor, document.title, document.id, controller.signal);
+      setPdfStatus({ kind: "idle" });
+    } catch (error) {
+      if (!controller.signal.aborted) setPdfStatus({ kind: "error", message: error instanceof Error ? error.message : "PDF export failed. Try again" });
+    } finally {
+      if (exportController.current === controller) exportController.current = null;
+    }
+  };
 
   const isOwner = document.role === "owner";
 
@@ -56,6 +78,12 @@ export function DocumentHeader({
           },
         ]
       : []),
+    {
+      id: "export-pdf",
+      label: pdfStatus.kind === "exporting" ? "Exporting PDF…" : "Download as PDF",
+      disabled: !editor || pdfStatus.kind === "exporting",
+      onSelect: () => { void downloadPdf(); },
+    },
     {
       id: "export-html",
       label: "Download as HTML",
@@ -154,6 +182,14 @@ export function DocumentHeader({
 
       {/* Right section */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {pdfStatus.kind === "exporting" && <span role="status" className="text-xs text-text-muted">Exporting PDF…</span>}
+        {pdfStatus.kind === "error" && (
+          <div role="alert" className="absolute right-4 top-16 z-50 max-w-sm rounded-md border border-border bg-bg-elevated p-3 text-sm text-text-primary shadow-lg">
+            <p>{pdfStatus.message}</p>
+            <button type="button" onClick={() => { void downloadPdf(); }} className="mt-2 mr-3 text-accent">Retry</button>
+            <button type="button" onClick={() => setPdfStatus({ kind: "idle" })}>Dismiss</button>
+          </div>
+        )}
         <CollaboratorPresence collaborators={activeCollaborators} />
 
         {isOwner && !isCompact && (

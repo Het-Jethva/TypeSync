@@ -13,9 +13,11 @@ COPY shared/ ./shared/
 COPY server/ ./server/
 RUN npm run build -w shared && npm run build -w server
 
-FROM node:24-alpine AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 WORKDIR /app
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY package.json package-lock.json ./
 COPY client/package.json ./client/
@@ -23,6 +25,9 @@ COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 
 RUN npm ci --omit=dev --workspace @typesync/server --workspace @typesync/shared \
+    && npx playwright install --with-deps --only-shell chromium \
+    && apt-get update && apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/* \
     && npm cache clean --force
 
 COPY --from=build /app/shared/dist ./shared/dist

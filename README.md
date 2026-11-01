@@ -8,9 +8,10 @@ A collaborative rich-text editor with live cursors, document sharing, and an AI 
 
 - Edit together with live cursors and collaborator presence.
 - Write rich text with tables, task lists, images, code blocks, and slash commands.
+- Upload, paste, or drop PNG, JPEG, and WebP images. Resize them, set alignment and alt text, or replace them.
 - Share documents by email with owner, editor, and viewer permissions.
 - Ask AI to rewrite, shorten, fix grammar, or follow a custom instruction. Suggestions stream to collaborators for review and remain in shared history.
-- Search and sort your documents, and export them as HTML, plain text, or JSON.
+- Search and sort your documents, and export them as PDF, HTML, plain text, or JSON.
 
 ## How it works
 
@@ -41,6 +42,7 @@ Use Node.js 24 or later, npm, and Docker.
 
    ```sh
    npm install
+   npm run pdf:install -w server
    docker compose up -d
    cp server/.env.example server/.env
    ```
@@ -60,6 +62,33 @@ Open [localhost:5173](http://localhost:5173), create an account, and verify your
 
 Run `npm run check` for lint, type checks, regression tests, and a production build.
 
+## Use images and PDF downloads
+
+Click the image button or type `/` and choose Image to upload files. Paste or drop image files into the document.
+Select an image to resize it, choose a width preset, set alignment, edit alt text, replace it, or remove it.
+To insert an externally hosted image, open More blocks and choose Image from URL.
+
+Uploads accept static PNG, JPEG, and WebP images up to 10 MiB, 25 million pixels, and 10,000 pixels per dimension.
+PostgreSQL stores uploaded images separately from collaborative document updates.
+Document readers can view uploaded images. Only editors and owners can upload or change them.
+Removing an image keeps its asset available for undo. Deleting the document deletes its uploaded assets.
+
+Open Document actions and choose Download as PDF for a direct A4 PDF download with selectable text and embedded images.
+The export captures the current local editor content when you click the action, including edits still waiting to sync.
+All document readers can export. Export supports up to 50 images and 25 MiB of embedded image data, counting repeated images.
+One PDF exports at a time per server process, with a 30-second rendering deadline.
+If an image is unavailable, export reports an error so you can fix it and retry.
+External PDF images must use public HTTP or HTTPS hosts on standard ports.
+The server renderer cannot fetch local or private network resources.
+
+The Docker runtime installs Chromium and Noto fonts for PDF export.
+For local development, run the browser installation command above after installing dependencies.
+On Linux, install browser system dependencies with `npx playwright install-deps chromium` if needed.
+Include `document_asset` in database backups and grant the runtime database login SELECT, INSERT, UPDATE, and DELETE on it.
+
+HTML downloads reference images and require access to their hosts. They do not package uploaded image bytes.
+JSON downloads contain image references. Plain text downloads omit image pixels.
+
 ## Diagnose failed HTTP requests
 
 Express responses include a generated `X-Request-ID`. Completed responses with status 400 or higher emit one `Request failed` record with that ID, final status, allowlisted method, a known route template when available, and failure kind. Match the browser response header to the server log. Request records omit concrete URLs, query strings, headers, bodies, document and user IDs, and raw errors.
@@ -74,7 +103,7 @@ Match the accepted `messageId` to delivery logs. Webhook events cover the Resend
 
 ## Deployment database credentials
 
-Set `MIGRATION_DATABASE_URL` to the PostgreSQL login that owns the schema and runs migrations. Production requires this variable. Set `DATABASE_URL` to a separate runtime login with `CONNECT` on the database, `USAGE` on the public schema and `collaborator_role` enum, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `user`, `session`, `account`, `verification`, `document`, and `document_collaborator`. Keep schema creation, table ownership, and the Drizzle migration ledger restricted to the migration login. Configure both URLs to verify the database server's TLS certificate.
+Set `MIGRATION_DATABASE_URL` to the PostgreSQL login that owns the schema and runs migrations. Production requires this variable. Set `DATABASE_URL` to a separate runtime login with `CONNECT` on the database, `USAGE` on the public schema and `collaborator_role` enum, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `user`, `session`, `account`, `verification`, `document`, `document_collaborator`, and `document_asset`. Keep schema creation, table ownership, and the Drizzle migration ledger restricted to the migration login. Configure both URLs to verify the database server's TLS certificate.
 
 Docker runs migrations first, removes `MIGRATION_DATABASE_URL` from the environment, and starts the server as PID 1. A failed migration prevents server startup. The migration credential remains in the hosting provider's configuration. Locally, migration commands use `DATABASE_URL` when `MIGRATION_DATABASE_URL` is omitted. An explicit empty or invalid migration URL fails.
 

@@ -11,6 +11,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { common, createLowlight } from "lowlight";
+import { z } from "zod";
 
 const lowlight = createLowlight(common);
 const ValidatedLink = Link.extend({
@@ -20,11 +21,61 @@ const ValidatedLink = Link.extend({
   },
 });
 
+const ImageDimensionSchema = z.number().int().min(1).max(10_000).nullable();
+const ImageAssetIdSchema = z.string().uuid().nullable();
+const ImageAlignmentSchema = z.enum(["left", "center", "right"]);
+
+export const DocumentImage = Image.extend({
+  addAttributes() {
+    const inherited: Attributes = this.parent?.() ?? {};
+    return {
+      ...inherited,
+      src: { ...inherited.src, validate: (value: unknown) => { z.string().parse(value); } },
+      alt: { ...inherited.alt, validate: (value: unknown) => { z.string().nullable().parse(value); } },
+      title: { ...inherited.title, validate: (value: unknown) => { z.string().nullable().parse(value); } },
+      assetId: {
+        default: null,
+        validate: (value: unknown) => { ImageAssetIdSchema.parse(value); },
+        parseHTML: element => element.getAttribute("data-asset-id"),
+        renderHTML: attributes => attributes.assetId ? { "data-asset-id": attributes.assetId } : {},
+      },
+      width: {
+        default: null,
+        validate: (value: unknown) => { ImageDimensionSchema.parse(value); },
+        parseHTML: element => {
+          const width = element.getAttribute("width");
+          const parsed = ImageDimensionSchema.safeParse(width === null ? null : Number(width));
+          return parsed.success ? parsed.data : null;
+        },
+      },
+      height: {
+        default: null,
+        rendered: false,
+        validate: (value: unknown) => { ImageDimensionSchema.parse(value); },
+        parseHTML: element => {
+          const height = element.getAttribute("height");
+          const parsed = ImageDimensionSchema.safeParse(height === null ? null : Number(height));
+          return parsed.success ? parsed.data : null;
+        },
+      },
+      alignment: {
+        default: "center",
+        validate: (value: unknown) => { ImageAlignmentSchema.parse(value); },
+        parseHTML: element => ImageAlignmentSchema.catch("center").parse(element.getAttribute("data-alignment")),
+        renderHTML: attributes => ({
+          "data-alignment": attributes.alignment,
+          style: `display:block;max-width:100%;height:auto;margin-left:${attributes.alignment === "left" ? "0" : "auto"};margin-right:${attributes.alignment === "right" ? "0" : "auto"}`,
+        }),
+      },
+    };
+  },
+}).configure({ inline: false, allowBase64: false });
+
 export function createContentExtensions() {
   return [
     StarterKit.configure({ undoRedo: false, codeBlock: false, link: false }),
     ValidatedLink.configure({ openOnClick: false, autolink: true }),
-    Image.configure({ inline: false, allowBase64: false }),
+    DocumentImage,
     Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
     TaskList, TaskItem.configure({ nested: true }),
     CodeBlockLowlight.configure({ lowlight }),

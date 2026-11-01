@@ -12,6 +12,9 @@ const routes = new Map([
   ["/:id", "/api/documents/:id"],
   ["/:id/collaborators", "/api/documents/:id/collaborators"],
   ["/:id/collaborators/:userId", "/api/documents/:id/collaborators/:userId"],
+  ["/:id/assets", "/api/documents/:id/assets"],
+  ["/:id/assets/:assetId", "/api/documents/:id/assets/:assetId"],
+  ["/:id/pdf", "/api/documents/:id/pdf"],
 ]);
 const FailureKindSchema = z.enum([
   "validation", "app", "body_parser", "database", "unknown", "http",

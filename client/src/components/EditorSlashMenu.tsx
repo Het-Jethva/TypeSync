@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 
 interface SlashMenuItem {
@@ -76,9 +76,14 @@ interface EditorSlashMenuProps {
   editor: Editor;
   position: { top: number; left: number };
   onClose: () => void;
+  onInsertImage: () => void;
 }
 
-export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuProps) {
+export function EditorSlashMenu({ editor, position, onClose, onInsertImage }: EditorSlashMenuProps) {
+  const items = useMemo<SlashMenuItem[]>(() => [
+    { title: "Image", description: "Upload a PNG, JPEG, or WebP image", icon: "Image", action: onInsertImage },
+    ...SLASH_MENU_ITEMS,
+  ], [onInsertImage]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -168,15 +173,15 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) => (prev + 1) % SLASH_MENU_ITEMS.length);
+        setSelectedIndex((prev) => (prev + 1) % items.length);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) => (prev - 1 + SLASH_MENU_ITEMS.length) % SLASH_MENU_ITEMS.length);
+        setSelectedIndex((prev) => (prev - 1 + items.length) % items.length);
       } else if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
-        const item = SLASH_MENU_ITEMS[selectedIndex];
+        const item = items[selectedIndex];
         if (!item) return;
         executeItem(item);
       } else if (e.key === "Escape") {
@@ -202,7 +207,7 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
       window.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("focusout", handleFocusOut);
     };
-  }, [editor, executeItem, selectedIndex, onClose]);
+  }, [editor, executeItem, selectedIndex, onClose, items]);
 
   useEffect(() => {
     if (menuRef.current) {
@@ -224,7 +229,7 @@ export function EditorSlashMenu({ editor, position, onClose }: EditorSlashMenuPr
         left: `${adjustedPosition.left}px`,
       }}
     >
-      {SLASH_MENU_ITEMS.map((item, idx) => (
+      {items.map((item, idx) => (
         <button
           key={item.title}
           type="button"
